@@ -27,7 +27,7 @@ async def iterate_ics(bot):
 
     async for item in bot.ics.db.find(filter_map):
         try:
-            guild = await bot.get_guild(item["guild"])
+            guild = bot.get_guild(item["guild"])
         except discord.HTTPException:
             continue
 
