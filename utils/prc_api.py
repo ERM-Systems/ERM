@@ -130,6 +130,7 @@ class PRCApiClient:
         guild_id: int,
         data: dict | None = None,
         key: str | None = None,
+        max_retries: int = 2,
     ):
 
         if not key:
@@ -160,9 +161,13 @@ class PRCApiClient:
             #         "ServerKey": internal_server_key,
             #         "ProhibitedUntil": 9999999999
             #     })
-            #     response.status = 423
-            if response.status == 429:
-                retry_after = int((await response.json()).get("retry_after", 5))
+            if response.status in {429, 502}:
+                if max_retries <= 0:
+                    raise ResponseFailure(
+                        status_code=response.status,
+                        json_data={"error": "Max retries exceeded"},
+                    )
+                retry_after = int((await response.json()).get("retry_after", 5)) if response.status == 429 else 5
                 await asyncio.sleep(retry_after)
                 return await self._send_api_request(
                     method=method,
@@ -170,14 +175,7 @@ class PRCApiClient:
                     guild_id=guild_id,
                     data=data,
                     key=key,
-                )
-            if response.status == 502:
-                return await self._send_api_request(
-                    method=method,
-                    endpoint=endpoint,
-                    guild_id=guild_id,
-                    data=data,
-                    key=key,
+                    max_retries=max_retries - 1,
                 )
             return response.status, (
                 await response.json() if response.content_type != "text/html" else {}
