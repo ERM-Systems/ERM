@@ -26,10 +26,13 @@ async def iterate_ics(bot):
     )
 
     async for item in bot.ics.db.find(filter_map):
-        try:
-            guild = bot.get_guild(item["guild"])
-        except discord.HTTPException:
-            continue
+        guild = bot.get_guild(item["guild"])
+
+        if not guild:
+            try:
+                guild = await bot.fetch_guild(item["guild"])
+            except discord.HTTPException:
+                continue
 
         selected = None
         custom_command_data = await bot.custom_commands.find_by_id(item["guild"]) or {}
