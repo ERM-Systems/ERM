@@ -219,7 +219,7 @@ class Punishments(commands.Cog):
         warning: WarningItem = await self.bot.punishments.fetch_warning(oid)
         newline = "\n"
         if msg is not None:
-            if "autoban" in flags:
+            if "autoban" in flags and (await admin_predicate(ctx) or await management_predicate(ctx)):
                 try:
                     await self.bot.prc_api.run_command(
                         ctx.guild.id, ":ban {}".format(warning.username)
