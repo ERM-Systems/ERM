@@ -352,7 +352,7 @@ class Search(commands.Cog):
             roblox_id=roblox_player.id
         )
 
-        if member:
+        if member and bot.environment != "CUSTOM":
             try:
                 discord_member = await guild.fetch_member(member.discord_id)
             except discord.NotFound:
@@ -364,6 +364,8 @@ class Search(commands.Cog):
                     for role in discord_member.roles
                     if role.id in magic_flags_reverse
                 )
+        elif member and bot.environment == "CUSTOM":
+            applied_flags.update(["ERM Staff"])
 
         applied_flags = list(applied_flags)
         if (
@@ -415,7 +417,6 @@ class Search(commands.Cog):
             inline=False,
         )
 
-        # # # print(result)
         def add_warning_field(warning):
             new_line = "\n"
             embed_list[-1].add_field(
