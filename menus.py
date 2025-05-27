@@ -9057,6 +9057,7 @@ class PriorityRequestConfiguration(AssociationConfigurationView):
             func = self.bot.priority_settings.db.insert_one
         priority_settings["blacklisted_roles"] = [str(i.id) for i in select.values]
         await func(priority_settings)
+        await interaction.response.defer()
 
     @discord.ui.select(
         cls=discord.ui.RoleSelect,
@@ -9075,6 +9076,7 @@ class PriorityRequestConfiguration(AssociationConfigurationView):
             {"guild_id": str(interaction.guild.id)}
         )
         func = self.bot.priority_settings.update_by_id
+        await interaction.response.defer()
         if not priority_settings:
             priority_settings = {"guild_id": str(interaction.guild.id)}
             func = self.bot.priority_settings.db.insert_one
@@ -9103,6 +9105,7 @@ class PriorityRequestConfiguration(AssociationConfigurationView):
             func = self.bot.priority_settings.db.insert_one
         priority_settings["channel_id"] = str(select.values[0].id)
         await func(priority_settings)
+        await interaction.response.defer()
 
     @discord.ui.button(label="Set Cooldown", row=3)
     async def set_cooldown(
@@ -9134,6 +9137,7 @@ class PriorityRequestConfiguration(AssociationConfigurationView):
         )
         await interaction.response.send_modal(self.modal)
         await self.modal.wait()
+        
         cooldown = self.modal.cooldown.value
         cooldown = int(cooldown.strip())
 
