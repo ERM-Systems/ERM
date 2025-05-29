@@ -6,7 +6,7 @@ import discord
 import roblox
 from discord.ext import commands
 from utils.autocompletes import erlc_players_autocomplete
-from roblox.thumbnails import AvatarThumbnailType  # Add this import
+from roblox.thumbnails import AvatarThumbnailType 
 
 import logging
 from typing import List
