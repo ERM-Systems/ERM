@@ -30,9 +30,6 @@ class EmojiController:
         self.emojis = {}
 
     async def prefetch_emojis(self):
-        if self.environment == "PRODUCTION":
-            self.emojis = default_emojis
-            return
 
         application_emojis = await self.bot.fetch_application_emojis()
         for item in os.listdir("assets/emojis"):
@@ -49,9 +46,6 @@ class EmojiController:
             self.emojis[emoji.name] = emoji.id
 
     def get_emoji(self, emoji_name):
-        if self.environment == "PRODUCTION":
-            return "<:{}:{}>".format(emoji_name, default_emojis[emoji_name])
-
         if not self.emojis:
             asyncio.run(self.prefetch_emojis())
 
