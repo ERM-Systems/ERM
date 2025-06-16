@@ -1,5 +1,6 @@
 import asyncio
 from utils.prc_api import Player, ResponseFailure
+from discord.ext import commands
 
 """
 Condition Variables
@@ -242,11 +243,11 @@ def determine_func_info(cond):
     return func, argument_names(func)
 
 
-async def fetch_predetermined_futures(bot, guild_id, condition, value, api_client=None):
+async def fetch_predetermined_futures(bot: commands.Bot, guild_id, condition, value, api_client=None):
     return {
-        "queue": lambda: asyncio.run(get_queue(api_client, guild_id)),
-        "shifts": lambda: asyncio.run(online_shifts(bot, guild_id)),
-        "vehicles": lambda: asyncio.run(get_vehicles(api_client, guild_id)),
+        "queue": lambda: bot.loop.run_in_executor(get_queue(api_client, guild_id)),
+        "shifts": lambda: bot.loop.run_in_executor(online_shifts(bot, guild_id)),
+        "vehicles": lambda: bot.loop.run_in_executor(get_vehicles(api_client, guild_id)),
         "bot": lambda: bot,
         "guild_id": lambda: guild_id,
         "condition": lambda: condition,

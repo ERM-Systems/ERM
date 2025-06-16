@@ -124,7 +124,7 @@ class Bot(commands.AutoShardedBot):
         if user.id == 1165311055728226444:
             return True
 
-        if environment != "CUSTOM":
+        if environment != "CUSTOM": # let's not allow custom bot owners to use jishaku lol
             return await super().is_owner(user)
         else:
             return False
@@ -259,8 +259,7 @@ class Bot(commands.AutoShardedBot):
             bot.is_synced = True
 
             # we do this so the bot can get a cache of things before we spam discord with fetches
-            # asyncio.create_task(self.start_tasks())
-            # TEMPORARY
+            asyncio.create_task(self.start_tasks())
             
             async for document in self.views.db.find({}):
                 if document["view_type"] == "LOAMenu":
@@ -280,13 +279,11 @@ class Bot(commands.AutoShardedBot):
 
     async def start_tasks(self):
         logging.info("Starting tasks after 10 minute delay...")
-        # await asyncio.sleep(600)  # 10 mins
         check_reminders.start(bot)
         check_loa.start(bot)
         iterate_ics.start(bot)
-        # GDPR.start()
         iterate_prc_logs.start(bot)
-        # statistics_check.start(bot)
+        statistics_check.start(bot)
         tempban_checks.start(bot)
         check_whitelisted_car.start(bot)
         if self.environment != "CUSTOM":
@@ -595,16 +592,6 @@ async def warning_json_to_mongo(jsonName: str, guildId: int):
             await bot.warnings.insert(structure)
         else:
             await bot.warnings.update(structure)
-
-
-bot.erm_team = {
-    "i_imikey": "Bot Developer",
-    "mbrinkley": "First Community Manager - Removed",
-    "theoneandonly_5567": "Executive Manager",
-    "royalcrests": "Website Developer & Asset Designer",
-    "1friendlydoge": "Data Scientist - a friendly doge",
-}
-
 bot.warning_json_to_mongo = warning_json_to_mongo
 
 # include environment variables
@@ -673,11 +660,10 @@ def run():
     try:
         bot.run(bot_token)
     except Exception as e:
-        raise e  # sentry got ratelimited guys
-
-        # with sentry_sdk.isolation_scope() as scope:
-        #     scope.level = "error"
-        #     capture_exception(e)
+        with sentry_sdk.isolation_scope() as scope:
+            scope.level = "error"
+            capture_exception(e)
+        raise e
 
 
 if __name__ == "__main__":

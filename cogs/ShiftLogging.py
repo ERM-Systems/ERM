@@ -142,9 +142,13 @@ class ShiftLogging(commands.Cog):
             embed.add_field(name="Ongoing Shift",
                             value=td_format(datetime.timedelta(seconds=get_elapsed_time(active_shift))), inline=False)
 
+
+        # we need support for old python versions
+        newline = "\n"
+
         embed.add_field(
             name=f"Shift Time [{len(shifts)}]",
-            value=f"{td_format(datetime.timedelta(seconds=total_seconds))} {'\n*Met Quota*' if met_quota else '\n*Not Met Quota*' if met_quota is not None else ''}",
+            value=f"{td_format(datetime.timedelta(seconds=total_seconds))} {'{}*Met Quota*'.format(newline) if met_quota else '{}*Not Met Quota*'.format(newline) if met_quota is not None else ''}",
         )
 
         embed.set_thumbnail(url=member.display_avatar.url)
