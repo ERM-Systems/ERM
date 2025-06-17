@@ -49,6 +49,15 @@ async def handle_erlc_condition(bot, guild_id, condition) -> bool:
             values.append(func(*submitted_arguments))
         else:
             values.append(func(*submitted_arguments))
+
+    new_values = []
+    # unfuture the values
+    for value in values:
+        if isinstance(value, asyncio.Future):
+            new_values.append(await value)
+        else:
+            new_values.append(value)
+    
     return handle_comparison_operations(*values, condition["Operation"])
 
 
