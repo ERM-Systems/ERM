@@ -14,21 +14,9 @@ async def check_infractions(bot):
     try:
         current_time = datetime.datetime.now(tz=pytz.UTC).timestamp()
         initial_time = time.time()
-        filter_map = (
-            {"guild_id": int(config("CUSTOM_GUILD_ID", default=0))}
-            if config("ENVIRONMENT") == "CUSTOM"
-            else {
-                "guild_id": {
-                    "$nin": [
-                        int(item["GuildID"] or 0)
-                        async for item in bot.whitelabel.db.find({})
-                    ]
-                }
-            }
-        )
 
         async for infraction in bot.db.infractions.find(
-            {"temp_roles_expire_at": {"$exists": True}, **filter_map}
+            {"temp_roles_expire_at": {"$exists": True}}
         ):
             if infraction["temp_roles_expire_at"] <= current_time:
                 try:

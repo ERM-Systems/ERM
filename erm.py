@@ -404,7 +404,7 @@ async def on_message(
     message,
 ):  # DO NOT COG
 
-    if environment == "CUSTOM" and not message.guild:
+    if not message.guild:
         return await bot.process_commands(message)
 
     if (
@@ -414,10 +414,7 @@ async def on_message(
     ):
         if message.guild.id != int(config("CUSTOM_GUILD_ID")):
             ctx = await bot.get_context(message)
-            if ctx.command:
-                if "jishaku" in ctx.command.full_parent_name:
-                    await bot.process_commands(message)
-                    return
+            if ctx.command is not None:
                 await message.reply(
                     embed=discord.Embed(
                         title="Not Permitted",
@@ -427,18 +424,6 @@ async def on_message(
                 )
                 return
 
-    filter_map = [
-        int(item["GuildID"] or 0)
-        async for item in bot.whitelabel.db.find({})
-    ]
-
-    if message.guild is None:
-        return await bot.process_commands(message)
-
-    
-    if message.guild.id in filter_map and environment == "PRODUCTION":
-        return # handle ERM responses to prefix commands
-        
     await bot.process_commands(message)
 
 

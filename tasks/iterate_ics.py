@@ -12,20 +12,7 @@ async def iterate_ics(bot):
     # This will aim to constantly update the Integration Command Storage
     # and the relevant storage data.
 
-    filter_map = (
-        {"guild": int(config("CUSTOM_GUILD_ID", default=0))}
-        if config("ENVIRONMENT") == "CUSTOM"
-        else {
-            "guild": {
-                "$nin": [
-                    int(item["GuildID"] or 0)
-                    async for item in bot.whitelabel.db.find({})
-                ]
-            }
-        }
-    )
-
-    async for item in bot.ics.db.find(filter_map):
+    async for item in bot.ics.db.find():
         guild = bot.get_guild(item["guild"])
 
         if not guild:

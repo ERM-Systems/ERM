@@ -30,18 +30,6 @@ async def tempban_checks(bot):
     # time registration.
 
     cached_servers = {}
-    filter_map = (
-        {"Guild": int(config("CUSTOM_GUILD_ID", default=0))}
-        if config("ENVIRONMENT") == "CUSTOM"
-        else {
-            "Guild": {
-                "$nin": [
-                    int(item["GuildID"] or 0)
-                    async for item in bot.whitelabel.db.find({})
-                ]
-            }
-        }
-    )
     initial_time = time.time()
     async for punishment_item in bot.punishments.db.find(
         {
@@ -49,7 +37,6 @@ async def tempban_checks(bot):
             "CheckExecuted": {"$exists": False},
             "UntilEpoch": {"$lt": int(datetime.datetime.now(tz=pytz.UTC).timestamp())},
             "Type": "Temporary Ban",
-            **filter_map,
         }
     ):
         try:

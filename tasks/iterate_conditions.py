@@ -85,23 +85,12 @@ async def handle_erm_condition(bot, guild_id, condition) -> bool:
 
 @tasks.loop(minutes=1)
 async def iterate_conditions(bot):
-    filter_map = (
-        {"Guild": int(config("CUSTOM_GUILD_ID", default=0))}
-        if config("ENVIRONMENT") == "CUSTOM"
-        else {
-            "Guild": {
-                "$nin": [
-                    int(item["GuildID"] or 0)
-                    async for item in bot.whitelabel.db.find({})
-                ]
-            }
-        }
-    )
+
 
     actions = [
         i
         async for i in bot.actions.db.find(
-            {"Conditions": {"$exists": True, "$ne": []}, **filter_map}
+            {"Conditions": {"$exists": True, "$ne": []}}
         )
     ]
     for action in actions:
