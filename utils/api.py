@@ -90,18 +90,17 @@ class APIRoutes:
             guild: discord.Guild = self.bot.get_guild(int(i))
             if not guild:
                 continue
-            if guild.get_member(self.bot.user.id):
-                try:
-                    icon = guild.icon.with_size(512)
-                    icon = icon.with_format("png")
-                    icon = str(icon)
-                except Exception as e:
-                    # # # print(e)
-                    icon = "https://cdn.discordapp.com/embed/avatars/0.png?size=512"
 
-                guilds.append(
-                    {"id": str(guild.id), "name": str(guild.name), "icon_url": icon}
-                )
+            try:
+                icon = guild.icon.with_size(512)
+                icon = icon.with_format("png")
+                icon = str(icon)
+            except Exception as e:
+                icon = "https://cdn.discordapp.com/embed/avatars/0.png?size=512"
+
+            guilds.append(
+                {"id": str(guild.id), "name": str(guild.name), "icon_url": icon}
+            )
 
         return {"guilds": guilds}
 
