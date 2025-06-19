@@ -29,9 +29,10 @@ class OnMessage(commands.Cog):
         bot = self.bot
         bypass_role = None
 
-        if self.bot.environment == "CUSTOM":
-            return
-
+        if self.bot.environment == "PRODUCTION":
+            if await bot.whitelabel.db.find_one({"Guild": message.guild.id}) is not None:
+                return
+        
         if not hasattr(bot, "settings"):
             return
 
@@ -40,15 +41,6 @@ class OnMessage(commands.Cog):
 
         if not message.guild:
             return
-
-        # Embeds are send as discord.User identity, so if we return it then it will not be able to fetch the content of the message
-        # if isinstance(message.author, discord.User):
-        # msg = copy.copy(message)
-        # msg.author = await message.guild.fetch_member(message.author.id)
-        # message = msg
-        # ch = await bot.fetch_channel(1213731821330894938)
-        # await ch.send(f"{type(message.author)=} | {message.guild.chunked=} | {message.guild.member_count=} | {len(message.guild.members)=}")
-        # return
 
         dataset = await bot.settings.find_by_id(message.guild.id)
         if dataset == None:
@@ -92,7 +84,6 @@ class OnMessage(commands.Cog):
                 if dataset["ERLC"]["remote_commands"].get("webhook_channel", None)
                 else None
             )
-            # print(f"Remote commands: {remote_command_channel}")
 
         if "game_security" in dataset.keys():
             if "enabled" in dataset["game_security"].keys():
@@ -125,12 +116,10 @@ class OnMessage(commands.Cog):
                                             "kicked" in embed.description
                                             or "banned" in embed.description
                                         ):
-                                            # # print("used kick/ban command")
                                             if (
                                                 "Players Kicked" in embed.title
                                                 or "Players Banned" in embed.title
                                             ):
-                                                # # print("command usage")
                                                 raw_content = embed.description
 
                                                 if "kicked" in raw_content:
@@ -153,7 +142,6 @@ class OnMessage(commands.Cog):
                                                     roblox_user = user.split(":")[
                                                         0
                                                     ].replace("[", "")
-                                                    # print(roblox_user)
 
                                                     roblox_client = roblox.Client()
                                                     roblox_player = await roblox_client.get_user_by_username(
