@@ -424,6 +424,9 @@ async def on_message(
                 )
                 return
 
+    if environment == "PRODUCTION" and await bot.whitelabel.db.find_one({"GuildID": message.guild.id}) is not None:
+        return
+
     await bot.process_commands(message)
 
 
