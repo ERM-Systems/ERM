@@ -35,7 +35,12 @@ async def check_whitelisted_car(bot):
         {"$match": {"server_key": {"$ne": []}}},
     ]
 
+
     async for items in bot.settings.db.aggregate(pipeline):
+        if bot.environment == "CUSTOM":
+            if items["_id"] != config("CUSTOM_GUILD_ID"):
+                continue
+        
         guild_id = items["_id"]
         logging.info(f"Processing guild ID: {guild_id}")
 

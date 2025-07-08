@@ -5,7 +5,7 @@ import re
 import discord
 import roblox
 from discord.ext import commands
-from utils.autocompletes import erlc_players_autocomplete
+from utils.autocompletes import erlc_group_autocomplete, erlc_players_autocomplete
 from roblox.thumbnails import AvatarThumbnailType 
 
 import logging
@@ -352,12 +352,57 @@ class ERLC(commands.Cog):
 
         await ctx.send(embed=embed2)
 
+
+    @server.command(
+        name="panel",
+        description="Open a panel that allows you to manage a player in your server.",
+        aliases=["playerpanel", "manage"],
+    )
+    @app_commands.autocomplete(target=erlc_players_autocomplete)
+    @app_commands.describe(target="Who would you like to manage?")
+    @is_staff()
+    async def erlc_panel(self, ctx: commands.Context, target: str):
+        class TestButton(discord.ui.Button):
+            async def callback(self, interaction):
+                pass
+
+        class TestContainer(discord.ui.Container):
+            text1 = discord.ui.TextDisplay("## i_iMikey")
+            text2 = discord.ui.TextDisplay("**Username:** `i_iMikey`", row=1)
+            text3 = discord.ui.TextDisplay("**User ID:** `123456789`", row=2)
+            text4 = discord.ui.TextDisplay("**Permission:** Server Moderator", row=3)
+            
+            section = discord.ui.Section(
+                accessory=TestButton(
+                    label="Refresh Player",
+                )
+            )
+            
+            section = discord.ui.Section(
+                accessory=TestButton(
+                    label="Wanted Player",
+                )
+            )
+
+            # section = discord.ui.Section(
+            #     accessory=TestButton(
+            #         label="Kick Player",
+            #     )
+            # )
+
+
+        class TestView(discord.ui.LayoutView):
+            container = TestContainer(id=1)
+
+        await ctx.send(view=TestView())
+    
+    
     @server.command(
         name="pm",
         description="Send a PM to players in your ER:LC server!",
         aliases=["private", "sendpm", "send"],
     )
-    @app_commands.autocomplete(target=erlc_players_autocomplete)
+    @app_commands.autocomplete(target=erlc_group_autocomplete)
     @app_commands.describe(
         target="Who would you like to send this message to?",
         message="What would you like to send?",
