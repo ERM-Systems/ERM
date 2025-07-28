@@ -101,10 +101,10 @@ class OnShiftEnd(commands.Cog):
         for entry in shift.moderations:
             entry = await self.bot.punishments.fetch_warning(str(entry))
 
-            if entry.type in moderation_counts:
-                moderation_counts[entry.type] += 1
+            if entry.warning_type in moderation_counts:
+                moderation_counts[entry.warning_type] += 1
             else:
-                moderation_counts[entry.type] = 1
+                moderation_counts[entry.warning_type] = 1
 
         if channel is not None:
             await channel.send(
