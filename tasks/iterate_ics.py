@@ -80,7 +80,7 @@ async def iterate_ics(bot):
                 channel, message_id = arr[0], arr[1]
                 
                 channel = guild.get_channel(channel)
-                message = channel.get_message(message_id)
+                message = await channel.fetch_message(message_id)
                 if channel and not message:
                     try:
                         message = await channel.fetch_message(message_id)
