@@ -30,6 +30,7 @@ from menus import (
     WhitelistVehiclesManagement,
     PriorityRequestConfiguration,
 )
+from ui.MapleCounty import MapleCountyConfiguration
 from utils.paginators import CustomPage, SelectPagination
 from utils.utils import require_settings, generator, log_command_usage
 
@@ -984,6 +985,12 @@ class Configuration(commands.Cog):
             ],
         )
 
+        maple_county_configuration = MapleCountyConfiguration(
+            bot,
+            ctx.author.id,
+            settings.get("MC", {})
+        )
+
         pages = []
 
         for index, view in enumerate(
@@ -999,6 +1006,7 @@ class Configuration(commands.Cog):
                 erlc_view,
                 erm_command_log_view,
                 priority_requests,
+                maple_county_configuration,
             ]
         ):
             corresponding_embeds = [
@@ -1113,6 +1121,13 @@ class Configuration(commands.Cog):
                         "**Priority Channel:** This channel will be where priority requests are submitted, and where the message advising staff in regards to the priority request will be sent."
                     ),
                 ),
+                discord.Embed(
+                    title="Maple County Integration",
+                    color=blank_color,
+                    description=(
+                        "**What is the Maple County Integration?**\nThe Maple County Integration allows for ERM to communicate with the Maple County APIs, and your Maple County server. In particular, these configurations allow for configuration of various Maple County-specific supported features and settings.\n\n"
+                    )
+                )
             ]
             embed = corresponding_embeds[index]
             page = CustomPage()

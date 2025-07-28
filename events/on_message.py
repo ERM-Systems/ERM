@@ -32,7 +32,7 @@ class OnMessage(commands.Cog):
         if self.bot.environment == "PRODUCTION":
             if await bot.whitelabel.db.find_one({"Guild": str(message.guild.id)}) is not None:
                 return
-        
+       
         if not hasattr(bot, "settings"):
             return
 

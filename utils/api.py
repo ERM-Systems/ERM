@@ -2,6 +2,7 @@ import asyncio
 import copy
 import datetime
 import typing
+from collections import defaultdict
 
 import aiohttp
 import pytz
@@ -37,6 +38,23 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+_api_rate_limiter = defaultdict(list)
+_rate_limit_window = 60
+_max_requests_per_window = 50
+
+async def check_rate_limit(identifier: str):
+    """Check if we're hitting rate limits"""
+    now = datetime.datetime.now().timestamp()
+    
+    _api_rate_limiter[identifier] = [
+        req_time for req_time in _api_rate_limiter[identifier]
+        if now - req_time < _rate_limit_window
+    ]
+
+    if len(_api_rate_limiter[identifier]) >= _max_requests_per_window:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+    
+    _api_rate_limiter[identifier].append(now)
 
 class Identification(BaseModel):
     license: typing.Optional[typing.Any]
@@ -47,7 +65,7 @@ class Identification(BaseModel):
 async def validate_authorization(bot: Bot, token: str, disable_static_tokens=False):
     # Check static and dynamic tokens
     if not disable_static_tokens:
-        static_token = config("API_STATIC_TOKEN")  # Dashboard
+        static_token = config("API_STATIC_TOKEN")
         if token == static_token:
             return True
     token_obj = await bot.api_tokens.db.find_one({"token": token})
@@ -65,7 +83,6 @@ class APIRoutes:
         self.bot = bot
         self.router = APIRouter()
         for i in dir(self):
-            # # # print(i)
             if any(
                 [i.startswith(a) for a in ("GET_", "POST_", "PATCH_", "DELETE_")]
             ) and not i.startswith("_"):
@@ -739,17 +756,20 @@ class APIRoutes:
                 status_code=401, detail="Invalid or expired authorization."
             )
 
+        await check_rate_limit(f"all_members_{guild_id}")
+
         guild = self.bot.get_guild(guild_id)
         if not guild:
-            raise HTTPException(status_code=404, detail="Guild not found")
+            try:
+                guild = await self.bot.fetch_guild(guild_id)
+            except discord.HTTPException:
+                raise HTTPException(status_code=404, detail="Guild not found")
 
-        if not guild.chunked:
+        if not guild.chunked and guild.member_count > len(guild.members):
             try:
                 await guild.chunk(cache=True)
             except Exception as e:
-                raise HTTPException(
-                    status_code=500, detail=f"Failed to fetch all members: {str(e)}"
-                )
+                logger.warning(f"Failed to chunk guild {guild_id}: {e}")
 
         member_data = []
         for member in guild.members:
@@ -775,7 +795,6 @@ class APIRoutes:
             member_data.append(member_info)
 
         response = {"members": member_data, "total_members": len(member_data)}
-
         return response
 
     async def POST_send_logging(
@@ -807,64 +826,80 @@ class APIRoutes:
         if not guild_ids:
             raise HTTPException(status_code=400, detail="No guilds specified")
 
-        semaphore = asyncio.Semaphore(5)
+        semaphore = asyncio.Semaphore(3)
 
         async def get_or_fetch(guild: discord.Guild, member_id: int):
             m = guild.get_member(member_id)
             if m:
                 return m
             try:
+                await asyncio.sleep(0.1)
                 m = await guild.fetch_member(member_id)
-            except:
+            except discord.HTTPException:
                 m = None
             return m
 
         async def process_guild(guild_id):
             async with semaphore:
-                guild: discord.Guild = self.bot.get_guild(int(guild_id))
-                if not guild:
-                    return None
                 try:
-                    icon = guild.icon.with_size(512)
-                    icon = icon.with_format("png")
-                    icon = str(icon)
-                except AttributeError:
+                    guild: discord.Guild = self.bot.get_guild(int(guild_id))
+                    if not guild:
+                        return None
+                        
+                    try:
+                        icon = guild.icon.with_size(512)
+                        icon = icon.with_format("png")
+                        icon = str(icon)
+                    except AttributeError:
+                        icon = "https://cdn.discordapp.com/embed/avatars/0.png?size=512"
 
-                    icon = "https://cdn.discordapp.com/embed/avatars/0.png?size=512"
+                    try:
+                        user = await asyncio.wait_for(
+                            get_or_fetch(guild, user_id), timeout=10.0
+                        )
+                    except (discord.NotFound, asyncio.TimeoutError, discord.HTTPException):
+                        return None
 
-                try:
-                    user = await asyncio.wait_for(
-                        get_or_fetch(guild, user_id), timeout=5.0
-                    )
-                except (discord.NotFound, asyncio.TimeoutError):
+                    if user is None:
+                        return None
+
+                    permission_level = 0
+                    if await management_check(self.bot, guild, user):
+                        permission_level = 2
+                    elif await admin_check(self.bot, guild, user):
+                        permission_level = 3
+                    elif await staff_check(self.bot, guild, user):
+                        permission_level = 1
+                        
+                    if permission_level > 0:
+                        return {
+                            "id": str(guild.id),
+                            "name": str(guild.name),
+                            "member_count": str(guild.member_count),
+                            "icon_url": icon,
+                            "permission_level": permission_level,
+                        }
+                    return None
+                except Exception as e:
+                    logger.error(f"Error processing guild {guild_id}: {e}")
                     return None
 
-                if user is None:
-                    return None
+        batch_size = 5
+        all_results = []
+        
+        for i in range(0, len(guild_ids), batch_size):
+            batch = guild_ids[i:i + batch_size]
+            batch_results = await asyncio.gather(
+                *[process_guild(guild_id) for guild_id in batch],
+                return_exceptions=True
+            )
+            all_results.extend(batch_results)
+            
+            # Add delay between batches
+            if i + batch_size < len(guild_ids):
+                await asyncio.sleep(1)
 
-                permission_level = 0
-                if await management_check(self.bot, guild, user):
-                    permission_level = 2
-                elif await admin_check(self.bot, guild, user):
-                    permission_level = 3
-                elif await staff_check(self.bot, guild, user):
-                    permission_level = 1
-                if permission_level > 0:
-                    return {
-                        "id": str(guild.id),
-                        "name": str(guild.name),
-                        "member_count": str(guild.member_count),
-                        "icon_url": icon,
-                        "permission_level": permission_level,
-                    }
-                return None
-
-        guild_results = await asyncio.gather(
-            *[process_guild(guild_id) for guild_id in guild_ids]
-        )
-
-        guilds = list(filter(lambda x: x is not None, guild_results))
-
+        guilds = [x for x in all_results if x is not None and not isinstance(x, Exception)]
         return guilds
 
     async def POST_check_staff_level(self, request: Request):
@@ -1701,9 +1736,7 @@ class APIRoutes:
                 raise HTTPException(status_code=404, detail="Infraction not found")
 
             if infraction.get("revoked", False):
-                raise HTTPException(
-                    status_code=400, detail="Infraction already revoked"
-                )
+                raise HTTPException(status_code=400, detail="Infraction already revoked")
 
             # Update the infraction
             await self.bot.db.infractions.update_one(
@@ -1950,7 +1983,9 @@ class APIRoutes:
             json_data = await request.json()
             guild_id = int(json_data.get("guild_id"))
             query = json_data.get("query")
-            limit = min(int(json_data.get("limit", 1000)), 1000)
+            limit = min(int(json_data.get("limit", 1000)), 500)  # Reduced max limit
+
+            await check_rate_limit(f"search_members_{guild_id}")
 
             guild = self.bot.get_guild(guild_id)
             if not guild:
@@ -1959,11 +1994,21 @@ class APIRoutes:
                 except discord.NotFound:
                     raise HTTPException(status_code=404, detail="Guild not found")
 
-            if not guild.chunked:
-                await guild.chunk()
+            if not guild.chunked and guild.member_count < 5000:
+                try:
+                    await guild.chunk()
+                except Exception as e:
+                    logger.warning(f"Failed to chunk guild {guild_id}: {e}")
 
             matching_members = []
+            processed_count = 0
+            
             for member in guild.members:
+                if processed_count % 100 == 0:
+                    await asyncio.sleep(0.01)
+                    
+                processed_count += 1
+                
                 name_matches = query.lower() in member.name.lower()
                 nick_matches = member.nick and query.lower() in member.nick.lower()
 

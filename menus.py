@@ -38,6 +38,10 @@ from utils.utils import (
 import gspread
 import random
 
+from ui.erlc import (
+    callSignCheck
+)
+
 REQUIREMENTS = ["gspread", "oauth2client"]
 
 
@@ -8637,6 +8641,29 @@ class ERLCIntegrationConfiguration(AssociationConfigurationView):
             title="More ERLC Options",
             description="",
             color=BLANK_COLOR
+        ).add_field(
+            name="PM on Warning",
+            value="> This option allows you to enable or disable PMs being sent to users when they receive a warning in ERLC.",
+            inline=True
+        ).add_field(
+            name="Welcome Messaging",
+            value="> This option allows you to configure a welcome message that will be sent to players when they join your server.",
+            inline=True
+        ).add_field(
+            name="Vehicle Restrictions",
+            value="> This option allows you to manage vehicle restrictions in your server, including whitelisted vehicles and roles.",
+            inline=True
+        ).add_field(
+            name="ER:LC Statistics",
+            value="> This option allows you to manage & setup Voice Channels to show the current stats of ER:LC in your server.",
+            inline=True
+        ).add_field(
+            name="Automated Discord Checks",
+            value="> This option allows you to configure automated discord checks for ER:LC in your server & message players when they are not in the discord server.",
+            inline=True
+        ).set_author(
+            name=interaction.guild.name,
+            icon_url=interaction.guild.icon.url if interaction.guild.icon else "",
         )
         await interaction.response.send_message(
             embed=embed,
@@ -8809,7 +8836,7 @@ class MoreERLCConfiguration(discord.ui.View):
         )
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
-    @discord.ui.button(label="ER:LC Statistics", row=1, disabled=False)
+    @discord.ui.button(label="ER:LC Statistics", row=2, disabled=False)
     async def erlc_statistics(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
@@ -8840,7 +8867,67 @@ class MoreERLCConfiguration(discord.ui.View):
         else:
             embed.description = "No Statistics Channels Set"
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+    
+    @discord.ui.button(label="Automated Discord Checks", row=2)
+    async def automated_discord_checks(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+        val = await self.interaction_check(interaction)
+        if val is False:
+            return
 
+        sett = await self.bot.settings.find_by_id(interaction.guild.id)
+        view = ERLCDiscordChecksConfiguration(self.bot, interaction.user.id, sett)
+        if not sett:
+            return
+
+        if not sett.get("ERLC"):
+            sett["ERLC"] = {}
+        discord_checks = sett.get("ERLC", {}).get("discord_checks", {})
+        embed = discord.Embed(
+            title="Automated Discord Checks",
+            description="This module allows for automated checks on Discord accounts of players in your server. If a player fails the checks, they will be alerted in-game and can be kicked if configured.",
+            color=BLANK_COLOR
+        ).set_author(
+            name=interaction.guild.name,
+            icon_url=interaction.guild.icon.url if interaction.guild.icon else "",
+        ).add_field(
+            name="Enabled/Disabled Discord Checks",
+            value=f"> **Current Status:** {'Enabled' if discord_checks.get('enabled', False) else 'Disabled'}",
+            inline=True
+        ).add_field(
+            name="Alert Channel",
+            value=f"> ERM will send alerts to this channel if a user fails the Discord checks.\n> **Current Channel:** <#{discord_checks.get('channel_id', 'None')}>",
+            inline=True
+        ).add_field(
+            name="Alert Message",
+            value=f"> **Current Message:** {discord_checks.get('message', 'None')}",
+            inline=True
+        ).add_field(
+            name="Kick After",
+            value=f"> After how many in-game alert users will be kicked?\n> **Current:** {discord_checks.get('kick_after', 'None')}",
+            inline=True
+        )
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+
+    #======WILL BE IMPLEMENTED IN NEXT UPDATE======
+    # @discord.ui.button(label="Whitelist Callsign Checks", row=2)
+    # async def whitelist_callsign_checks(
+    #     self, interaction: discord.Interaction, button: discord.Button
+    # ):
+    #     val = await self.interaction_check(interaction)
+    #     if val is False:
+    #         return
+
+    #     sett = await self.bot.settings.find_by_id(interaction.guild.id)
+    #     embed = discord.Embed(
+    #         title="Whitelist Callsign Checks",
+    #         description="This module allows for whitelisting callsign checks in your server. If a player fails the callsign check, they will be alerted in-game.",
+    #         color=BLANK_COLOR
+    #     )
+    #     view = callSignCheck(self.bot, interaction.user.id, sett)
+    #     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 class ExtendedPriorityConfiguration(AssociationConfigurationView):
     def __init__(self, *args, **kwargs):
@@ -12344,3 +12431,226 @@ class SpecificUserSelect(discord.ui.Select):
                 color=GREEN_COLOR
             ), ephemeral=True
         )
+
+class ERLCDiscordChecksConfiguration(discord.ui.View):
+    def __init__(self, bot: commands.Bot, user_id: int, sett: dict):
+        super().__init__(timeout=900.0)
+        self.bot = bot
+        self.sett = sett
+        self.user_id = user_id
+        
+        self.discord_checks = sett.get("ERLC", {}).get("discord_checks", {})
+        enabled = self.discord_checks.get("enabled", False)
+        channel_id = self.discord_checks.get("channel_id")
+        kick_after = self.discord_checks.get("kick_after", 4)
+        
+        self._setup_components(enabled, channel_id, kick_after)
+    
+    def _setup_components(self, enabled: bool, channel_id: int, kick_after: int):
+        self.enable_button = discord.ui.Select(
+            placeholder="Enable/Disable Discord Checks",
+            options=[
+                discord.SelectOption(label="Enabled", value="enabled", default=enabled),
+                discord.SelectOption(label="Disabled", value="disabled", default=not enabled),
+            ],
+            row=0,
+            max_values=1,
+        )
+        self.enable_button.callback = self.enable_button_callback
+        self.add_item(self.enable_button)
+
+        default_values = [discord.Object(id=channel_id)] if channel_id else None
+        self.alert_channel_select = discord.ui.ChannelSelect(
+            placeholder="Select Alert Channel",
+            channel_types=[discord.ChannelType.text],
+            default_values=default_values,
+            row=1,
+            max_values=1,
+        )
+        self.alert_channel_select.callback = self.alert_channel_select_callback
+        self.add_item(self.alert_channel_select)
+
+        self.kick_after = discord.ui.Select(
+            placeholder="Select Kick After (warnings)",
+            options=[
+                discord.SelectOption(
+                    label=f"{i} warning{'s' if i > 1 else ''}", 
+                    value=str(i),
+                    default=(i == kick_after)
+                ) for i in range(1, 11)
+            ],
+            row=2,
+        )
+        self.kick_after.callback = self.kick_after_callback
+        self.add_item(self.kick_after)
+
+        self.alert_message = discord.ui.Button(
+            label="Set Alert Message", 
+            style=discord.ButtonStyle.secondary,
+            row=3
+        )
+        self.alert_message.callback = self.alert_message_callback
+        self.add_item(self.alert_message)
+
+    async def _check_permissions(self, interaction: discord.Interaction) -> bool:
+        """Check if user has permission to interact with this view"""
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    title="Not Permitted",
+                    description="You are not permitted to interact with these buttons.",
+                    color=BLANK_COLOR
+                ), ephemeral=True
+            )
+            return False
+        return True
+    
+    async def _ensure_settings_structure(self, sett: dict) -> None:
+        """Ensure the nested dictionary structure exists"""
+        if "ERLC" not in sett:
+            sett["ERLC"] = {}
+        if "discord_checks" not in sett["ERLC"]:
+            sett["ERLC"]["discord_checks"] = {"enabled": False}
+    
+    async def _update_settings_and_log(self, interaction: discord.Interaction, sett: dict, message: str) -> None:
+        """Update settings and log the change"""
+        await self.bot.settings.update_by_id(sett)
+        await config_change_log(self.bot, interaction.guild, interaction.user, message)
+    
+    async def _update_embed_field(self, interaction: discord.Interaction, field_index: int, name: str, value: str) -> None:
+        """Update a specific field in the embed"""
+        embed = interaction.message.embeds[0]
+        embed.set_field_at(field_index, name=name, value=value, inline=False)
+        await interaction.edit_original_response(embed=embed, view=self)
+
+    async def enable_button_callback(self, interaction: discord.Interaction):
+        if not await self._check_permissions(interaction):
+            return
+        
+        await interaction.response.defer()
+        
+        sett = await self.bot.settings.find_by_id(interaction.guild.id)
+        await self._ensure_settings_structure(sett)
+        
+        enabled = self.enable_button.values[0] == "enabled"
+        sett["ERLC"]["discord_checks"]["enabled"] = enabled
+        
+        if enabled and "channel_id" not in sett["ERLC"]["discord_checks"]:
+            sett["ERLC"]["discord_checks"]["channel_id"] = None
+        
+        await self._update_settings_and_log(
+            interaction, sett, 
+            f"Discord Checks have been {'enabled' if enabled else 'disabled'}."
+        )
+
+        for option in self.enable_button.options:
+            option.default = False
+        
+        await self._update_embed_field(
+            interaction, 0, 
+            "Enabled/Disabled Discord Checks", 
+            f"**Current Status:** {'Enabled' if enabled else 'Disabled'}"
+        )
+
+    async def alert_channel_select_callback(self, interaction: discord.Interaction):
+        if not await self._check_permissions(interaction):
+            return
+        
+        await interaction.response.defer()
+        
+        sett = await self.bot.settings.find_by_id(interaction.guild.id)
+        await self._ensure_settings_structure(sett)
+        
+        channel_id = self.alert_channel_select.values[0].id if self.alert_channel_select.values else None
+        sett["ERLC"]["discord_checks"]["channel_id"] = channel_id
+        
+        await self._update_settings_and_log(
+            interaction, sett,
+            f"Discord Checks Channel has been set to <#{channel_id}>."
+        )
+        
+        await self._update_embed_field(
+            interaction, 1,
+            "Discord Check Channel",
+            f"**Current Channel:** <#{channel_id}>"
+        )
+
+    async def kick_after_callback(self, interaction: discord.Interaction):
+        if not await self._check_permissions(interaction):
+            return
+        
+        await interaction.response.defer()
+        
+        sett = await self.bot.settings.find_by_id(interaction.guild.id)
+        await self._ensure_settings_structure(sett)
+        
+        kick_after = int(self.kick_after.values[0]) if self.kick_after.values else 4
+        sett["ERLC"]["discord_checks"]["kick_after"] = kick_after
+        
+        await self._update_settings_and_log(
+            interaction, sett,
+            f"Discord Checks Kick After has been set to {kick_after} warnings."
+        )
+        
+        await self._update_embed_field(
+            interaction, 2,
+            "Kick After",
+            f"**Current Duration:** {kick_after} warning{'s' if kick_after > 1 else ''}"
+        )
+
+    async def alert_message_callback(self, interaction: discord.Interaction):
+        if not await self._check_permissions(interaction):
+            return
+
+        modal = CustomModal(
+            "Alert Message Configuration",
+            [
+                (
+                    "value",
+                    discord.ui.TextInput(
+                        label="Alert Message",
+                        placeholder="Enter the message to send when Discord checks fail.",
+                        required=True,
+                        max_length=500
+                    )
+                )
+            ],
+        )
+        
+        await interaction.response.send_modal(modal)
+        
+        if await modal.wait():
+            return
+
+        alert_message = modal.value.value
+        if not alert_message:
+            await interaction.followup.send(
+                embed=discord.Embed(
+                    title="No Alert Message Provided",
+                    description="You must provide an alert message.",
+                    color=BLANK_COLOR
+                ), ephemeral=True
+            )
+            return
+
+        sett = await self.bot.settings.find_by_id(interaction.guild.id)
+        await self._ensure_settings_structure(sett)
+        sett["ERLC"]["discord_checks"]["message"] = alert_message
+        
+        await self._update_settings_and_log(
+            interaction, sett,
+            f"Discord Checks Alert Message has been set to: {alert_message}"
+        )
+
+        await interaction.followup.send(
+            embed=discord.Embed(
+                title="Alert Message Set",
+                description=f"Your alert message has been set to: {alert_message}",
+                color=BLANK_COLOR
+            ), ephemeral=True
+        )
+        
+        # Update the embed
+        embed = interaction.message.embeds[0]
+        embed.set_field_at(3, name="Alert Message", value=f"**Current Message:** {alert_message}", inline=False)
+        await interaction.edit_original_response(embed=embed, view=self)

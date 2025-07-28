@@ -8,11 +8,16 @@ from discord.ext import commands, tasks
 import logging
 import asyncio
 import roblox
+from collections import defaultdict
 
 from utils.constants import RED_COLOR, BLANK_COLOR
 from utils.prc_api import Player
 from utils import prc_api
 from utils.utils import is_whitelisted, run_command
+
+_guild_cache = {}
+_member_search_cache = defaultdict(dict)
+_cache_timeout = 300
 
 
 @tasks.loop(minutes=10, reconnect=True)
@@ -21,7 +26,6 @@ async def check_whitelisted_car(bot):
     logging.info("Starting check_whitelisted_car task")
 
     base = {"ERLC.vehicle_restrictions.enabled": True}
-
     pipeline = [
         {"$match": base},
         {
@@ -35,145 +39,242 @@ async def check_whitelisted_car(bot):
         {"$match": {"server_key": {"$ne": []}}},
     ]
 
-
-    async for items in bot.settings.db.aggregate(pipeline):
-        if bot.environment == "CUSTOM":
-            if items["_id"] != config("CUSTOM_GUILD_ID"):
-                continue
-        
-        guild_id = items["_id"]
-        logging.info(f"Processing guild ID: {guild_id}")
-
-        try:
-            settings = items["ERLC"].get("vehicle_restrictions", {})
-            if not settings:
-                continue
-
-            whitelisted_vehicle_roles = settings.get("roles", [])
-            alert_channel_id = settings.get("channel")
-            whitelisted_vehicles = settings.get("cars", [])
-            alert_message = settings.get(
-                "message", "You do not have the required role to use this vehicle."
-            )
-
-            if (
-                not whitelisted_vehicle_roles
-                or not alert_channel_id
-                or not whitelisted_vehicles
-            ):
-                continue
-
-            # Try get before fetch for guild
-            guild = bot.get_guild(guild_id)
-            if not guild:
-                guild = await bot.fetch_guild(guild_id)
-
-            # Try get before fetch for channel
-            alert_channel = bot.get_channel(alert_channel_id)
-            if not alert_channel:
-                alert_channel = await bot.fetch_channel(alert_channel_id)
-
-            if not alert_channel:
-                continue
-
-            exotic_roles = []
-            if isinstance(whitelisted_vehicle_roles, int):
-                role = guild.get_role(whitelisted_vehicle_roles)
-                if role:
-                    exotic_roles = [role]
-            elif isinstance(whitelisted_vehicle_roles, list):
-                exotic_roles = [
-                    r
-                    for r_id in whitelisted_vehicle_roles
-                    if (r := guild.get_role(r_id))
-                ]
-
-            if not exotic_roles:
-                continue
+    semaphore = asyncio.Semaphore(3)
+    async def process_guild(items):
+        async with semaphore:
+            guild_id = items["_id"]
+            logging.info(f"Processing guild ID: {guild_id}")
 
             try:
-                players, vehicles = await asyncio.gather(
-                    bot.prc_api.get_server_players(guild_id),
-                    bot.prc_api.get_server_vehicles(guild_id),
+                settings = items["ERLC"].get("vehicle_restrictions", {})
+                if not settings:
+                    return
+
+                whitelisted_vehicle_roles = settings.get("roles", [])
+                alert_channel_id = settings.get("channel")
+                whitelisted_vehicles = settings.get("cars", [])
+                alert_message = settings.get(
+                    "message", "You do not have the required role to use this vehicle."
                 )
-            except Exception as e:
-                logging.error(f"Failed to fetch server data for guild {guild_id}: {e}")
-                continue
 
-            player_lookup = {p.username: p for p in players}
+                if (
+                    not whitelisted_vehicle_roles
+                    or not alert_channel_id
+                    or not whitelisted_vehicles
+                ):
+                    return
 
-            # Process vehicles
-            for vehicle in vehicles:
-                player = player_lookup.get(vehicle.username)
-                if not player:
-                    continue
+                guild = await get_cached_guild(bot, guild_id)
+                if not guild:
+                    return
 
-                def normalize_vehicle_name(name):
-                    name = name.lower().strip()
-                    year = None
-                    year_match = re.search(r"\b(19|20)\d{2}\b", name)
-                    if year_match:
-                        year = year_match.group(0)
-                        name = name.replace(year, "").strip()
-                    name = " ".join(name.split())
-                    return name, year
+                alert_channel = await get_cached_channel(bot, alert_channel_id)
+                if not alert_channel:
+                    return
 
-                vehicle_name, vehicle_year = normalize_vehicle_name(vehicle.vehicle)
-                is_whitelisted = False
+                exotic_roles = await get_cached_roles(guild, whitelisted_vehicle_roles)
+                if not exotic_roles:
+                    return
 
-                for wv in whitelisted_vehicles:
-                    whitelist_name, whitelist_year = normalize_vehicle_name(str(wv))
-                    if vehicle_name == whitelist_name and (
-                        not vehicle_year
-                        or not whitelist_year
-                        or vehicle_year == whitelist_year
-                    ):
-                        is_whitelisted = True
-                        break
-
-                if not is_whitelisted:
-                    continue
-
-                pattern = re.compile(re.escape(player.username), re.IGNORECASE)
-                member = None
-
-                for m in guild.members:
-                    if (
-                        pattern.search(m.name)
-                        or pattern.search(m.display_name)
-                        or (
-                            hasattr(m, "global_name")
-                            and m.global_name
-                            and pattern.search(m.global_name)
-                        )
-                    ):
-                        member = m
-                        break
-
-                if not member:
-                    members = await guild.query_members(query=player.username, limit=1)
-                    member = members[0] if members else None
-
-                if member:
-                    if not any(role in member.roles for role in exotic_roles):
-                        await run_command(bot, guild_id, player.username, alert_message)
-                        await handle_pm_counter(bot, player, guild, alert_channel)
-                else:
-                    await handle_non_member(
-                        bot, player, guild, alert_channel, alert_message
+                try:
+                    players, vehicles = await asyncio.gather(
+                        bot.prc_api.get_server_players(guild_id),
+                        bot.prc_api.get_server_vehicles(guild_id),
+                        return_exceptions=True,
                     )
 
-        except discord.errors.NotFound:
-            logging.error(f"Guild or channel not found: {guild_id}")
-            continue
-        except Exception as e:
-            logging.error(f"Error processing guild {guild_id}: {e}", exc_info=True)
-            continue
+                    if isinstance(players, Exception) or isinstance(vehicles, Exception):
+                        logging.error(f"Failed to fetch server data for guild {guild_id}")
+                        return
+
+                except Exception as e:
+                    logging.error(f"Failed to fetch server data for guild {guild_id}: {e}")
+                    return
+
+                player_lookup = {p.username: p for p in players}
+
+                batch_size = 5
+                for i in range(0, len(vehicles), batch_size):
+                    batch = vehicles[i : i + batch_size]
+                    await asyncio.gather(
+                        *[
+                            process_vehicle(
+                                bot,
+                                guild,
+                                player_lookup,
+                                vehicle,
+                                whitelisted_vehicles,
+                                exotic_roles,
+                                alert_channel,
+                                alert_message,
+                            )
+                            for vehicle in batch
+                        ],
+                        return_exceptions=True,
+                    )
+
+                    if i + batch_size < len(vehicles):
+                        await asyncio.sleep(1)
+
+            except discord.errors.NotFound:
+                logging.error(f"Guild or channel not found: {guild_id}")
+                return
+            except Exception as e:
+                logging.error(f"Error processing guild {guild_id}: {e}", exc_info=True)
+                return
+
+    guild_tasks = []
+    async for items in bot.settings.db.aggregate(pipeline):
+        guild_tasks.append(process_guild(items))
+
+        if len(guild_tasks) >= 5:
+            await asyncio.gather(*guild_tasks, return_exceptions=True)
+            guild_tasks = []
+            await asyncio.sleep(2)
+
+    if guild_tasks:
+        await asyncio.gather(*guild_tasks, return_exceptions=True)
 
     end_time = time.time()
     logging.info(
         f"Event check_whitelisted_car completed in {end_time - initial_time:.2f} seconds"
     )
+
+
+async def get_cached_guild(bot, guild_id):
+    """Get guild with caching"""
+    now = time.time()
+    cache_key = f"guild_{guild_id}"
+
+    if cache_key in _guild_cache:
+        guild_obj, cached_time = _guild_cache[cache_key]
+        if now - cached_time < _cache_timeout and guild_obj:
+            return guild_obj
+
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        try:
+            guild = await bot.fetch_guild(guild_id)
+        except discord.HTTPException:
+            guild = None
+
+    _guild_cache[cache_key] = (guild, now)
+    return guild
+
+
+async def get_cached_channel(bot, channel_id):
+    """Get channel with caching"""
+    now = time.time()
+    cache_key = f"channel_{channel_id}"
+
+    if cache_key in _guild_cache:
+        channel_obj, cached_time = _guild_cache[cache_key]
+        if now - cached_time < _cache_timeout and channel_obj:
+            return channel_obj
+
+    channel = bot.get_channel(channel_id)
+    if not channel:
+        try:
+            channel = await bot.fetch_channel(channel_id)
+        except discord.HTTPException:
+            channel = None
+
+    _guild_cache[cache_key] = (channel, now)
+    return channel
+
+
+async def get_cached_roles(guild, role_ids):
+    """Get roles with caching"""
+    exotic_roles = []
+    if isinstance(role_ids, int):
+        role = guild.get_role(role_ids)
+        if role:
+            exotic_roles = [role]
+    elif isinstance(role_ids, list):
+        exotic_roles = [r for r_id in role_ids if (r := guild.get_role(r_id))]
+
+    return exotic_roles
+
+
+async def process_vehicle(
+    bot, guild, player_lookup, vehicle, whitelisted_vehicles, exotic_roles, alert_channel, alert_message
+):
+    """Process individual vehicle check"""
+    try:
+        player = player_lookup.get(vehicle.username)
+        if not player:
+            return
+
+        def normalize_vehicle_name(name):
+            name = name.lower().strip()
+            year = None
+            year_match = re.search(r"\b(19|20)\d{2}\b", name)
+            if year_match:
+                year = year_match.group(0)
+                name = name.replace(year, "").strip()
+            name = " ".join(name.split())
+            return name, year
+
+        vehicle_name, vehicle_year = normalize_vehicle_name(vehicle.vehicle)
+        is_whitelisted = False
+
+        for wv in whitelisted_vehicles:
+            whitelist_name, whitelist_year = normalize_vehicle_name(str(wv))
+            if vehicle_name == whitelist_name and (
+                not vehicle_year
+                or not whitelist_year
+                or vehicle_year == whitelist_year
+            ):
+                is_whitelisted = True
+                break
+
+        if not is_whitelisted:
+            return
+
+        member = await get_cached_member_by_username(guild, player.username)
+
+        if member:
+            if not any(role in member.roles for role in exotic_roles):
+                await run_command(bot, guild.id, player.username, alert_message)
+                await handle_pm_counter(bot, player, guild, alert_channel)
+        else:
+            await handle_non_member(bot, player, guild, alert_channel, alert_message)
+
+    except Exception as e:
+        logging.error(f"Error processing vehicle for {vehicle.username}: {e}")
+
+
+async def get_cached_member_by_username(guild, username):
+    """Get member by username with caching"""
+    now = time.time()
+    cache_key = f"{guild.id}_{username.lower()}"
+
+    if cache_key in _member_search_cache[guild.id]:
+        member_obj, cached_time = _member_search_cache[guild.id][cache_key]
+        if now - cached_time < _cache_timeout:
+            return member_obj
+
+    pattern = re.compile(re.escape(username), re.IGNORECASE)
+    member = None
+
+    for m in guild.members:
+        if (
+            pattern.search(m.name)
+            or pattern.search(m.display_name)
+            or (hasattr(m, "global_name") and m.global_name and pattern.search(m.global_name))
+        ):
+            member = m
+            break
+
+    if not member:
+        try:
+            members = await guild.query_members(query=username, limit=1)
+            member = members[0] if members else None
+        except discord.HTTPException:
+            member = None
+
+    _member_search_cache[guild.id][cache_key] = (member, now)
+    return member
 
 
 async def handle_pm_counter(bot, player, guild, alert_channel):
