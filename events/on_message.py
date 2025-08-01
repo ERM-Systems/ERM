@@ -11,9 +11,10 @@ from decouple import config
 from discord.ext import commands
 from reactionmenu import Page, ViewButton, ViewMenu, ViewSelect
 
+from erm import Bot
 from utils.prc_api import Player
 from utils.constants import BLANK_COLOR, GREEN_COLOR
-from utils.utils import generator
+from utils.utils import generator, has_whitelabel
 from utils.utils import interpret_content, interpret_embed
 from menus import CustomSelectMenu, GameSecurityActions
 from utils.timestamp import td_format
@@ -22,16 +23,41 @@ from utils.utils import get_guild_icon, get_prefix, invis_embed
 
 class OnMessage(commands.Cog):
     def __init__(self, bot):
-        self.bot = bot
+        self.bot: Bot = bot
 
     @commands.Cog.listener("on_message")
     async def on_message(self, message: discord.Message):
         bot = self.bot
         bypass_role = None
+        prefix = (await get_prefix(bot, message))[-1]
 
-        if self.bot.environment == "PRODUCTION":
-            if await bot.whitelabel.db.find_one({"Guild": str(message.guild.id)}) is not None:
+        # custom re-execution
+        if message.content.startswith(prefix) or message.content.startswith(self.bot.user.mention):
+            selected_prefix = prefix if message.content.startswith(prefix) else self.bot.user.mention
+            args = message.content.split(selected_prefix)[1].strip().split(" ")
+
+            try:
+                command = args[0]
+            except:
+                pass
+
+            punishment_types = await bot.punishment_types.get_punishment_types(guild_id=message.guild.id)
+            default_types = ["warning", "kick", "ban"]
+            aliases = {"warn": "warning"}
+            if command.lower() in default_types or command.lower() in aliases.keys() or command.lower() in list(filter(lambda x: x != "", [(i if isinstance(i, dict) else {}).get("name", "").replace(" ", "-").lower() for i in (punishment_types or {}).get("types", [])])):
+                if command.lower() in aliases.keys():
+                    command = aliases[command.lower()]
+
+                message.content = f"{prefix}punish " + args[1] + " " + command + " " + " ".join(args[2:])
+                await bot.process_commands(message)
                 return
+            
+
+        if not message.guild:
+            return
+
+        if await has_whitelabel(bot, message.guild.id) and (bot.environment != "CUSTOM" or int(config("CUSTOM_GUILD_ID", default="0")) != message.guild.id):
+            return
        
         if not hasattr(bot, "settings"):
             return
@@ -284,7 +310,7 @@ class OnMessage(commands.Cog):
                     await message.add_reaction("❌")
                     return await message.add_reaction("6️⃣")
 
-                user = discord.utils.get(message.guild.members, id=discord_user)
+                user = message.guild.get_member(discord_user)
                 if not user:
                     try:
                         user = await message.guild.fetch_member(discord_user)
@@ -442,7 +468,7 @@ class OnMessage(commands.Cog):
                     await message.add_reaction("❌")
                     return await message.add_reaction("6️⃣")
 
-                user = discord.utils.get(message.guild.members, id=discord_user)
+                user = message.guild.get_member(discord_user)
                 if not user:
                     user = await message.guild.fetch_member(discord_user)
                     if not user:
@@ -450,7 +476,7 @@ class OnMessage(commands.Cog):
                         return await message.add_reaction("7️⃣")
 
                 command = bot.get_command(invoked_command.lower().strip())
-                if not command:
+                if not command and not invoked_command.lower().strip() in ["warn", "warning", "kick", "ban"] + list(filter(lambda x: x != "", [(i if isinstance(i, dict) else {}).get("name", "") for i in (await bot.punishment_types.get_punishment_types(guild_id=message.guild.id) or {}).get("types", [])])):
                     await message.add_reaction("❌")
                     return await message.add_reaction("8️⃣")
 

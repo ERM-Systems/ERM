@@ -15,7 +15,7 @@ _guild_cache = {}
 _member_search_cache = defaultdict(dict)
 _cache_timeout = 300
 
-async def get_cached_member_by_username(guild, username):
+async def get_cached_member_by_username(bot, guild, username):
     """Get member by username with caching"""
     now = time.time()
     cache_key = f"{guild.id}_{username.lower()}"
@@ -25,24 +25,7 @@ async def get_cached_member_by_username(guild, username):
         if now - cached_time < _cache_timeout:
             return member_obj
 
-    pattern = re.compile(re.escape(username), re.IGNORECASE)
-    member = None
-
-    for m in guild.members:
-        if (
-            pattern.search(m.name)
-            or pattern.search(m.display_name)
-            or (hasattr(m, "global_name") and m.global_name and pattern.search(m.global_name))
-        ):
-            member = m
-            break
-
-    if not member:
-        try:
-            members = await guild.query_members(query=username, limit=1)
-            member = members[0] if members else None
-        except discord.HTTPException:
-            member = None
+    member = await bot.accounts.roblox_to_discord(guild, username)
 
     _member_search_cache[guild.id][cache_key] = (member, now)
     return member
@@ -148,7 +131,7 @@ async def mc_discord_checks(bot):
                 
                 not_in_discord = []
                 for player in players:
-                    member = await get_cached_member_by_username(guild, player.username)
+                    member = await get_cached_member_by_username(bot, guild, player.username)
                     if not member:
                         not_in_discord.append(player)
                 

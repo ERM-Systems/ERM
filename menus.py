@@ -38,7 +38,7 @@ from utils.utils import (
 import gspread
 import random
 
-from UI.erlc import (
+from ui.ERLC import (
     callSignCheck
 )
 
@@ -8636,7 +8636,8 @@ class ERLCIntegrationConfiguration(AssociationConfigurationView):
         if val is False:
             return
 
-        view = MoreERLCConfiguration(self.bot)
+        view = MoreERLCConfiguration(self.bot, await self.bot.settings.find_by_id(interaction.guild.id))
+
         embed = discord.Embed(
             title="More ERLC Options",
             description="",
@@ -8644,23 +8645,27 @@ class ERLCIntegrationConfiguration(AssociationConfigurationView):
         ).add_field(
             name="PM on Warning",
             value="> This option allows you to enable or disable PMs being sent to users when they receive a warning in ERLC.",
-            inline=True
+            inline=False
+        ).add_field(
+            name="Auto-Punish",
+            value="> This option automatically kicks and bans* people in-game when the appropriate punishment is logged. Individuals will only be banned if the moderator holds the Admin Role or the Server Administrator permission in-game.",
+            inline=False
         ).add_field(
             name="Welcome Messaging",
             value="> This option allows you to configure a welcome message that will be sent to players when they join your server.",
-            inline=True
+            inline=False
         ).add_field(
             name="Vehicle Restrictions",
             value="> This option allows you to manage vehicle restrictions in your server, including whitelisted vehicles and roles.",
-            inline=True
+            inline=False
         ).add_field(
             name="ER:LC Statistics",
             value="> This option allows you to manage & setup Voice Channels to show the current stats of ER:LC in your server.",
-            inline=True
+            inline=False
         ).add_field(
             name="Automated Discord Checks",
             value="> This option allows you to configure automated discord checks for ER:LC in your server & message players when they are not in the discord server.",
-            inline=True
+            inline=False
         ).set_author(
             name=interaction.guild.name,
             icon_url=interaction.guild.icon.url if interaction.guild.icon else "",
@@ -8672,9 +8677,26 @@ class ERLCIntegrationConfiguration(AssociationConfigurationView):
         )
 
 class MoreERLCConfiguration(discord.ui.View):
-    def __init__(self, bot):
+    def __init__(self, bot, settings):
         super().__init__(timeout=None)
         self.bot = bot
+        erlc_settings = settings.get("ERLC")
+        auto_punish = erlc_settings.get("auto_punish", False)
+        message_on_warning = erlc_settings.get("message_on_warning", False)
+        for item in self.children:
+            if isinstance(item, discord.ui.Select):
+                if item.placeholder == "PM on Warning":
+                    for choice in item.options:
+                        if choice.value == "enabled" and message_on_warning:
+                            choice.default = True
+                        elif choice.value == "disabled" and not message_on_warning:
+                            choice.default = True
+                else:
+                    for choice in item.options:
+                        if choice.value == "enabled" and auto_punish:
+                            choice.default = True
+                        elif choice.value == "disabled" and not auto_punish:
+                            choice.default = True
 
     @discord.ui.select(
         placeholder="PM on Warning",
@@ -8715,7 +8737,46 @@ class MoreERLCConfiguration(discord.ui.View):
             f"PM on Warning set: {select.values[0]}",
         )
 
-    @discord.ui.button(label="Welcome Messaging", row=1)
+    @discord.ui.select(
+        placeholder="Auto-Punish",
+        row=1,
+        options=[
+            discord.SelectOption(
+                label="Enabled",
+                value="enabled",
+                description="Auto-Punish is enabled.",
+            ),
+            discord.SelectOption(
+                label="Disabled",
+                value="disabled",
+                description="Auto-Punish is disabled.",
+            ),
+        ],
+    )
+    async def auto_punish(
+        self, interaction: discord.Interaction, select: discord.ui.Select
+    ):
+        value = await self.interaction_check(interaction)
+        if not value:
+            return
+
+        await interaction.response.defer()
+        guild_id = interaction.guild.id
+
+        bot = self.bot
+        sett = await bot.settings.find_by_id(guild_id)
+        if not sett.get("ERLC"):
+            sett["ERLC"] = {}
+        sett["ERLC"]["auto_punish"] = bool(select.values[0].lower() == "enabled")
+        await bot.settings.update_by_id(sett)
+        await config_change_log(
+            self.bot,
+            interaction.guild,
+            interaction.user,
+            f"Auto-Punish set: {select.values[0]}",
+        )
+
+    @discord.ui.button(label="Welcome Messaging", row=2)
     async def welcome_messaging(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
@@ -8741,7 +8802,7 @@ class MoreERLCConfiguration(discord.ui.View):
 
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
-    @discord.ui.button(label="Vehicle Restrictions", row=1)
+    @discord.ui.button(label="Vehicle Restrictions", row=2)
     async def vehicle_restrictions(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
@@ -11500,7 +11561,7 @@ class ShiftLoggingManagement(discord.ui.View):
             {"Guild": interaction.guild.id, "EndEpoch": 0}
         ):
             user_id = shift["UserID"]
-            member = discord.utils.get(interaction.guild.members, id=user_id)
+            member = interaction.guild.get_member(user_id) or await interaction.guild.fetch_member(user_id)
             if member and member not in active_shift_users:
                 active_shift_users.append(member)
 

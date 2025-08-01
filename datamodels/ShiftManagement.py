@@ -203,46 +203,6 @@ class ShiftManagement:
             if breaks["EndEpoch"] == 0:
                 breaks["EndEpoch"] = int(current_time)
 
-        url_var = config("BASE_API_URL")
-        panel_url_var = config("PANEL_API_URL")
-
-        async def sync_end_with_apis():
-            async with aiohttp.ClientSession() as session:
-                tasks = []
-
-                if url_var not in ["", None]:
-                    tasks.append(
-                        session.get(
-                            f"{url_var}/Internal/SyncEndShift/{document['UserID']}/{guild_id}",
-                            headers={"Authorization": config("INTERNAL_API_AUTH")},
-                            raise_for_status=True,
-                        )
-                    )
-
-                if panel_url_var not in ["", None]:
-                    tasks.append(
-                        session.delete(
-                            f"{panel_url_var}/{guild_id}/SyncEndShift?ID={document['_id']}",
-                            headers={"X-Static-Token": config("PANEL_STATIC_AUTH")},
-                            raise_for_status=True,
-                        )
-                    )
-
-                if tasks:
-                    responses = await asyncio.gather(*tasks, return_exceptions=True)
-                    for response in responses:
-                        if isinstance(response, Exception):
-                            self.logger.error(
-                                f"End shift API sync failed: {str(response)}"
-                            )
-
-        try:
-            await sync_end_with_apis()
-        except aiohttp.ClientError as e:
-            self.logger.error(f"Failed to sync shift end with APIs: {str(e)}")
-        except Exception as e:
-            self.logger.error(f"Unexpected error during end shift API sync: {str(e)}")
-
         await self.shifts.update_by_id(document)
         return document
 

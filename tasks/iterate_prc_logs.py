@@ -12,7 +12,7 @@ import datetime
 from decouple import config
 
 from utils.prc_api import JoinLeaveLog, Player
-from utils.utils import fetch_get_channel, staff_check
+from utils.utils import fetch_get_channel, has_whitelabel, staff_check
 from utils import prc_api
 from utils.constants import BLANK_COLOR, GREEN_COLOR, RED_COLOR
 from menus import AvatarCheckView
@@ -96,7 +96,7 @@ async def unprimitive_guild_process(items, bot):
     settings = await bot.settings.find_by_id(guild.id)
     erlc_settings = settings.get("ERLC", {})
 
-    if await bot.whitelabel.db.find_one({"GuildID": str(guild.id)}) and not config("CUSTOM_GUILD_ID") == str(guild.id):
+    if await has_whitelabel(bot, guild.id) and not config("CUSTOM_GUILD_ID") == str(guild.id):
         logging.warning("Not handling {} due to whitelabel instance existing")
         return
 

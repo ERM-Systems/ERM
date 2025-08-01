@@ -249,8 +249,6 @@ class ShiftLogging(commands.Cog):
                                     ),
                                     view=None,
                                 )
-                        elif access is False and force.lower() == "true":
-                            pass
 
         shift = await self.bot.shift_management.get_current_shift(member, ctx.guild.id)
         await log_command_usage(
@@ -714,7 +712,7 @@ class ShiftLogging(commands.Cog):
                 {"Guild": ctx.guild.id, "EndEpoch": 0}
             ):
                 if sh["Guild"] == ctx.guild.id:
-                    member = discord.utils.get(ctx.guild.members, id=sh["UserID"])
+                    member = ctx.guild.get_member(sh["UserID"]) or await ctx.guild.fetch_member(sh["UserID"])
                     if member:
                         if member not in staff_members:
                             staff_members.append(member)
@@ -723,7 +721,7 @@ class ShiftLogging(commands.Cog):
                 {"Guild": ctx.guild.id, "Type": shift_type["name"], "EndEpoch": 0}
             ):
                 s = shift
-                member = discord.utils.get(ctx.guild.members, id=shift["UserID"])
+                member = ctx.guild.get_member(shift["UserID"]) or await ctx.guild.fetch_member(shift["UserID"])
                 if member:
                     if member not in staff_members:
                         staff_members.append(member)
@@ -754,7 +752,7 @@ class ShiftLogging(commands.Cog):
         added_staff = []
         for index, staff in enumerate(sorted_staff):
             # # print(staff)
-            member = discord.utils.get(ctx.guild.members, id=staff["id"])
+            member = ctx.guild.get_member(staff["id"]) or await ctx.guild.fetch_member(staff["id"])
             if not member:
                 continue
 
@@ -1141,12 +1139,12 @@ class ShiftLogging(commands.Cog):
                             if len((embeds[-1].description or "").splitlines()) < 16:
                                 if embeds[-1].description is None:
                                     embeds[-1].description = (
-                                        f"**Total Shifts**\n**{index + 1}.** {member.mention} • {td_format(datetime.timedelta(seconds=0))}\n"
+                                        f"**Total Shifts**\n> **{index + 1}.** {member.mention} • {td_format(datetime.timedelta(seconds=0))}\n"
                                     )
                                 else:
                                     embeds[
                                         -1
-                                    ].description += f"**{index + 1}.** {member.mention} • {td_format(datetime.timedelta(seconds=0))}\n"
+                                    ].description += f"> **{index + 1}.** {member.mention} • {td_format(datetime.timedelta(seconds=0))}\n"
 
                             else:
                                 new_embed = discord.Embed(
@@ -1158,7 +1156,7 @@ class ShiftLogging(commands.Cog):
                                     icon_url=ctx.guild.icon,
                                 )
                                 new_embed.description = ""
-                                new_embed.description += f"**Total Shifts**\n**{index + 1}.** {member.mention} - {td_format(datetime.timedelta(seconds=0))}\n"
+                                new_embed.description += f"**Total Shifts**\n> **{index + 1}.** {member.mention} - {td_format(datetime.timedelta(seconds=0))}\n"
                                 embeds.append(new_embed)
         perm_staff = list(
             filter(

@@ -231,7 +231,7 @@ async def process_vehicle(
         if not is_whitelisted:
             return
 
-        member = await get_cached_member_by_username(guild, player.username)
+        member = await get_cached_member_by_username(bot, guild, player.username, [i.id for i in exotic_roles])
 
         if member:
             if not any(role in member.roles for role in exotic_roles):
@@ -244,7 +244,7 @@ async def process_vehicle(
         logging.error(f"Error processing vehicle for {vehicle.username}: {e}")
 
 
-async def get_cached_member_by_username(guild, username):
+async def get_cached_member_by_username(bot, guild, username, exotic_roles):
     """Get member by username with caching"""
     now = time.time()
     cache_key = f"{guild.id}_{username.lower()}"
@@ -254,24 +254,7 @@ async def get_cached_member_by_username(guild, username):
         if now - cached_time < _cache_timeout:
             return member_obj
 
-    pattern = re.compile(re.escape(username), re.IGNORECASE)
-    member = None
-
-    for m in guild.members:
-        if (
-            pattern.search(m.name)
-            or pattern.search(m.display_name)
-            or (hasattr(m, "global_name") and m.global_name and pattern.search(m.global_name))
-        ):
-            member = m
-            break
-
-    if not member:
-        try:
-            members = await guild.query_members(query=username, limit=1)
-            member = members[0] if members else None
-        except discord.HTTPException:
-            member = None
+    member = await bot.accounts.roblox_to_discord(guild, username, roles=exotic_roles)
 
     _member_search_cache[guild.id][cache_key] = (member, now)
     return member

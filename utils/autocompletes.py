@@ -42,7 +42,7 @@ async def erlc_players_autocomplete(
 
     for player in data:
         if len(incomplete) > 2:
-            if incomplete.lower() in player.username:
+            if incomplete.lower() in player.username.lower():
                 defaults.append(
                     discord.app_commands.Choice(
                         name=player.username, value=player.username
@@ -55,7 +55,7 @@ async def erlc_players_autocomplete(
             discord.app_commands.Choice(name=player.username, value=player.username)
         )
 
-    return defaults
+    return defaults[:25]
 
 async def erlc_group_autocomplete(
     interaction: discord.Interaction, incomplete: str
@@ -74,7 +74,7 @@ async def erlc_group_autocomplete(
 
     for player in data:
         if len(incomplete) > 2:
-            if incomplete.lower() in player.username:
+            if incomplete.lower() in player.username.lower():
                 defaults.append(
                     discord.app_commands.Choice(
                         name=player.username, value=player.username
@@ -87,7 +87,7 @@ async def erlc_group_autocomplete(
             discord.app_commands.Choice(name=player.username, value=player.username)
         )
 
-    return defaults
+    return defaults[:25]
 
 
 async def all_shift_type_autocomplete(

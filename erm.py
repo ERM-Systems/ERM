@@ -23,7 +23,8 @@ from tasks.check_whitelisted_car import check_whitelisted_car
 from tasks.sync_weather import sync_weather
 from tasks.iterate_conditions import iterate_conditions
 from tasks.prc_automations import prc_automations
-from tasks.MCDiscordChecks import mc_discord_checks
+from tasks.mc_discord_checks import mc_discord_checks
+from utils.accounts import Accounts
 from utils.emojis import EmojiController
 
 from utils.log_tracker import LogTracker
@@ -154,7 +155,6 @@ class Bot(commands.AutoShardedBot):
         self.external_http_sessions: list[aiohttp.ClientSession] = []
         self.view_state_manager: ViewStateManager = ViewStateManager()
 
-        global setup
         if not self.setup_status:
             # await bot.load_extension('utils.routes')
             logging.info(
@@ -168,11 +168,13 @@ class Bot(commands.AutoShardedBot):
             elif environment == "PRODUCTION":
                 self.db = self.mongo["erm"]
             elif environment == "ALPHA":
-                self.db = self.mongo["alpha"]
+                self.db = self.mongo["erm"]
             elif environment == "CUSTOM":
                 self.db = self.mongo["erm"]
             else:
                 raise Exception("Invalid environment")
+            
+
 
             self.panel_db = self.mongo["UserIdentity"]
             self.priority_settings = Document(self.panel_db, "PrioritySettings")
@@ -216,6 +218,15 @@ class Bot(commands.AutoShardedBot):
 
             self.pending_oauth2 = PendingOAuth2(self.db, "pending_oauth2")
             self.oauth2_users = OAuth2Users(self.db, "oauth2")
+
+            self.accounts = Accounts(self)
+
+            if environment == "CUSTOM":
+                doc = await self.whitelabel.db.find_one({"GuildID": config("CUSTOM_GUILD_ID", default="0")})
+                if not doc:
+                    raise Exception(
+                        "Custom guild ID not found in the database. This means the whitelabel subscription is overdue."
+                    )
 
             self.roblox = roblox.Client()
             self.prc_api = PRCApiClient(
@@ -357,7 +368,6 @@ bot = Bot(
         replied_user=False, everyone=False, roles=False
     ),
 )
-bot.debug_servers = [987798554972143728]
 bot.is_synced = False
 bot.shift_management_disabled = False
 bot.punishments_disabled = False
@@ -396,23 +406,19 @@ async def AutoDefer(ctx: commands.Context):
                 raise Exception(f"Guild not permitted to use this bot: {ctx.guild.id}")
 
     guild_id = ctx.guild.id
-    doc = await bot.whitelabel.db.find_one({"GuildID": str(guild_id)})
-    if doc:
-        # must be a whitelabel instance. are we the whitelabel instance?
-        if environment == "CUSTOM" and int(config("CUSTOM_GUILD_ID")) == guild_id:
-            pass  # we are the whitelabel instance, we're fine.
-        else:
-            # we aren't the whitelabel instance!
-            if ctx.interaction:
-                await ctx.interaction.response.send_message(
-                    embed=discord.Embed(
-                        title="Not Permitted",
-                        description="There is a whitelabel bot already in this server.",
-                        color=BLANK_COLOR,
-                    ),
-                    ephemeral=True,
-                )
-            raise Exception("Whitelabel bot already in use")
+    if (environment != "CUSTOM" or int(config("CUSTOM_GUILD_ID", default="0")) != guild_id) and await has_whitelabel(bot, guild_id):
+        if "jishaku" in ctx.command.qualified_name:
+            return
+        if ctx.interaction:
+            await ctx.interaction.response.send_message(
+                embed=discord.Embed(
+                    title="Not Permitted",
+                    description="There is a whitelabel bot already in this server.",
+                    color=BLANK_COLOR,
+                ),
+                ephemeral=True,
+            )
+        raise Exception("Whitelabel bot already in use")
 
     internal_command_storage[ctx] = datetime.datetime.now(tz=pytz.UTC).timestamp()
     if ctx.command:
@@ -497,6 +503,10 @@ async def staff_check(bot_obj, guild, member):
                         role.id for role in member.roles
                     ]:
                         return True
+                    
+    if await admin_check(bot_obj, guild, member):
+        return True
+    
     if member.guild_permissions.manage_messages:
         return True
     return False

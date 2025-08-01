@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import datetime
 import logging
 import re
@@ -8,6 +9,7 @@ import aiohttp
 import discord
 import pytz
 import requests
+from decouple import config
 import roblox.users
 from discord import Embed, InteractionResponse, Webhook
 from discord.ext import commands
@@ -77,6 +79,21 @@ async def generalised_interaction_check_failure(
             )
         )
 
+
+async def has_whitelabel(bot, guild_id: int) -> bool:
+    if (item := await bot.whitelabel.db.find_one({"GuildID": str(guild_id)})) is not None and config("ENVIRONMENT") not in ["ALPHA", "DEVELOPMENT"]:
+        guild = bot.get_guild(guild_id)
+        token = item.get("Token")
+        b64_userid = token.split(".")[0]
+        user_id = base64.b64decode(b64_userid + "==").decode("utf-8")
+        member = guild.get_member(int(user_id))
+        if not member:
+            try:
+                member = await guild.fetch_member(int(user_id))
+            except discord.NotFound:
+                return False
+        return True
+    return False
 
 async def get_roblox_by_username(user: str, bot, ctx: commands.Context):
     if "<@" in user:
@@ -156,6 +173,8 @@ async def admin_check(bot_obj, guild, member):
     if member.guild_permissions.administrator:
         return True
     return False
+
+    
 
 def time_converter(parameter: str) -> int:
     conversions = {

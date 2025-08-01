@@ -1,5 +1,6 @@
 import datetime
 import json
+import typing
 
 import aiohttp
 import discord
@@ -43,6 +44,7 @@ from utils.autocompletes import punishment_autocomplete, user_autocomplete
 from utils.constants import BLANK_COLOR, GREEN_COLOR
 from utils.paginators import SelectPagination, CustomPage
 from utils.utils import (
+    admin_check,
     failure_embed,
     removesuffix,
     get_roblox_by_username,
@@ -97,11 +99,21 @@ class Punishments(commands.Cog):
                     color=BLANK_COLOR,
                 )
             )
+
+        auto_punish = settings.get("ERLC", {}).get("auto_punish", False)
+        server_staff = await self.bot.prc_api.get_server_staff(ctx.guild.id)
+        roblox_username = await self.bot.accounts.discord_to_roblox(ctx.guild, ctx.author.id)
+        present_unpermitted_warning = False
+        if type.strip().lower() == "ban" and auto_punish is True:
+            if not (await admin_predicate(ctx) or await management_predicate(ctx) or roblox_username in [i.username for i in list(filter(lambda x: x.permission != "Server Moderator", server_staff))]):
+                present_unpermitted_warning = True
+
+
         flags = []
-        if "--kick" in reason.lower():
+        if "--kick" in reason.lower() or (auto_punish and type.lower() == "kick"):
             flags.append("autokick")
             reason = reason.replace("--kick", "")
-        elif "--ban" in reason.lower():
+        elif "--ban" in reason.lower() or (auto_punish and type.lower() == "ban"):
             flags.append("autoban")
             reason = reason.replace("--ban", "")
 
@@ -113,7 +125,7 @@ class Punishments(commands.Cog):
             )
 
         roblox_user = await get_roblox_by_username(user, self.bot, ctx)
-        roblox_client = roblox.client.Client()
+        roblox_client = roblox.Client()
         if not roblox_user or roblox_user.get("errors") is not None:
             return await ctx.send(
                 embed=discord.Embed(
@@ -134,6 +146,7 @@ class Punishments(commands.Cog):
             ctx.guild.id
         )
         types = (punishment_types or {}).get("types", [])
+    
         preset_types = ["Warning", "Kick", "Ban", "BOLO"]
         actual_types = []
         for item in preset_types + types:
@@ -218,70 +231,7 @@ class Punishments(commands.Cog):
 
         warning: WarningItem = await self.bot.punishments.fetch_warning(oid)
         newline = "\n"
-        if msg is not None:
-            if "autoban" in flags and (await admin_predicate(ctx) or await management_predicate(ctx)):
-                try:
-                    await self.bot.prc_api.run_command(
-                        ctx.guild.id, ":ban {}".format(warning.username)
-                    )
-                except:
-                    pass
-            elif "autokick" in flags:
-                try:
-                    await self.bot.prc_api.run_command(
-                        ctx.guild.id, ":kick {}".format(warning.username)
-                    )
-                except:
-                    pass
-            return await msg.edit(
-                embed=discord.Embed(
-                    title=f"{self.bot.emoji_controller.get_emoji('success')} Logged Punishment",
-                    description=(
-                        "I have successfully logged the following punishment!"
-                    ),
-                    color=GREEN_COLOR,
-                )
-                .add_field(
-                    name="Punishment",
-                    value=(
-                        f"> **Player:** {warning.username}\n"
-                        f"> **Type:** {warning.warning_type}\n"
-                        f"> **Moderator:** <@{warning.moderator_id}>\n"
-                        f"> **Reason:** {warning.reason}\n"
-                        f"> **At:** <t:{int(warning.time_epoch)}>\n"
-                        f'{"> **Until:** <t:{}>{}".format(int(warning.until_epoch), newline) if warning.until_epoch is not None else ""}'
-                        f"> **ID:** `{warning.snowflake}`"
-                        f"> **Custom Flags:** {'`N/A`' if len(flags) == 0 else '`{}`'.format(', '.join(flags))}"
-                    ),
-                    inline=False,
-                )
-                .set_thumbnail(url=thumbnail),
-                view=None,
-            )
-        await ctx.send(
-            embed=discord.Embed(
-                title=f"{self.bot.emoji_controller.get_emoji('success')} Logged Punishment",
-                description=("I have successfully logged the following punishment!"),
-                color=GREEN_COLOR,
-            )
-            .add_field(
-                name="Punishment",
-                value=(
-                    f"> **Player:** {warning.username}\n"
-                    f"> **Type:** {warning.warning_type}\n"
-                    f"> **Moderator:** <@{warning.moderator_id}>\n"
-                    f"> **Reason:** {warning.reason}\n"
-                    f"> **At:** <t:{int(warning.time_epoch)}>\n"
-                    f'{"> **Until:** <t:{}>{}".format(int(warning.until_epoch), newline) if warning.until_epoch is not None else ""}'
-                    f"> **ID:** `{warning.snowflake}`\n"
-                    f"> **Custom Flags:** {'`N/A`' if len(flags) == 0 else '{}'.format(', '.join(flags))}"
-                ),
-                inline=False,
-            )
-            .set_thumbnail(url=thumbnail)
-        )
-
-        if "autoban" in flags and (await admin_predicate(ctx) or await management_predicate(ctx)):
+        if "autoban" in flags and (await admin_predicate(ctx) or await management_predicate(ctx) or roblox_username in [i.username for i in list(filter(lambda x: x.permission != "Server Moderator", server_staff))]):
             try:
                 await self.bot.prc_api.run_command(
                     ctx.guild.id, ":ban {}".format(warning.user_id)
@@ -295,6 +245,38 @@ class Punishments(commands.Cog):
                 )
             except:
                 pass
+
+        embed = discord.Embed(
+                title=f"{self.bot.emoji_controller.get_emoji('success')} Logged Punishment",
+                description=("I have successfully logged the following punishment!"),
+                color=GREEN_COLOR,
+            ).add_field(
+                name="Punishment",
+                value=(
+                    f"> **Player:** {warning.username}\n"
+                    f"> **Type:** {warning.warning_type}\n"
+                    f"> **Moderator:** <@{warning.moderator_id}>\n"
+                    f"> **Reason:** {warning.reason}\n"
+                    f"> **At:** <t:{int(warning.time_epoch)}>\n"
+                    f'{"> **Until:** <t:{}>{}".format(int(warning.until_epoch), newline) if warning.until_epoch is not None else ""}'
+                    f"> **ID:** `{warning.snowflake}`\n"
+                    f"> **Custom Flags:** {'`N/A`' if len(flags) == 0 else '{}'.format(', '.join(flags))}"
+                ),
+                inline=False,
+        )
+        
+        if present_unpermitted_warning:
+            embed.add_field(
+                name="Auto-Ban Failed",
+                value="> You do not hold Server Administrator privileges in the private server, and you do not hold an Admin Role, which means that you are unable to auto-ban this individual.",
+                inline=False,
+            )
+
+        await (ctx.send if not msg else msg.edit)(
+            embed=embed.set_thumbnail(url=thumbnail),
+            view=None
+        )
+
 
     @commands.hybrid_group(
         name="punishment",
@@ -912,6 +894,94 @@ class Punishments(commands.Cog):
 
             msg = await ctx.reply(embed=embeds[0], view=current_page)
 
+
+    @punishments.command(
+        name="leaderboard",
+        description="View the server's punishment leaderboard.",
+        extras={"category": "Punishments"},
+    )
+    @is_staff()
+    @require_settings()
+    @app_commands.describe(
+        timeframe="The timeframe to view the leaderboard for (e.g. '1d', '1w', '1m'). Leave blank for all time."
+    )
+    async def punishment_leaderboard(self, ctx: commands.Context, timeframe: typing.Optional[str] = None):
+        gt_time = 0
+        if timeframe not in ["", None, " ", "all", "total"]:
+            gt_time = int(datetime.datetime.now().timestamp()) - time_converter(timeframe)
+
+        embed = discord.Embed(
+            title="Punishment Leaderboard",
+            description="**Total Punishments**\n",
+            color=BLANK_COLOR,
+        )
+        embed.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon)
+        pipeline = [
+            {
+                "$match": {
+                    "Guild": ctx.guild.id,
+                    "Epoch": {"$gte": gt_time}
+                }
+            },
+            {
+                "$group": {
+                    "_id": {
+                        "moderator": "$ModeratorID",
+                        "guild": "$Guild"
+                    },
+                    "moderationCount": {"$sum": 1}
+                }
+            },
+            {
+                "$project": {
+                    "_id": 0,
+                    "ModeratorID": "$_id.moderator",
+                    "Guild": "$_id.guild",
+                    "ModerationCount": "$moderationCount"
+                }
+            }
+        ]
+
+        results = [i async for i in self.bot.punishments.db.aggregate(pipeline)]
+        sorted_results = sorted(
+            results, key=lambda x: x["ModerationCount"], reverse=True
+        )
+        pages = []
+        for index, item in enumerate(sorted_results):
+            embed.description += "> **{}**. <@{}> • {} moderations\n".format(
+                index + 1, item["ModeratorID"], f"{item['ModerationCount']:,}",
+            )
+            if len(embed.description) > 2000:
+                pages.append(CustomPage(
+                    embeds=[embed], identifier=str(len(pages) + 1)
+                ))
+                embed = discord.Embed(
+                    title="Punishment Leaderboard",
+                    description="**Total Punishments**\n",
+                    color=BLANK_COLOR,
+                )
+                embed.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon)
+        
+        if len(pages) == 0 or pages[-1].embeds[0] != embed:
+            pages.append(CustomPage(
+                embeds=[embed], identifier=str(len(pages) + 1)
+            ))
+
+        
+        if len(sorted_results) == 0:
+            embed.description = "> There are no punishments in this server."
+        
+        paginator = SelectPagination(
+            self.bot,
+            ctx.author.id,
+            pages
+        )
+        await ctx.send(
+            embed=pages[0].embeds[0],
+            view=paginator.get_current_view(),
+        )
+        
+
     @commands.guild_only()
     @commands.hybrid_command(
         name="tempban",
@@ -945,7 +1015,7 @@ class Punishments(commands.Cog):
             )
 
         roblox_user = await get_roblox_by_username(user, self.bot, ctx)
-        roblox_client = roblox.client.Client()
+        roblox_client = roblox.Client()
         if not roblox_user or roblox_user.get("errors") is not None:
             return await ctx.send(
                 embed=discord.Embed(

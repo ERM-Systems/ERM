@@ -25,24 +25,10 @@ async def get_cached_member_by_username(guild, username):
         if now - cached_time < _cache_timeout:
             return member_obj
 
-    pattern = re.compile(re.escape(username), re.IGNORECASE)
     member = None
-
-    for m in guild.members:
-        if (
-            pattern.search(m.name)
-            or pattern.search(m.display_name)
-            or (hasattr(m, "global_name") and m.global_name and pattern.search(m.global_name))
-        ):
-            member = m
-            break
-
-    if not member:
-        try:
-            members = await guild.query_members(query=username, limit=1)
-            member = members[0] if members else None
-        except discord.HTTPException:
-            member = None
+    members = await guild.query_members(query=username, limit=1)
+    if members:
+        member = members[0] if members else None
 
     _member_search_cache[guild.id][cache_key] = (member, now)
     return member
@@ -259,7 +245,7 @@ async def handle_discord_check_batch(bot, guild, players_not_in_discord, alert_c
     
     try:
         usernames = [player.username for player in players_not_in_discord]
-        command = f":pm {', '.join(usernames)} {alert_message}"
+        command = f":pm {','.join(usernames)} {alert_message}"
 
         await bot.prc_api.run_command(guild.id, command)
 
@@ -318,7 +304,7 @@ async def handle_callsign_violations_batch(bot, guild, players_with_violations, 
     try:
         usernames = [player.username for player in players_with_violations]
         violation_message = "Your callsign does not match your assigned role. Please update your callsign or contact staff."
-        command = f":pm {', '.join(usernames)} {violation_message}"
+        command = f":pm {','.join(usernames)} {violation_message}"
 
         await bot.prc_api.run_command(guild.id, command)
     

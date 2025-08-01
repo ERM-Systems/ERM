@@ -11,9 +11,11 @@ from utils.constants import BLANK_COLOR
 import aiohttp
 from decouple import config
 
+from utils.utils import has_whitelabel
+
 
 async def iterate_reminder(bot, guildObj): # TODO: do a refactor of this.. this is abundantly terrible programming.
-    if await bot.whitelabel.db.find_one({"GuildID": str(guildObj["_id"])}) is not None and bot.environment == "PRODUCTION":
+    if await has_whitelabel(bot, guildObj["_id"]):
         return
 
     for item in guildObj["reminders"].copy():
