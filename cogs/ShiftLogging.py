@@ -1,6 +1,7 @@
 import datetime
 from io import BytesIO
 import logging
+import typing
 
 import discord
 import pytz
@@ -58,7 +59,10 @@ class ShiftLogging(commands.Cog):
     @require_settings()
     @app_commands.describe(member = "The staff member to view shifts for.", shift_type="The type of shift to view.")
     @app_commands.autocomplete(shift_type=shift_type_autocomplete)
-    async def duty_time(self, ctx, member: discord.Member = None, shift_type: str = "Default"):
+    async def duty_time(self, ctx, member: typing.Optional[discord.Member] = None, shift_type: str = "Default"):
+        if isinstance(member, str) and not shift_type:
+            shift_type = member
+            member = None
         if self.bot.shift_management_disabled:
             return await new_failure_embed(
                 ctx,
@@ -101,7 +105,7 @@ class ShiftLogging(commands.Cog):
                     return
                 shift_type_value = view.value.lower()
 
-        if shift_type_value == "all":
+        if shift_type_value.lower() == "all" or shift_type_value.lower() == "default":
             selected_shift_type = None
         else:
             selected_shift_type = next((st for st in shift_types if st["name"].lower() == shift_type_value), None)
