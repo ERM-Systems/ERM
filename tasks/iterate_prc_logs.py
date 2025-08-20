@@ -620,6 +620,7 @@ async def check_automatic_shifts(bot, settings, guild_id, join_logs, ts: int) ->
         if item in discordid_to_shift:
             shift = discordid_to_shift[item]
             await bot.shift_management.end_shift(shift["_id"], guild.id)
+            bot.dispatch("shift_end", shift["_id"])
             member = guild.get_member(int(item))
             if not member:
                 try:
@@ -686,6 +687,7 @@ async def check_automatic_shifts(bot, settings, guild_id, join_logs, ts: int) ->
             oid = await bot.shift_management.add_shift_by_user(
                 item, automatic_shifts.get("type", "Default") or "Default", [], guild.id
             )
+            bot.dispatch("shift_start", oid)
             try:
                 await item.send(
                     embed=discord.Embed(

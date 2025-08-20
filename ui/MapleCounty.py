@@ -32,8 +32,8 @@ class MapleCountyConfiguration(discord.ui.View):
         self.user_id = user_id
         self.settings = settings or {}
 
-    @discord.ui.button(label="Automated Discord Checks", style=discord.ButtonStyle.secondary)
-    async def automated_discord_checks(self, interaction: Interaction, button: discord.ui.Button):
+    @discord.ui.button(label="Automatic Discord Checks", style=discord.ButtonStyle.secondary)
+    async def automatic_discord_checks(self, interaction: Interaction, button: discord.ui.Button):
         sett = await self.bot.settings.find_by_id(interaction.guild.id)
         if not sett:
             sett = {"_id": interaction.guild.id}
@@ -45,19 +45,14 @@ class MapleCountyConfiguration(discord.ui.View):
         channel_id = discord_checks.get('channel_id')
         
         embed = discord.Embed(
-            title="Automated Discord Checks",
+            title="Automatic Discord Checks",
             description=(
-                "This module allows for automated checks on Discord accounts of players in your Maple County server. "
-                "Players not in Discord will be reported to the alert channel."
+                "> This module allows for automatic checks on Discord accounts of players in your Maple County server."
             ),
             color=blank_color,
         ).add_field(
-            name="Current Status",
-            value=f"> **Enabled:** {'Yes' if enabled else 'No'}",
-            inline=False,
-        ).add_field(
             name="Alert Channel",
-            value=f"> **Current Channel:** {f'<#{channel_id}>' if channel_id else 'Not set'}",
+            value=f"> Players that aren't in the Discord server will be sent in this channel.",
             inline=False,
         )
         

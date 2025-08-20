@@ -101,13 +101,13 @@ class Punishments(commands.Cog):
             )
 
         auto_punish = settings.get("ERLC", {}).get("auto_punish", False)
-        server_staff = await self.bot.prc_api.get_server_staff(ctx.guild.id)
-        roblox_username = await self.bot.accounts.discord_to_roblox(ctx.guild, ctx.author.id)
         present_unpermitted_warning = False
-        if type.strip().lower() == "ban" and auto_punish is True:
-            if not (await admin_predicate(ctx) or await management_predicate(ctx) or roblox_username in [i.username for i in list(filter(lambda x: x.permission != "Server Moderator", server_staff))]):
-                present_unpermitted_warning = True
-
+        if auto_punish is True:
+            server_staff = await self.bot.prc_api.get_server_staff(ctx.guild.id)
+            roblox_username = await self.bot.accounts.discord_to_roblox(ctx.guild, ctx.author.id)
+            if type.strip().lower() == "ban" and auto_punish is True:
+                if not (await admin_predicate(ctx) or await management_predicate(ctx) or roblox_username in [i.username for i in list(filter(lambda x: x.permission != "Server Moderator", server_staff))]):
+                    present_unpermitted_warning = True
 
         flags = []
         if "--kick" in reason.lower() or (auto_punish and type.lower() == "kick"):
@@ -174,25 +174,7 @@ class Punishments(commands.Cog):
                 )
             )
 
-        # agent = AI(config('AI_API_URL'), config('AI_API_AUTH'))
-        # punishment = await agent.recommended_punishment(reason, None)
         msg = None
-        # consent_item = await self.bot.consent.find(ctx.author.id) or {}
-        # ai_predictions = consent_item.get('ai_predictions', True)
-        # if type.lower() in ["warning", "kick", "ban", "bolo"]:
-        # if punishment.prediction.lower() !=  type.lower():
-        # if ai_predictions:
-        # msg = await ctx.send(
-        # embed=discord.Embed(
-        # title="Recommended Punishment",
-        # description="ERM AI thinks that the punishment associated with this reason is not preferable. It suggests that you should **{}** for this punishment, rather than {}. Do you want to change the punishment type?".format(punishment.prediction, type),
-        # color=BLANK_COLOR
-        # ),
-        # view=(view := YesNoMenu(ctx.author.id))
-        # )
-        # await view.wait()
-        # if view.value is True:
-        # type = punishment.prediction
 
         for item in actual_types:
             safe_item = item.lower().split()

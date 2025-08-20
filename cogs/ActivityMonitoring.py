@@ -123,6 +123,7 @@ class ActivityMonitoring(commands.Cog):
                         settings.get("shift_management").get("quota", 0),
                     ]
 
+
         sorted_all_staff = sorted(all_staff.items(), key=lambda x: x[1], reverse=True)
         # print(sorted_all_staff)
         sorted_staff = dict(
@@ -136,7 +137,8 @@ class ActivityMonitoring(commands.Cog):
         loa_string = ""
 
         for index, (user_id, (seconds, quota)) in enumerate(sorted_staff.items()):
-            # print(seconds, quota)
+            if not quota:
+                quota = 0
             leaderboard_string += f"**{index+1}.** <@{user_id}> • {td_format(datetime.timedelta(seconds=seconds))} {self.bot.emoji_controller.get_emoji('success') if seconds > quota else self.bot.emoji_controller.get_emoji('xmark')}\n"
             if index == len(sorted_staff) - 1:
                 break
