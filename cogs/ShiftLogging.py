@@ -693,7 +693,7 @@ class ShiftLogging(commands.Cog):
                         if shift_list:
                             shift_type = shift_list[0]
                         else:
-                            shift_type = shift_types[0] # default to zero - instead of error
+                            shift_type = None # default to None - instead of error
 
                 else:
                     return
@@ -716,7 +716,12 @@ class ShiftLogging(commands.Cog):
                 {"Guild": ctx.guild.id, "EndEpoch": 0}
             ):
                 if sh["Guild"] == ctx.guild.id:
-                    member = ctx.guild.get_member(sh["UserID"]) or await ctx.guild.fetch_member(sh["UserID"])
+                    member = ctx.guild.get_member(sh["UserID"])
+                    if not member:
+                        try: 
+                            member = await ctx.guild.fetch_member(sh["UserID"])
+                        except discord.NotFound:
+                            continue
                     if member:
                         if member not in staff_members:
                             staff_members.append(member)
@@ -725,7 +730,12 @@ class ShiftLogging(commands.Cog):
                 {"Guild": ctx.guild.id, "Type": shift_type["name"], "EndEpoch": 0}
             ):
                 s = shift
-                member = ctx.guild.get_member(shift["UserID"]) or await ctx.guild.fetch_member(shift["UserID"])
+                member = ctx.guild.get_member(shift["UserID"])
+                if not member:
+                    try:
+                        member = await ctx.guild.fetch_member(shift["UserID"])
+                    except discord.NotFound:
+                        continue
                 if member:
                     if member not in staff_members:
                         staff_members.append(member)
@@ -756,10 +766,13 @@ class ShiftLogging(commands.Cog):
         added_staff = []
         for index, staff in enumerate(sorted_staff):
             # # print(staff)
-            member = ctx.guild.get_member(staff["id"]) or await ctx.guild.fetch_member(staff["id"])
+            member = ctx.guild.get_member(staff["id"])
             if not member:
-                continue
-
+                try:
+                    member = await ctx.guild.fetch_member(staff["id"])
+                except discord.NotFound:
+                    continue
+            
             if (
                 len((embeds[-1].description or "").splitlines()) >= 16
                 and member.id not in added_staff
