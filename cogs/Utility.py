@@ -164,6 +164,7 @@ class Utility(commands.Cog):
             shift["RemovedTime"] = 0
             shift["Type"] = shift_field.value.split("Type:** ")[1].split("\n")[0]
             shift["EndEpoch"] = int(other_field.value.split("<t:")[2].split(">")[0])
+            shift["Breaks"] = []
 
             await self.bot.shift_management.shifts.db.insert_one(shift)
             success += 1
