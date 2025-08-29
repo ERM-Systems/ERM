@@ -8,11 +8,12 @@ import discord
 from discord import app_commands
 from discord.app_commands import AppCommandGroup
 from discord.ext import commands
+import pytz
 
 from menus import LinkView, CustomSelectMenu, MultiPaginatorMenu, APIKeyConfirmation
 from utils.constants import BLANK_COLOR, GREEN_COLOR
 from utils.timestamp import td_format
-from utils.utils import invis_embed, failure_embed, require_settings
+from utils.utils import invis_embed, failure_embed, require_settings, time_converter
 from erm import is_staff, is_management
 
 
@@ -36,20 +37,26 @@ class Utility(commands.Cog):
         extras={"category": "Utility"},
     )
     @commands.cooldown(1, 300, commands.BucketType.guild)
-    @is_staff()
-    async def import_punishments(self, ctx: commands.Context, channel: discord.TextChannel=None):
+    @is_management()
+    async def import_punishments(self, ctx: commands.Context, channel: discord.TextChannel=None, time_frame: str=None):
         if channel is None:
             channel = ctx.channel
+
+        after = None
+        if time_frame is None:
+            after = datetime.datetime.fromtimestamp(1754516493)
+        else:
+            after = datetime.datetime.fromtimestamp(datetime.datetime.now(tz=pytz.UTC).timestamp() - time_converter(time_frame))
 
         msg = await ctx.send(
             embed=discord.Embed(
                 title="Punishments Import",
-                description="> **Channel:** {}\n> **After:** <t:{}:R>\n> **Imported:** 0".format(channel.mention, 1754516493),
+                description="> **Channel:** {}\n> **After:** <t:{}:R>\n> **Imported:** 0".format(channel.mention, int(after.timestamp())),
                 color=BLANK_COLOR,
             ).set_author(name=ctx.guild.name, icon_url=ctx.guild.icon.url if ctx.guild.icon else None)
         )
         success = 0
-        async for message in channel.history(limit=None, after=datetime.datetime.fromtimestamp(1754516493)):
+        async for message in channel.history(limit=None, after=after):
             print(message.id)
             embeds = message.embeds
             if len(embeds) == 0:
@@ -74,12 +81,17 @@ class Utility(commands.Cog):
             punishment["Epoch"] = int(moderator_field.value.split("<t:")[1].split(">")[0])
             punishment["Username"] = violator_field.value.split("Username:** ")[1].split("\n")[0]
             punishment["UserID"] = int(violator_field.value.split("`")[1].split("`")[0])
+            punishment["Guild"] = ctx.guild.id
             punishment["Type"] = violator_field.value.split("Type:** ")[1].split("\n")[0]
+
             if punishment["Type"] == "Temporary Ban":
                 try:
                     punishment["UntilEpoch"] = int(violator_field.value.split("Until:** <t:")[1].split(">")[0])
                 except:
                     punishment["UntilEpoch"] = punishment["Epoch"]
+
+            if await self.bot.punishments.db.find_one({"Snowflake": punishment["Snowflake"]}):
+                continue
 
             await self.bot.punishments.db.insert_one(punishment)
             success += 1
@@ -87,7 +99,7 @@ class Utility(commands.Cog):
             if success % 100 == 0:
                 await msg.edit(
                     embed=discord.Embed(
-                        title="Importing Punishments",
+                        title="Punishments Import",
                         description="> **Channel:** {}\n> **After:** <t:{}:R>\n> **Imported:** `{}`".format(channel.mention, 1754516493, success),
                         color=BLANK_COLOR,
                     ).set_author(name=ctx.guild.name, icon_url=ctx.guild.icon.url if ctx.guild.icon else None)
@@ -101,8 +113,79 @@ class Utility(commands.Cog):
             )
         )
 
-    
-                            
+    @import_group.command(
+        name="shifts",
+        description="Import shifts from the outage.",
+        extras={"category": "Utility"},
+    )
+    @commands.cooldown(1, 300, commands.BucketType.guild)
+    @is_management()
+    async def import_shifts(self, ctx: commands.Context, channel: discord.TextChannel=None, time_frame: str=None):
+        if channel is None:
+            channel = ctx.channel
+
+        after = None
+        if time_frame is None:
+            after = datetime.datetime.fromtimestamp(1754516493)
+        else:
+            after = datetime.datetime.fromtimestamp(datetime.datetime.now(tz=pytz.UTC).timestamp() - time_converter(time_frame))
+        
+        msg = await ctx.send(
+            embed=discord.Embed(
+                title="Shifts Import",
+                description="> **Channel:** {}\n> **After:** <t:{}:R>\n> **Imported:** 0".format(channel.mention, int(after.timestamp())),
+                color=BLANK_COLOR,
+            ).set_author(name=ctx.guild.name, icon_url=ctx.guild.icon.url if ctx.guild.icon else None)
+        )
+
+        success = 0
+        async for message in channel.history(limit=None, after=after):
+            print(message.id)
+            embeds = message.embeds
+            if len(embeds) == 0:
+                continue
+            if "ERM" not in message.author.name:
+                continue
+
+            embed = embeds[0]
+            embed_title = embed.title.lower() if embed.title else ""
+            if embed_title != "shift ended":
+                continue
+
+            fields = embed.fields
+            shift_field = fields[0]
+            other_field = fields[1]
+
+            shift = {}
+            shift["UserID"] = int(shift_field.value.split("<@")[1].split(">")[0])
+            shift["Username"] = other_field.value.split("Nickname:** ")[1].split("\n")[0]
+            shift["Nickname"] = shift["Username"]
+            shift["StartEpoch"] = int(other_field.value.split("<t:")[1].split(">")[0])
+            shift["Guild"] = ctx.guild.id
+            shift["AddedTime"] = 0
+            shift["RemovedTime"] = 0
+            shift["Type"] = other_field.value.split("Type:** ")[1].split("\n")[0]
+            shift["EndEpoch"] = int(shift_field.value.split("<t:")[3].split(">")[0])
+
+            await self.bot.punishments.db.insert_one(shift)
+            success += 1
+            logging.info(f"Imported shift: {shift}")
+            if success % 100 == 0:
+                await msg.edit(
+                    embed=discord.Embed(
+                        title="Shifts Import",
+                        description="> **Channel:** {}\n> **After:** <t:{}:R>\n> **Imported:** `{}`".format(channel.mention, 1754516493, success),
+                        color=BLANK_COLOR,
+                    ).set_author(name=ctx.guild.name, icon_url=ctx.guild.icon.url if ctx.guild.icon else None)
+                )
+
+        await msg.edit(
+            embed=discord.Embed(
+                title=f"{self.bot.emoji_controller.get_emoji('success')} Import Complete",
+                description="Successfully imported **{}** shifts.".format(success),
+                color=GREEN_COLOR,
+            )
+        )
 
     @commands.hybrid_command(
         name="staff_sync",
