@@ -771,6 +771,7 @@ class ShiftLogging(commands.Cog):
                 try:
                     member = await ctx.guild.fetch_member(staff["id"])
                 except discord.NotFound:
+                    index -= 1
                     continue
             
             if (
