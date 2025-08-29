@@ -57,7 +57,6 @@ class Utility(commands.Cog):
         )
         success = 0
         async for message in channel.history(limit=None, after=after):
-            print(message.id)
             embeds = message.embeds
             if len(embeds) == 0:
                 continue
@@ -140,7 +139,6 @@ class Utility(commands.Cog):
 
         success = 0
         async for message in channel.history(limit=None, after=after):
-            print(message.id)
             embeds = message.embeds
             if len(embeds) == 0:
                 continue
@@ -164,11 +162,12 @@ class Utility(commands.Cog):
             shift["Guild"] = ctx.guild.id
             shift["AddedTime"] = 0
             shift["RemovedTime"] = 0
-            shift["Type"] = other_field.value.split("Type:** ")[1].split("\n")[0]
-            shift["EndEpoch"] = int(shift_field.value.split("<t:")[3].split(">")[0])
+            shift["Type"] = shift_field.value.split("Type:** ")[1].split("\n")[0]
+            shift["EndEpoch"] = int(other_field.value.split("<t:")[2].split(">")[0])
 
-            await self.bot.punishments.db.insert_one(shift)
+            await self.bot.shift_management.shifts.db.insert_one(shift)
             success += 1
+
             logging.info(f"Imported shift: {shift}")
             if success % 100 == 0:
                 await msg.edit(
@@ -186,6 +185,85 @@ class Utility(commands.Cog):
                 color=GREEN_COLOR,
             )
         )
+
+    @import_group.command(
+        name="loas",
+        description="Import LOAs from the outage.",
+        extras={"category": "Utility"},
+    )
+    @commands.cooldown(1, 300, commands.BucketType.guild)
+    @is_management()
+    async def import_loas(self, ctx: commands.Context, channel: discord.TextChannel=None, time_frame: str=None):
+        if channel is None:
+            channel = ctx.channel
+
+        after = None
+        if time_frame is None:
+            after = datetime.datetime.fromtimestamp(1754516493)
+        else:
+            after = datetime.datetime.fromtimestamp(datetime.datetime.now(tz=pytz.UTC).timestamp() - time_converter(time_frame))
+        
+        msg = await ctx.send(
+            embed=discord.Embed(
+                title="LOAs Import",
+                description="> **Channel:** {}\n> **After:** <t:{}:R>\n> **Imported:** 0".format(channel.mention, int(after.timestamp())),
+                color=BLANK_COLOR,
+            ).set_author(name=ctx.guild.name, icon_url=ctx.guild.icon.url if ctx.guild.icon else None)
+        )
+
+        success = 0
+        async for message in channel.history(limit=None, after=after):
+            embeds = message.embeds
+            if len(embeds) == 0:
+                continue
+            if "ERM" not in message.author.name:
+                continue
+
+            embed = embeds[0]
+            embed_title = embed.title.lower() if embed.title else ""
+            if "loa accepted" not in embed_title and "loa request" not in embed_title and "loa denied" not in embed_title:
+                continue
+
+            fields = embed.fields
+            staff_field = fields[0]
+            request_field = fields[1]
+
+            loa = {}
+            loa["message_id"] = message.id
+            loa["user_id"] = int(staff_field.value.split("<@")[1].split(">")[0])
+            loa["guild_id"] = ctx.guild.id
+            loa["type"] = request_field.value.split("Type:** ")[1].split("\n")[0]
+            loa["reason"] = request_field.value.split("Reason:** ")[1].split("\n")[0]
+            loa["expiry"] = int(request_field.value.split("Ends At:** <t:")[1].split(">")[0])
+            loa["expired"] = True if loa["expiry"] < int(datetime.datetime.now(tz=pytz.UTC).timestamp()) else False
+            loa["voided"] = False
+            loa["denied"] = True if "denied" in embed_title else False
+            loa["accepted"] = True if "accepted" in embed_title else False
+            loa["_id"] = "{}_{}_{}_{}".format(loa["user_id"], loa["guild_id"], request_field.value.split("Starts At:** <t:")[1].split(">")[0], loa["expiry"])
+
+            if await self.bot.loas.db.find_one({"_id": loa["_id"]}):
+                await self.bot.loas.db.update_one({"_id": loa["_id"]}, {"$set": {"voided": loa["voided"], "denied": loa["denied"], "accepted": loa["accepted"], "expired": loa["expired"]}})
+
+            await self.bot.loas.db.insert_one(loa)
+            success += 1
+
+            logging.info(f"Imported LOA: {loa}")
+            if success % 100 == 0:
+                await msg.edit(
+                    embed=discord.Embed(
+                        title="LOAs Import",
+                        description="> **Channel:** {}\n> **After:** <t:{}:R>\n> **Imported:** {}".format(channel.mention, int(after.timestamp()), success),
+                        color=BLANK_COLOR,
+                    ).set_author(name=ctx.guild.name, icon_url=ctx.guild.icon.url if ctx.guild.icon else None)
+                )
+        await msg.edit(
+            embed=discord.Embed(
+                title=f"{self.bot.emoji_controller.get_emoji('success')} Import Complete",
+                description="Successfully imported **{}** LOAs.".format(success),
+                color=GREEN_COLOR,
+            )
+        )
+
 
     @commands.hybrid_command(
         name="staff_sync",
