@@ -373,7 +373,7 @@ bot.shift_management_disabled = False
 bot.punishments_disabled = False
 bot.bloxlink_api_key = bloxlink_api_key
 environment = config("ENVIRONMENT", default="DEVELOPMENT")
-internal_command_storage = {}
+bot.internal_command_storage = {}
 
 
 def running():
@@ -420,7 +420,7 @@ async def AutoDefer(ctx: commands.Context):
             )
         raise Exception("Whitelabel bot already in use")
 
-    internal_command_storage[ctx] = datetime.datetime.now(tz=pytz.UTC).timestamp()
+    bot.internal_command_storage[ctx] = datetime.datetime.now(tz=pytz.UTC).timestamp()
     if ctx.command:
         if ctx.command.extras.get("ephemeral") is True:
             if ctx.interaction:
@@ -432,12 +432,12 @@ async def AutoDefer(ctx: commands.Context):
 
 @bot.after_invoke
 async def loggingCommandExecution(ctx: commands.Context):
-    if ctx in internal_command_storage:
+    if ctx in bot.internal_command_storage:
         command_name = ctx.command.qualified_name
 
         duration = float(
             datetime.datetime.now(tz=pytz.UTC).timestamp()
-            - internal_command_storage[ctx]
+            - bot.internal_command_storage[ctx]
         )
         logging.info(
             f"Command {command_name} was run by {ctx.author.name} ({ctx.author.id}) and lasted {duration} seconds"
@@ -448,7 +448,7 @@ async def loggingCommandExecution(ctx: commands.Context):
             else "Shard ID ::: -1, Direct Messages"
         )
         logging.info(shard_info)
-        del internal_command_storage[ctx]
+        del bot.internal_command_storage[ctx]
     else:
         logging.info(
             "Command could not be found in internal context storage. Please report."
