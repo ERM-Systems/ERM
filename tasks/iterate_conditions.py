@@ -19,22 +19,30 @@ import pytz
 _guild_cache = {}
 _guild_cache_timeout = 300
 
+
+def _evict_guild_cache():
+    now = datetime.datetime.now().timestamp()
+    stale = [k for k, (_, t) in _guild_cache.items() if now - t >= _guild_cache_timeout]
+    for k in stale:
+        del _guild_cache[k]
+
+
 async def get_cached_guild(bot, guild_id):
     """Get guild with caching to reduce API calls"""
     now = datetime.datetime.now().timestamp()
-    
+
     if guild_id in _guild_cache:
         guild_obj, cached_time = _guild_cache[guild_id]
         if now - cached_time < _guild_cache_timeout:
             return guild_obj
-    
+
     guild = bot.get_guild(guild_id)
     if not guild:
         try:
             guild = await bot.fetch_guild(guild_id)
         except discord.HTTPException:
             return None
-    
+
     _guild_cache[guild_id] = (guild, now)
     return guild
 
@@ -109,6 +117,7 @@ async def handle_erm_condition(bot, guild_id, condition) -> bool:
 
 @tasks.loop(minutes=1)
 async def iterate_conditions(bot):
+    _evict_guild_cache()
     semaphore = asyncio.Semaphore(5)
     async def process_action(action):
         async with semaphore:
@@ -166,9 +175,7 @@ async def iterate_conditions(bot):
                         {"_id": action["_id"]}, {"$set": {"LastExecuted": now_ts}}
                     )
 
-                    if not hasattr(guild, '_cached_channels'):
-                        guild._cached_channels = guild.channels or await guild.fetch_channels()
-                    channels = guild._cached_channels
+                    channels = guild.channels or await guild.fetch_channels()
 
                     try:
                         ctx = commands.Context(
@@ -186,14 +193,13 @@ async def iterate_conditions(bot):
                             view=StringView(f"actions execute {action['ActionName']}"),
                         )
                         ctx.dnr = True
-                        
-                        if not hasattr(guild, '_cached_owner'):
-                            guild._cached_owner = (
-                                guild.owner
-                                or guild.get_member(guild.owner_id)
-                                or await guild.fetch_member(guild.owner_id)
-                            )
-                        ctx.message.author = guild._cached_owner
+
+                        owner = (
+                            guild.owner
+                            or guild.get_member(guild.owner_id)
+                            or await guild.fetch_member(guild.owner_id)
+                        )
+                        ctx.message.author = owner
 
                         await ctx.invoke(
                             bot.get_command("actions execute"), action=action["ActionName"]
