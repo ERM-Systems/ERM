@@ -11,6 +11,20 @@ from utils.constants import RED_COLOR, BLANK_COLOR
 _member_cache = defaultdict(dict)
 _member_cache_timeout = 300
 
+
+def _evict_member_cache():
+    now = datetime.datetime.now().timestamp()
+    empty_guilds = []
+    for guild_id, members in _member_cache.items():
+        stale = [uid for uid, (_, t) in members.items() if now - t >= _member_cache_timeout]
+        for uid in stale:
+            del members[uid]
+        if not members:
+            empty_guilds.append(guild_id)
+    for guild_id in empty_guilds:
+        del _member_cache[guild_id]
+
+
 async def get_cached_member(guild, user_id):
     """Get member with caching to reduce API calls"""
     now = datetime.datetime.now().timestamp()
@@ -33,6 +47,7 @@ async def get_cached_member(guild, user_id):
 
 @tasks.loop(minutes=1, reconnect=True)
 async def check_loa(bot):
+    _evict_member_cache()
     try:
         guild_loas = defaultdict(list)
 
