@@ -79,7 +79,7 @@ class Document:
             raise TypeError("Expected Dictionary.")
 
         # Always use your own _id
-        if not dict["_id"]:
+        if "_id" not in dict:
             raise KeyError("_id not found in supplied dict.")
 
         await self.db.insert_one(dict)
@@ -94,7 +94,7 @@ class Document:
         Params:
          - dict (Dictionary) : The dict to insert
         """
-        if await self.__get_raw(dict["_id"]) != None:
+        if await self.__get_raw(dict["_id"]) is not None:
             await self.update_by_id(dict)
         else:
             await self.db.insert_one(dict)
@@ -113,7 +113,7 @@ class Document:
             raise TypeError("Expected Dictionary.")
 
         # Always use your own _id
-        if not dict["_id"]:
+        if "_id" not in dict:
             raise KeyError("_id not found in supplied dict.")
 
         if not await self.find_by_id(dict["_id"]):
@@ -137,7 +137,7 @@ class Document:
             raise TypeError("Expected Dictionary.")
 
         # Always use your own _id
-        if not dict["_id"]:
+        if "_id" not in dict:
             raise KeyError("_id not found in supplied dict.")
 
         if not await self.find_by_id(dict["_id"]):
