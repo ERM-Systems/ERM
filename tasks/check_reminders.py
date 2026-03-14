@@ -25,9 +25,7 @@ async def iterate_reminder(bot, guildObj): # TODO: do a refactor of this.. this 
         current_time = datetime.datetime.now(tz=pytz.UTC)
         interval = item["interval"]
 
-        next_time = current_time + datetime.timedelta(seconds=interval)
-
-        if next_time.timestamp() - item["lastTriggered"] >= interval:
+        if current_time.timestamp() - item["lastTriggered"] >= interval:
             guild = bot.get_guild(int(guildObj["_id"]))
             if not guild:
                 continue
@@ -38,7 +36,9 @@ async def iterate_reminder(bot, guildObj): # TODO: do a refactor of this.. this 
             roles = []
             try:
                 for role in item["role"]:
-                    roles.append(guild.get_role(int(role)).mention)
+                    role_obj = guild.get_role(int(role))
+                    if role_obj is not None:
+                        roles.append(role_obj.mention)
             except TypeError:
                 roles = [""]
 
