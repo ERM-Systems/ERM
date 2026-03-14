@@ -147,8 +147,6 @@ class PRCApiClient:
             method,
             url=f"{self.base_url}{endpoint}",
             headers={
-                "Authorization": self.api_key,
-                "User-Agent": "Application",
                 "Server-Key": internal_server_key,
             },
             json=data or {},
