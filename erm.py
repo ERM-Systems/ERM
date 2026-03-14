@@ -390,7 +390,7 @@ def running():
 async def AutoDefer(ctx: commands.Context):
     if (
         environment == "CUSTOM"
-        and config("CUSTOM_GUILD_ID", default=None) != 0
+        and config("CUSTOM_GUILD_ID", default="0") != "0"
         and not getattr(ctx.bot, "whitelist_disabled", False)
     ):
         if ctx.guild.id != int(config("CUSTOM_GUILD_ID")):
@@ -448,11 +448,11 @@ async def loggingCommandExecution(ctx: commands.Context):
             else "Shard ID ::: -1, Direct Messages"
         )
         logging.info(shard_info)
+        del internal_command_storage[ctx]
     else:
         logging.info(
             "Command could not be found in internal context storage. Please report."
         )
-    del internal_command_storage[ctx]
 
 
 @bot.event
@@ -491,22 +491,21 @@ client = roblox.Client()
 
 async def staff_check(bot_obj, guild, member):
     guild_settings = await bot_obj.settings.find_by_id(guild.id)
+    member_role_ids = [r.id for r in member.roles]
     if guild_settings:
         if "role" in guild_settings["staff_management"].keys():
             if guild_settings["staff_management"]["role"] != "":
                 if isinstance(guild_settings["staff_management"]["role"], list):
-                    for role in guild_settings["staff_management"]["role"]:
-                        if role in [role.id for role in member.roles]:
+                    for role_id in guild_settings["staff_management"]["role"]:
+                        if role_id in member_role_ids:
                             return True
                 elif isinstance(guild_settings["staff_management"]["role"], int):
-                    if guild_settings["staff_management"]["role"] in [
-                        role.id for role in member.roles
-                    ]:
+                    if guild_settings["staff_management"]["role"] in member_role_ids:
                         return True
-                    
+
     if await admin_check(bot_obj, guild, member):
         return True
-    
+
     if member.guild_permissions.manage_messages:
         return True
     return False
@@ -514,21 +513,20 @@ async def staff_check(bot_obj, guild, member):
 
 async def management_check(bot_obj, guild, member):
     guild_settings = await bot_obj.settings.find_by_id(guild.id)
+    member_role_ids = [r.id for r in member.roles]
     if guild_settings:
         if "management_role" in guild_settings["staff_management"].keys():
             if guild_settings["staff_management"]["management_role"] != "":
                 if isinstance(
                     guild_settings["staff_management"]["management_role"], list
                 ):
-                    for role in guild_settings["staff_management"]["management_role"]:
-                        if role in [role.id for role in member.roles]:
+                    for role_id in guild_settings["staff_management"]["management_role"]:
+                        if role_id in member_role_ids:
                             return True
                 elif isinstance(
                     guild_settings["staff_management"]["management_role"], int
                 ):
-                    if guild_settings["staff_management"]["management_role"] in [
-                        role.id for role in member.roles
-                    ]:
+                    if guild_settings["staff_management"]["management_role"] in member_role_ids:
                         return True
     if member.guild_permissions.manage_guild:
         return True
@@ -537,32 +535,29 @@ async def management_check(bot_obj, guild, member):
 
 async def admin_check(bot_obj, guild, member):
     guild_settings = await bot_obj.settings.find_by_id(guild.id)
+    member_role_ids = [r.id for r in member.roles]
     if guild_settings:
         if "admin_role" in guild_settings["staff_management"].keys():
             if guild_settings["staff_management"]["admin_role"] != "":
                 if isinstance(guild_settings["staff_management"]["admin_role"], list):
-                    for role in guild_settings["staff_management"]["admin_role"]:
-                        if role in [role.id for role in member.roles]:
+                    for role_id in guild_settings["staff_management"]["admin_role"]:
+                        if role_id in member_role_ids:
                             return True
                 elif isinstance(guild_settings["staff_management"]["admin_role"], int):
-                    if guild_settings["staff_management"]["admin_role"] in [
-                        role.id for role in member.roles
-                    ]:
+                    if guild_settings["staff_management"]["admin_role"] in member_role_ids:
                         return True
         if "management_role" in guild_settings["staff_management"].keys():
             if guild_settings["staff_management"]["management_role"] != "":
                 if isinstance(
                     guild_settings["staff_management"]["management_role"], list
                 ):
-                    for role in guild_settings["staff_management"]["management_role"]:
-                        if role in [role.id for role in member.roles]:
+                    for role_id in guild_settings["staff_management"]["management_role"]:
+                        if role_id in member_role_ids:
                             return True
                 elif isinstance(
                     guild_settings["staff_management"]["management_role"], int
                 ):
-                    if guild_settings["staff_management"]["management_role"] in [
-                        role.id for role in member.roles
-                    ]:
+                    if guild_settings["staff_management"]["management_role"] in member_role_ids:
                         return True
     if member.guild_permissions.administrator:
         return True
@@ -668,18 +663,6 @@ try:
 except decouple.UndefinedValueError:
     mongo_url = ""
 
-
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
-intents.voice_states = True
-
-scope = [
-    "https://spreadsheets.google.com/feeds",
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive.file",
-    "https://www.googleapis.com/auth/drive",
-]
 
 credentials_dict = {
     "type": config("TYPE", default=""),
