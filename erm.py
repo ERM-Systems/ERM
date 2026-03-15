@@ -248,9 +248,11 @@ class Bot(commands.AutoShardedBot):
             [Extensions.append(i) for i in EXTERNAL_EXT]
             DISABLED_EXT = []
             if config("ACTIONS_ENABLED", default="TRUE").upper() != "TRUE":
+                self.actions_enabled = False
                 DISABLED_EXT.append("cogs.Actions")
                 logging.info("Actions cog is disabled (ACTIONS_ENABLED=FALSE)")
             if config("REMINDERS_ENABLED", default="TRUE").upper() != "TRUE":
+                self.reminders_enabled = False
                 DISABLED_EXT.append("cogs.Reminders")
                 logging.info("Reminders cog is disabled (REMINDERS_ENABLED=FALSE)")
 
@@ -320,8 +322,11 @@ class Bot(commands.AutoShardedBot):
 
     async def start_tasks(self):
         logging.info("Starting tasks...")
-        check_reminders.start(bot)
-        logging.info("Starting the Check Reminders task...")
+        if self.reminders_enabled:
+            check_reminders.start(bot)
+            logging.info("Starting the Check Reminders task...")
+        else:
+            logging.warn("Reminders disabled. Not running check reminders task")
         await asyncio.sleep(30)
         check_loa.start(bot)
         logging.info("Starting the Check LOA task...")
@@ -351,7 +356,7 @@ class Bot(commands.AutoShardedBot):
         sync_weather.start(bot)
         logging.info("Starting the Sync Weather task...")
         await asyncio.sleep(30)
-        if config("ACTIONS_ENABLED", default="TRUE").upper() == "TRUE":
+        if self.actions_enabled:
             iterate_conditions.start(bot)
             logging.info("Starting the Iterate Conditions task...")
         else:
