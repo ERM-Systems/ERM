@@ -193,13 +193,13 @@ async def punishment_autocomplete(
     bot = interaction.client
     Data = await bot.punishment_types.find_by_id(interaction.guild.id)
     default_punishments = ["Warning", "Kick", "Ban", "BOLO"]
-    enabled_punishments = Data.get("default_punishments", [])
     if Data is None:
         return [
             app_commands.Choice(name=item, value=item)
             for item in default_punishments
         ]
     else:
+        enabled_punishments = Data.get("default_punishments", [])
         ndt = []
         for item in Data["types"]:
             if item not in default_punishments:
