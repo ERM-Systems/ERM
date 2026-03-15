@@ -246,6 +246,13 @@ class Bot(commands.AutoShardedBot):
             BETA_EXT = ["cogs.StaffConduct"]
             EXTERNAL_EXT = ["utils.api"]
             [Extensions.append(i) for i in EXTERNAL_EXT]
+            DISABLED_EXT = []
+            if config("ACTIONS_ENABLED", default="TRUE").upper() != "TRUE":
+                DISABLED_EXT.append("cogs.Actions")
+                logging.info("Actions cog is disabled (ACTIONS_ENABLED=FALSE)")
+            if config("REMINDERS_ENABLED", default="TRUE").upper() != "TRUE":
+                DISABLED_EXT.append("cogs.Reminders")
+                logging.info("Reminders cog is disabled (REMINDERS_ENABLED=FALSE)")
 
             # used for checking whether this is WL!
             self.environment = environment
@@ -254,6 +261,8 @@ class Bot(commands.AutoShardedBot):
             await self.emoji_controller.prefetch_emojis()
 
             for extension in Extensions:
+                if extension in DISABLED_EXT:
+                    continue
                 try:
                     if extension not in BETA_EXT:
                         await self.load_extension(extension)
@@ -312,7 +321,7 @@ class Bot(commands.AutoShardedBot):
     async def start_tasks(self):
         logging.info("Starting tasks...")
         check_reminders.start(bot)
-        logging.info("Startng the Check Reminders task...")
+        logging.info("Starting the Check Reminders task...")
         await asyncio.sleep(30)
         check_loa.start(bot)
         logging.info("Starting the Check LOA task...")
@@ -342,8 +351,11 @@ class Bot(commands.AutoShardedBot):
         sync_weather.start(bot)
         logging.info("Starting the Sync Weather task...")
         await asyncio.sleep(30)
-        iterate_conditions.start(bot)
-        logging.info("Starting the Iterate Conditions task...")
+        if config("ACTIONS_ENABLED", default="TRUE").upper() == "TRUE":
+            iterate_conditions.start(bot)
+            logging.info("Starting the Iterate Conditions task...")
+        else:
+            logging.info("Actions task is disabled (ACTIONS_ENABLED=FALSE)")
         await asyncio.sleep(30)
         check_infractions.start(bot)
         logging.info("Starting the Check Infractions task...")
