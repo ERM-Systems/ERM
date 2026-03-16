@@ -99,13 +99,11 @@ async def rate_limited_fetch(coro, endpoint_type="default"):
             raise
 
 setup = False
+accepted_envs = ["PRODUCTION", "DEVELOPMENT", "ALPHA", "CUSTOM"]
 
-try:
-    sentry_url = config("SENTRY_URL")
-    bloxlink_api_key = config("BLOXLINK_API_KEY")
-except decouple.UndefinedValueError:
-    sentry_url = ""
-    bloxlink_api_key = ""
+
+sentry_url = config("SENTRY_URL", "")
+bloxlink_api_key = config("BLOXLINK_API_KEY", "")
 
 discord.utils.setup_logging(level=logging.INFO)
 
@@ -163,18 +161,9 @@ class Bot(commands.AutoShardedBot):
                 )
             )
             self.mongo = motor.motor_asyncio.AsyncIOMotorClient(str(mongo_url))
-            if environment == "DEVELOPMENT":
-                self.db = self.mongo["erm"]
-            elif environment == "PRODUCTION":
-                self.db = self.mongo["erm"]
-            elif environment == "ALPHA":
-                self.db = self.mongo["erm"]
-            elif environment == "CUSTOM":
-                self.db = self.mongo["erm"]
-            else:
-                raise Exception("Invalid environment")
-            
 
+            # The checking for this is defined just before the run method - approx line 649
+            self.db = self.mongo["erm"]
 
             self.panel_db = self.mongo["UserIdentity"]
             self.priority_settings = Document(self.panel_db, "PrioritySettings")
@@ -234,7 +223,7 @@ class Bot(commands.AutoShardedBot):
                 base_url=config(
                     "PRC_API_URL", default="https://api.policeroleplay.community/v1"
                 ),
-                api_key=config("PRC_API_KEY", default="default_api_key"),
+                api_key=config("PRC_API_KEY", default=None),
             )
             self.mc_api = MCApiClient(
                 self, base_url=config("MC_API_URL"), api_key=config("MC_API_KEY")
@@ -266,7 +255,7 @@ class Bot(commands.AutoShardedBot):
                     if extension not in BETA_EXT:
                         await self.load_extension(extension)
                         logging.info(f"Loaded {extension}")
-                    elif environment == "DEVELOPMENT" or environment == "ALPHA":
+                    elif environment in ["DEVELOPMENT", "ALPHA"]:
                         await self.load_extension(extension)
                         logging.info(f"Loaded {extension}")
                 except Exception as e:
@@ -651,31 +640,17 @@ async def warning_json_to_mongo(jsonName: str, guildId: int):
             await bot.warnings.update(structure)
 bot.warning_json_to_mongo = warning_json_to_mongo
 
-# include environment variables
-if environment == "PRODUCTION":
-    bot_token = config("PRODUCTION_BOT_TOKEN")
-    logging.info("Using production token...")
-elif environment == "DEVELOPMENT":
-    try:
-        bot_token = config("DEVELOPMENT_BOT_TOKEN")
-    except decouple.UndefinedValueError:
-        bot_token = ""
-    logging.info("Using development token...")
-elif environment == "ALPHA":
-    try:
-        bot_token = config("ALPHA_BOT_TOKEN")
-    except decouple.UndefinedValueError:
-        bot_token = ""
-    logging.info("Using ERM V4 Alpha token...")
-elif environment == "CUSTOM":
-    bot_token = config("CUSTOM_BOT_TOKEN")
-    logging.info("Using custom bot token...")
-else:
-    raise Exception("Invalid environment")
-try:
-    mongo_url = config("MONGO_URL", default=None)
-except decouple.UndefinedValueError:
-    mongo_url = ""
+# Note: Changed to not use hardcoded types as if something does change then you don't need to append to an if chain
+if environment in accepted_envs:
+    bot_token = config(f"{environment}_BOT_TOKEN", None)
+    logging.info(f"Using {environment.lower()} bot token")
+    if not bot_token:
+        raise Exception("The environment specified does not have a token associated with it")
+
+# Mongo is critical for bot function so it should most definitely error 
+mongo_url = config("MONGO_URL", default=None)
+if not mongo_url:
+    raise Exception("Missing MongoDB URL")
 
 
 credentials_dict = {
