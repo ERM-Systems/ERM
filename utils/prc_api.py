@@ -131,10 +131,12 @@ class PRCApiClient:
         max_retries: int = 2,
     ):
 
+        use_global_key = False
         if not key:
             global_key = config("PRC_GLOBAL_KEY", default=None)
             if global_key:
                 internal_server_key = global_key
+                use_global_key = True
             else:
                 internal_server_object = await self.get_server_key(guild_id)
                 internal_server_key = (
@@ -147,12 +149,16 @@ class PRCApiClient:
         else:
             internal_server_key = key
 
+        headers = (
+            {"Authorization": internal_server_key}
+            if use_global_key
+            else {"Server-Key": internal_server_key}
+        )
+
         async with self.session.request(
             method,
             url=f"{self.base_url}{endpoint}",
-            headers={
-                "Server-Key": internal_server_key,
-            },
+            headers=headers,
             json=data or {},
         ) as response:
             # if response.status == 403:
