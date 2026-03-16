@@ -132,14 +132,18 @@ class PRCApiClient:
     ):
 
         if not key:
-            internal_server_object = await self.get_server_key(guild_id)
-            internal_server_key = (
-                internal_server_object if internal_server_object is not None else None
-            )
-            if internal_server_key is None:
-                return 401, {}
+            global_key = config("PRC_GLOBAL_KEY", default=None)
+            if global_key:
+                internal_server_key = global_key
             else:
-                internal_server_key = internal_server_key.key
+                internal_server_object = await self.get_server_key(guild_id)
+                internal_server_key = (
+                    internal_server_object if internal_server_object is not None else None
+                )
+                if internal_server_key is None:
+                    return 401, {}
+                else:
+                    internal_server_key = internal_server_key.key
         else:
             internal_server_key = key
 
