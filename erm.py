@@ -246,14 +246,13 @@ class Bot(commands.AutoShardedBot):
             BETA_EXT = ["cogs.StaffConduct"]
             EXTERNAL_EXT = ["utils.api"]
             [Extensions.append(i) for i in EXTERNAL_EXT]
-            DISABLED_EXT = []
             if config("ACTIONS_ENABLED", default="TRUE").upper() != "TRUE":
                 self.actions_enabled = False
-                DISABLED_EXT.append("cogs.Actions")
+                Extensions.remove("cogs.Actions")
                 logging.info("Actions cog is disabled (ACTIONS_ENABLED=FALSE)")
             if config("REMINDERS_ENABLED", default="TRUE").upper() != "TRUE":
                 self.reminders_enabled = False
-                DISABLED_EXT.append("cogs.Reminders")
+                Extensions.remove("cogs.Reminders")
                 logging.info("Reminders cog is disabled (REMINDERS_ENABLED=FALSE)")
 
             # used for checking whether this is WL!
@@ -263,8 +262,6 @@ class Bot(commands.AutoShardedBot):
             await self.emoji_controller.prefetch_emojis()
 
             for extension in Extensions:
-                if extension in DISABLED_EXT:
-                    continue
                 try:
                     if extension not in BETA_EXT:
                         await self.load_extension(extension)
