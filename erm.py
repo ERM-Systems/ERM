@@ -104,6 +104,7 @@ accepted_envs = ["PRODUCTION", "DEVELOPMENT", "ALPHA", "CUSTOM"]
 
 sentry_url = config("SENTRY_URL", "")
 bloxlink_api_key = config("BLOXLINK_API_KEY", "")
+dbname = config("DB_NAME", "erm").replace("$", "").replace(".", "") # Note that $ and . are forbidden chars
 
 discord.utils.setup_logging(level=logging.INFO)
 
@@ -163,9 +164,9 @@ class Bot(commands.AutoShardedBot):
             self.mongo = motor.motor_asyncio.AsyncIOMotorClient(str(mongo_url))
 
             # The checking for this is defined just before the run method - approx line 649
-            self.db = self.mongo["erm"]
+            self.db = self.mongo[dbname]
 
-            self.panel_db = self.mongo["UserIdentity"]
+            self.panel_db = self.mongo[f"{f"{dbname}_" if dbname != "erm" else ""}UserIdentity"]
             self.priority_settings = Document(self.panel_db, "PrioritySettings")
             self.staff_requests = Document(self.panel_db, "StaffRequests")
 
@@ -195,7 +196,7 @@ class Bot(commands.AutoShardedBot):
             self.settings = Settings(self.db, "settings")
             self.server_keys = ServerKeys(self.db, "server_keys")
 
-            self.maple_county = self.mongo["MapleCounty"]
+            self.maple_county = self.mongo[f"{f"{dbname}_" if dbname != "erm" else ""}MapleCounty"]
             self.mc_keys = MapleKeys(self.maple_county, "Auth")
 
             self.staff_connections = StaffConnections(self.db, "staff_connections")
@@ -203,7 +204,7 @@ class Bot(commands.AutoShardedBot):
             self.actions = Actions(self.db, "actions")
             self.prohibited = ProhibitedUseKeys(self.db, "prohibited_keys")
             self.saved_logs = SavedLogs(self.db, "saved_logs")
-            self.whitelabel = Whitelabel(self.mongo["ERMProcessing"], "Instances")
+            self.whitelabel = Whitelabel(self.mongo[f"{dbname.upper()}Processing"], "Instances")
 
             self.pending_oauth2 = PendingOAuth2(self.db, "pending_oauth2")
             self.oauth2_users = OAuth2Users(self.db, "oauth2")
