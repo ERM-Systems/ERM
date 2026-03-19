@@ -41,5 +41,6 @@ jobs:
         env: 
            ENVIRONMENT: "PRODUCTION"
            PRODUCTION_BOT_TOKEN: "THISISEXAMPLETRASHTOKEN"
+           MONGO_URL: mongodb://localhost:27017/test
         run: |
           pytest
