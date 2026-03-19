@@ -20,8 +20,26 @@ _member_search_cache = defaultdict(dict)
 _cache_timeout = 300
 
 
+def _evict_caches():
+    now = time.time()
+    stale_keys = [k for k, (_, t) in _guild_cache.items() if now - t >= _cache_timeout]
+    for k in stale_keys:
+        del _guild_cache[k]
+
+    empty_guilds = []
+    for guild_id, members in _member_search_cache.items():
+        stale = [k for k, (_, t) in members.items() if now - t >= _cache_timeout]
+        for k in stale:
+            del members[k]
+        if not members:
+            empty_guilds.append(guild_id)
+    for guild_id in empty_guilds:
+        del _member_search_cache[guild_id]
+
+
 @tasks.loop(minutes=10, reconnect=True)
 async def check_whitelisted_car(bot):
+    _evict_caches()
     initial_time = time.time()
     logging.info("Starting check_whitelisted_car task")
 

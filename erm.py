@@ -246,6 +246,14 @@ class Bot(commands.AutoShardedBot):
             BETA_EXT = ["cogs.StaffConduct"]
             EXTERNAL_EXT = ["utils.api"]
             [Extensions.append(i) for i in EXTERNAL_EXT]
+            if config("ACTIONS_ENABLED", default="TRUE").upper() != "TRUE":
+                self.actions_enabled = False
+                Extensions.remove("cogs.Actions")
+                logging.info("Actions cog is disabled (ACTIONS_ENABLED=FALSE)")
+            if config("REMINDERS_ENABLED", default="TRUE").upper() != "TRUE":
+                self.reminders_enabled = False
+                Extensions.remove("cogs.Reminders")
+                logging.info("Reminders cog is disabled (REMINDERS_ENABLED=FALSE)")
 
             # used for checking whether this is WL!
             self.environment = environment
@@ -311,8 +319,11 @@ class Bot(commands.AutoShardedBot):
 
     async def start_tasks(self):
         logging.info("Starting tasks...")
-        check_reminders.start(bot)
-        logging.info("Startng the Check Reminders task...")
+        if self.reminders_enabled:
+            check_reminders.start(bot)
+            logging.info("Starting the Check Reminders task...")
+        else:
+            logging.warn("Reminders disabled. Not running check reminders task")
         await asyncio.sleep(30)
         check_loa.start(bot)
         logging.info("Starting the Check LOA task...")
@@ -342,8 +353,11 @@ class Bot(commands.AutoShardedBot):
         sync_weather.start(bot)
         logging.info("Starting the Sync Weather task...")
         await asyncio.sleep(30)
-        iterate_conditions.start(bot)
-        logging.info("Starting the Iterate Conditions task...")
+        if self.actions_enabled:
+            iterate_conditions.start(bot)
+            logging.info("Starting the Iterate Conditions task...")
+        else:
+            logging.info("Actions task is disabled (ACTIONS_ENABLED=FALSE)")
         await asyncio.sleep(30)
         check_infractions.start(bot)
         logging.info("Starting the Check Infractions task...")
@@ -373,7 +387,7 @@ bot.shift_management_disabled = False
 bot.punishments_disabled = False
 bot.bloxlink_api_key = bloxlink_api_key
 environment = config("ENVIRONMENT", default="DEVELOPMENT")
-internal_command_storage = {}
+bot.internal_command_storage = {}
 
 
 def running():
@@ -390,7 +404,7 @@ def running():
 async def AutoDefer(ctx: commands.Context):
     if (
         environment == "CUSTOM"
-        and config("CUSTOM_GUILD_ID", default=None) != 0
+        and config("CUSTOM_GUILD_ID", default="0") != "0"
         and not getattr(ctx.bot, "whitelist_disabled", False)
     ):
         if ctx.guild.id != int(config("CUSTOM_GUILD_ID")):
@@ -420,7 +434,7 @@ async def AutoDefer(ctx: commands.Context):
             )
         raise Exception("Whitelabel bot already in use")
 
-    internal_command_storage[ctx] = datetime.datetime.now(tz=pytz.UTC).timestamp()
+    bot.internal_command_storage[ctx] = datetime.datetime.now(tz=pytz.UTC).timestamp()
     if ctx.command:
         if ctx.command.extras.get("ephemeral") is True:
             if ctx.interaction:
@@ -432,12 +446,12 @@ async def AutoDefer(ctx: commands.Context):
 
 @bot.after_invoke
 async def loggingCommandExecution(ctx: commands.Context):
-    if ctx in internal_command_storage:
+    if ctx in bot.internal_command_storage:
         command_name = ctx.command.qualified_name
 
         duration = float(
             datetime.datetime.now(tz=pytz.UTC).timestamp()
-            - internal_command_storage[ctx]
+            - bot.internal_command_storage[ctx]
         )
         logging.info(
             f"Command {command_name} was run by {ctx.author.name} ({ctx.author.id}) and lasted {duration} seconds"
@@ -448,11 +462,11 @@ async def loggingCommandExecution(ctx: commands.Context):
             else "Shard ID ::: -1, Direct Messages"
         )
         logging.info(shard_info)
+        del bot.internal_command_storage[ctx]
     else:
         logging.info(
             "Command could not be found in internal context storage. Please report."
         )
-    del internal_command_storage[ctx]
 
 
 @bot.event
@@ -491,22 +505,21 @@ client = roblox.Client()
 
 async def staff_check(bot_obj, guild, member):
     guild_settings = await bot_obj.settings.find_by_id(guild.id)
+    member_role_ids = [r.id for r in member.roles]
     if guild_settings:
         if "role" in guild_settings["staff_management"].keys():
             if guild_settings["staff_management"]["role"] != "":
                 if isinstance(guild_settings["staff_management"]["role"], list):
-                    for role in guild_settings["staff_management"]["role"]:
-                        if role in [role.id for role in member.roles]:
+                    for role_id in guild_settings["staff_management"]["role"]:
+                        if role_id in member_role_ids:
                             return True
                 elif isinstance(guild_settings["staff_management"]["role"], int):
-                    if guild_settings["staff_management"]["role"] in [
-                        role.id for role in member.roles
-                    ]:
+                    if guild_settings["staff_management"]["role"] in member_role_ids:
                         return True
-                    
+
     if await admin_check(bot_obj, guild, member):
         return True
-    
+
     if member.guild_permissions.manage_messages:
         return True
     return False
@@ -514,21 +527,20 @@ async def staff_check(bot_obj, guild, member):
 
 async def management_check(bot_obj, guild, member):
     guild_settings = await bot_obj.settings.find_by_id(guild.id)
+    member_role_ids = [r.id for r in member.roles]
     if guild_settings:
         if "management_role" in guild_settings["staff_management"].keys():
             if guild_settings["staff_management"]["management_role"] != "":
                 if isinstance(
                     guild_settings["staff_management"]["management_role"], list
                 ):
-                    for role in guild_settings["staff_management"]["management_role"]:
-                        if role in [role.id for role in member.roles]:
+                    for role_id in guild_settings["staff_management"]["management_role"]:
+                        if role_id in member_role_ids:
                             return True
                 elif isinstance(
                     guild_settings["staff_management"]["management_role"], int
                 ):
-                    if guild_settings["staff_management"]["management_role"] in [
-                        role.id for role in member.roles
-                    ]:
+                    if guild_settings["staff_management"]["management_role"] in member_role_ids:
                         return True
     if member.guild_permissions.manage_guild:
         return True
@@ -537,32 +549,29 @@ async def management_check(bot_obj, guild, member):
 
 async def admin_check(bot_obj, guild, member):
     guild_settings = await bot_obj.settings.find_by_id(guild.id)
+    member_role_ids = [r.id for r in member.roles]
     if guild_settings:
         if "admin_role" in guild_settings["staff_management"].keys():
             if guild_settings["staff_management"]["admin_role"] != "":
                 if isinstance(guild_settings["staff_management"]["admin_role"], list):
-                    for role in guild_settings["staff_management"]["admin_role"]:
-                        if role in [role.id for role in member.roles]:
+                    for role_id in guild_settings["staff_management"]["admin_role"]:
+                        if role_id in member_role_ids:
                             return True
                 elif isinstance(guild_settings["staff_management"]["admin_role"], int):
-                    if guild_settings["staff_management"]["admin_role"] in [
-                        role.id for role in member.roles
-                    ]:
+                    if guild_settings["staff_management"]["admin_role"] in member_role_ids:
                         return True
         if "management_role" in guild_settings["staff_management"].keys():
             if guild_settings["staff_management"]["management_role"] != "":
                 if isinstance(
                     guild_settings["staff_management"]["management_role"], list
                 ):
-                    for role in guild_settings["staff_management"]["management_role"]:
-                        if role in [role.id for role in member.roles]:
+                    for role_id in guild_settings["staff_management"]["management_role"]:
+                        if role_id in member_role_ids:
                             return True
                 elif isinstance(
                     guild_settings["staff_management"]["management_role"], int
                 ):
-                    if guild_settings["staff_management"]["management_role"] in [
-                        role.id for role in member.roles
-                    ]:
+                    if guild_settings["staff_management"]["management_role"] in member_role_ids:
                         return True
     if member.guild_permissions.administrator:
         return True
@@ -668,18 +677,6 @@ try:
 except decouple.UndefinedValueError:
     mongo_url = ""
 
-
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
-intents.voice_states = True
-
-scope = [
-    "https://spreadsheets.google.com/feeds",
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive.file",
-    "https://www.googleapis.com/auth/drive",
-]
 
 credentials_dict = {
     "type": config("TYPE", default=""),

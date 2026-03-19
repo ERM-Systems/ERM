@@ -25,7 +25,7 @@ from utils.prc_api import ServerStatus, Player
 class ArgumentMockingInstance:
     def __init__(self, **kwargs):
         for key, value in kwargs.items():
-            self.key = value
+            setattr(self, key, value)
 
 
 tokenGenerator = ZUID(
@@ -121,17 +121,16 @@ async def get_roblox_by_username(user: str, bot, ctx: commands.Context):
 
 async def staff_check(bot_obj, guild, member):
     guild_settings = await bot_obj.settings.find_by_id(guild.id)
+    member_role_ids = [r.id for r in member.roles]
     if guild_settings:
         if "role" in guild_settings["staff_management"].keys():
             if guild_settings["staff_management"]["role"] != "":
                 if isinstance(guild_settings["staff_management"]["role"], list):
-                    for role in guild_settings["staff_management"]["role"]:
-                        if role in [role.id for role in member.roles]:
+                    for role_id in guild_settings["staff_management"]["role"]:
+                        if role_id in member_role_ids:
                             return True
                 elif isinstance(guild_settings["staff_management"]["role"], int):
-                    if guild_settings["staff_management"]["role"] in [
-                        role.id for role in member.roles
-                    ]:
+                    if guild_settings["staff_management"]["role"] in member_role_ids:
                         return True
     if (
         member.guild_permissions.manage_messages
@@ -143,32 +142,29 @@ async def staff_check(bot_obj, guild, member):
 
 async def admin_check(bot_obj, guild, member):
     guild_settings = await bot_obj.settings.find_by_id(guild.id)
+    member_role_ids = [r.id for r in member.roles]
     if guild_settings:
         if "admin_role" in guild_settings["staff_management"].keys():
             if guild_settings["staff_management"]["admin_role"] != "":
                 if isinstance(guild_settings["staff_management"]["admin_role"], list):
-                    for role in guild_settings["staff_management"]["admin_role"]:
-                        if role in [role.id for role in member.roles]:
+                    for role_id in guild_settings["staff_management"]["admin_role"]:
+                        if role_id in member_role_ids:
                             return True
                 elif isinstance(guild_settings["staff_management"]["admin_role"], int):
-                    if guild_settings["staff_management"]["admin_role"] in [
-                        role.id for role in member.roles
-                    ]:
+                    if guild_settings["staff_management"]["admin_role"] in member_role_ids:
                         return True
         if "management_role" in guild_settings["staff_management"].keys():
             if guild_settings["staff_management"]["management_role"] != "":
                 if isinstance(
                     guild_settings["staff_management"]["management_role"], list
                 ):
-                    for role in guild_settings["staff_management"]["management_role"]:
-                        if role in [role.id for role in member.roles]:
+                    for role_id in guild_settings["staff_management"]["management_role"]:
+                        if role_id in member_role_ids:
                             return True
                 elif isinstance(
                     guild_settings["staff_management"]["management_role"], int
                 ):
-                    if guild_settings["staff_management"]["management_role"] in [
-                        role.id for role in member.roles
-                    ]:
+                    if guild_settings["staff_management"]["management_role"] in member_role_ids:
                         return True
     if member.guild_permissions.administrator:
         return True
@@ -370,7 +366,7 @@ async def sub_vars(bot, ctx: commands.Context, channel, string, **kwargs):
         string = string.replace("{mods}", str(mods))
 
         return string
-    except:
+    except Exception:
         return string
 
 
@@ -504,7 +500,7 @@ async def int_failure_embed(interaction, content, **kwargs):
             **kwargs,
         )
     except discord.InteractionResponded:
-        await interaction.response.send_message(
+        await interaction.followup.send(
             content=f"<:ERMClose:1111101633389146223>  **{interaction.user.name}**, {content}",
             **kwargs,
         )
@@ -517,7 +513,7 @@ async def int_pending_embed(interaction, content, **kwargs):
             **kwargs,
         )
     except discord.InteractionResponded:
-        await interaction.response.send_message(
+        await interaction.followup.send(
             content=f"<:ERMPending:1111097561588183121>  **{interaction.user.name}**, {content}",
             **kwargs,
         )
@@ -540,7 +536,7 @@ async def int_invis_embed(interaction, content, **kwargs):
             **kwargs,
         )
     except discord.InteractionResponded:
-        await interaction.response.send_message(
+        await interaction.followup.send(
             content=f"<:ERMCheck:1111089850720976906>  **{interaction.user.name}**, {content}",
             **kwargs,
         )
@@ -609,15 +605,15 @@ async def fetch_get_channel(target, identifier):
 async def get_discord_by_roblox(bot, username):
     api_url = "https://users.roblox.com/v1/usernames/users"
     payload = {"usernames": [username], "excludeBannedUsers": True}
-    response = requests.post(api_url, json=payload)
-    if response.status_code == 200:
-        data = response.json()["data"][0]
-        id = data["id"]
-        linked_account = await bot.oauth2_users.db.find_one({"roblox_id": id})
-        if linked_account:
-            return linked_account["discord_id"]
-        else:
-            return None
+    async with aiohttp.ClientSession() as session:
+        async with session.post(api_url, json=payload) as response:
+            if response.status == 200:
+                data = (await response.json())["data"][0]
+                roblox_id = data["id"]
+                linked_account = await bot.oauth2_users.db.find_one({"roblox_id": roblox_id})
+                if linked_account:
+                    return linked_account["discord_id"]
+    return None
 
 
 async def log_command_usage(bot, guild, member, command_name):
