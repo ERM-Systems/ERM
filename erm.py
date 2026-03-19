@@ -10,20 +10,7 @@ import asyncio
 
 from datamodels.MapleKeys import MapleKeys
 from datamodels.Whitelabel import Whitelabel
-from tasks.iterate_ics import iterate_ics
-from tasks.check_loa import check_loa
-from tasks.check_reminders import check_reminders
-from tasks.check_infractions import check_infractions
-from tasks.iterate_prc_logs import iterate_prc_logs
-from tasks.tempban_checks import tempban_checks
-from tasks.process_scheduled_pms import process_scheduled_pms
-from tasks.statistics_check import statistics_check
-from tasks.change_status import change_status
-from tasks.check_whitelisted_car import check_whitelisted_car
-from tasks.sync_weather import sync_weather
-from tasks.iterate_conditions import iterate_conditions
-from tasks.prc_automations import prc_automations
-from tasks.mc_discord_checks import mc_discord_checks
+
 from utils.accounts import Accounts
 from utils.emojis import EmojiController
 
@@ -44,6 +31,9 @@ from discord.ext import tasks
 from roblox import client as roblox
 from sentry_sdk import push_scope, capture_exception
 from sentry_sdk.integrations.pymongo import PyMongoIntegration
+from utils.task_loader import start_tasks
+
+
 
 from datamodels.CustomFlags import CustomFlags
 from datamodels.ServerKeys import ServerKeys
@@ -99,15 +89,14 @@ async def rate_limited_fetch(coro, endpoint_type="default"):
             raise
 
 setup = False
+accepted_envs = ["PRODUCTION", "DEVELOPMENT", "ALPHA", "CUSTOM"]
 
-try:
-    sentry_url = config("SENTRY_URL")
-    bloxlink_api_key = config("BLOXLINK_API_KEY")
-except decouple.UndefinedValueError:
-    sentry_url = ""
-    bloxlink_api_key = ""
 
+sentry_url = config("SENTRY_URL", "")
+bloxlink_api_key = config("BLOXLINK_API_KEY", "")
+dbname = config("DB_NAME", "erm").replace("$", "").replace(".", "") # Note that $ and . are forbidden chars
 discord.utils.setup_logging(level=logging.INFO)
+discord.VoiceClient.warn_nacl = False
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -163,20 +152,11 @@ class Bot(commands.AutoShardedBot):
                 )
             )
             self.mongo = motor.motor_asyncio.AsyncIOMotorClient(str(mongo_url))
-            if environment == "DEVELOPMENT":
-                self.db = self.mongo["erm"]
-            elif environment == "PRODUCTION":
-                self.db = self.mongo["erm"]
-            elif environment == "ALPHA":
-                self.db = self.mongo["erm"]
-            elif environment == "CUSTOM":
-                self.db = self.mongo["erm"]
-            else:
-                raise Exception("Invalid environment")
-            
 
+            # The checking for this is defined just before the run method - approx line 649
+            self.db = self.mongo[dbname]
 
-            self.panel_db = self.mongo["UserIdentity"]
+            self.panel_db = self.mongo[f"{f"{dbname}_" if dbname != "erm" else ""}UserIdentity"]
             self.priority_settings = Document(self.panel_db, "PrioritySettings")
             self.staff_requests = Document(self.panel_db, "StaffRequests")
 
@@ -206,7 +186,7 @@ class Bot(commands.AutoShardedBot):
             self.settings = Settings(self.db, "settings")
             self.server_keys = ServerKeys(self.db, "server_keys")
 
-            self.maple_county = self.mongo["MapleCounty"]
+            self.maple_county = self.mongo[f"{f"{dbname}_" if dbname != "erm" else ""}MapleCounty"]
             self.mc_keys = MapleKeys(self.maple_county, "Auth")
 
             self.staff_connections = StaffConnections(self.db, "staff_connections")
@@ -214,7 +194,7 @@ class Bot(commands.AutoShardedBot):
             self.actions = Actions(self.db, "actions")
             self.prohibited = ProhibitedUseKeys(self.db, "prohibited_keys")
             self.saved_logs = SavedLogs(self.db, "saved_logs")
-            self.whitelabel = Whitelabel(self.mongo["ERMProcessing"], "Instances")
+            self.whitelabel = Whitelabel(self.mongo[f"{dbname.upper()}Processing"], "Instances")
 
             self.pending_oauth2 = PendingOAuth2(self.db, "pending_oauth2")
             self.oauth2_users = OAuth2Users(self.db, "oauth2")
@@ -234,7 +214,7 @@ class Bot(commands.AutoShardedBot):
                 base_url=config(
                     "PRC_API_URL", default="https://api.policeroleplay.community/v1"
                 ),
-                api_key=config("PRC_API_KEY", default="default_api_key"),
+                api_key=config("PRC_API_KEY", default=None),
             )
             self.mc_api = MCApiClient(
                 self, base_url=config("MC_API_URL"), api_key=config("MC_API_KEY")
@@ -246,6 +226,7 @@ class Bot(commands.AutoShardedBot):
             BETA_EXT = ["cogs.StaffConduct"]
             EXTERNAL_EXT = ["utils.api"]
             [Extensions.append(i) for i in EXTERNAL_EXT]
+            self.reminders_enabled, self.actions_enabled = True, True
             if config("ACTIONS_ENABLED", default="TRUE").upper() != "TRUE":
                 self.actions_enabled = False
                 Extensions.remove("cogs.Actions")
@@ -266,7 +247,7 @@ class Bot(commands.AutoShardedBot):
                     if extension not in BETA_EXT:
                         await self.load_extension(extension)
                         logging.info(f"Loaded {extension}")
-                    elif environment == "DEVELOPMENT" or environment == "ALPHA":
+                    elif environment in ["DEVELOPMENT", "ALPHA"]:
                         await self.load_extension(extension)
                         logging.info(f"Loaded {extension}")
                 except Exception as e:
@@ -299,7 +280,7 @@ class Bot(commands.AutoShardedBot):
             bot.is_synced = True
 
             # we do this so the bot can get a cache of things before we spam discord with fetches
-            asyncio.create_task(self.start_tasks())
+            asyncio.create_task(start_tasks(self))
             
             async for document in self.views.db.find({}):
                 if document["view_type"] == "LOAMenu":
@@ -317,57 +298,6 @@ class Bot(commands.AutoShardedBot):
                     )
             self.setup_status = True
 
-    async def start_tasks(self):
-        logging.info("Starting tasks...")
-        if self.reminders_enabled:
-            check_reminders.start(bot)
-            logging.info("Starting the Check Reminders task...")
-        else:
-            logging.warn("Reminders disabled. Not running check reminders task")
-        await asyncio.sleep(30)
-        check_loa.start(bot)
-        logging.info("Starting the Check LOA task...")
-        await asyncio.sleep(30)
-        iterate_ics.start(bot)
-        logging.info("Starting the Iterate ICS task...")
-        await asyncio.sleep(30)
-        iterate_prc_logs.start(bot)
-        logging.info("Starting the Iterate PRC Logs task...")
-        await asyncio.sleep(30)
-        statistics_check.start(bot)
-        logging.info("Starting the Statistics Check task...")
-        await asyncio.sleep(30)
-        tempban_checks.start(bot)
-        logging.info("Starting the Tempban Checks task...")
-        await asyncio.sleep(30)
-        check_whitelisted_car.start(bot)
-        logging.info("Starting the Check Whitelisted Car task...")
-        if self.environment != "CUSTOM":
-            await asyncio.sleep(30)
-            change_status.start(bot)
-        logging.info("Starting the Change Status task...")
-        await asyncio.sleep(30)
-        process_scheduled_pms.start(bot)
-        logging.info("Starting the Process Scheduled PMs task...")
-        await asyncio.sleep(30)
-        sync_weather.start(bot)
-        logging.info("Starting the Sync Weather task...")
-        await asyncio.sleep(30)
-        if self.actions_enabled:
-            iterate_conditions.start(bot)
-            logging.info("Starting the Iterate Conditions task...")
-        else:
-            logging.info("Actions task is disabled (ACTIONS_ENABLED=FALSE)")
-        await asyncio.sleep(30)
-        check_infractions.start(bot)
-        logging.info("Starting the Check Infractions task...")
-        await asyncio.sleep(30)
-        prc_automations.start(bot)
-        logging.info("Starting the ER:LC Discord Checks task...")
-        await asyncio.sleep(30)
-        mc_discord_checks.start(bot)
-        logging.info("Starting the MC Discord Checks task...")
-        logging.info("All tasks are now running!")
 
 
 if config("ENVIRONMENT") == "CUSTOM":
@@ -651,31 +581,18 @@ async def warning_json_to_mongo(jsonName: str, guildId: int):
             await bot.warnings.update(structure)
 bot.warning_json_to_mongo = warning_json_to_mongo
 
-# include environment variables
-if environment == "PRODUCTION":
-    bot_token = config("PRODUCTION_BOT_TOKEN")
-    logging.info("Using production token...")
-elif environment == "DEVELOPMENT":
-    try:
-        bot_token = config("DEVELOPMENT_BOT_TOKEN")
-    except decouple.UndefinedValueError:
-        bot_token = ""
-    logging.info("Using development token...")
-elif environment == "ALPHA":
-    try:
-        bot_token = config("ALPHA_BOT_TOKEN")
-    except decouple.UndefinedValueError:
-        bot_token = ""
-    logging.info("Using ERM V4 Alpha token...")
-elif environment == "CUSTOM":
-    bot_token = config("CUSTOM_BOT_TOKEN")
-    logging.info("Using custom bot token...")
+# Note: Changed to not use hardcoded types as if something does change then you don't need to append to an if chain
+if environment in accepted_envs:
+    bot_token = config(f"{environment}_BOT_TOKEN", None)
+    logging.info(f"Using {environment.lower()} bot token")
+    if not bot_token:
+        raise Exception("The environment specified does not have a token associated with it")
 else:
-    raise Exception("Invalid environment")
-try:
-    mongo_url = config("MONGO_URL", default=None)
-except decouple.UndefinedValueError:
-    mongo_url = ""
+    raise Exception("Invalid Environment")
+# Mongo is critical for bot function so it should most definitely error 
+mongo_url = config("MONGO_URL", default=None)
+if not mongo_url:
+    raise Exception("Missing MongoDB URL")
 
 
 credentials_dict = {
