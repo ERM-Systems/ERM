@@ -131,7 +131,7 @@ class PRCApiClient:
         max_retries: int = 2,
     ):
 
-        global_key = config("PRC_GLOBAL_KEY", default=None)
+        global_key = self.api_key
         use_global_key = bool(global_key)
         if not key:
             internal_server_object = await self.get_server_key(guild_id)
