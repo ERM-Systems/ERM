@@ -270,10 +270,26 @@ async def user_autocomplete(
         )
     return choices
 
+async def infraction_type_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> typing.List[app_commands.Choice[str]]:
+    """Get all infraction types configured for the server"""
+    settings = await interaction.client.settings.find_by_id(interaction.guild.id)
+    if not settings or "infractions" not in settings:
+        return []
 
-def infraction_type_autocomplete(
+    infraction_types = []
+    for infraction in settings["infractions"].get("infractions", []):
+        name = infraction.get("name")
+        if name:
+            infraction_types.append(app_commands.Choice(name=name, value=name))
+
+    return infraction_types[:25]  # Discord limits to max 25 choices
+
+
+def infraction_type_autocomplete_special(
     guild, client
-) -> typing.List[discord.SelectMenu[str]]:
+):
     """Get all infraction types configured for the server"""
     settings = asyncio.run(client.settings.find_by_id(guild))
     if not settings or "infractions" not in settings:
