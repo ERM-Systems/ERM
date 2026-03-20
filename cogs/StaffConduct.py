@@ -1,3 +1,6 @@
+
+# Staff conduct is borked. Nothing saves so it needs to be redone, so I'm disabling infractions until they work properly.
+
 import datetime
 import discord
 import pytz
@@ -43,7 +46,7 @@ class StaffConduct(commands.Cog):
         else:
             return 0
 
-    @commands.hybrid_group(
+    '''@commands.hybrid_group(
         name="infraction",
         description="Manage infractions with ease!",
         extras={"category": "Staff Conduct"},
@@ -52,7 +55,7 @@ class StaffConduct(commands.Cog):
     async def infraction(self, ctx: commands.Context):
         pass
 
-    @infraction.command(
+    # @infraction.command(
         name="manage",
         description="Manage staff infractions, staff conduct, and custom integrations!",
         extras={"category": "Staff Conduct"},
@@ -207,6 +210,7 @@ class StaffConduct(commands.Cog):
                 value = view.value
             # WE NEED TO MAKE THESE MESSAGES MORE NOTICABLE FOR WHICH YOU PICKED
             # noticeable* 🤓
+            # lol
             for item in value:
                 if item == "add_role":  # Add to Database
                     await message.edit(
@@ -342,7 +346,7 @@ a user upon receiving a **{infraction_type_name}**."
             await self.bot.settings.update_by_id(guild_settings)
             await ctx.reply(
                 f"{successEmoji} **{ctx.author.name},** I deleted your Staff Conduct configuration."
-            )
+            )'''
 
 
 async def setup(bot):

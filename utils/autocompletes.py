@@ -8,7 +8,7 @@ from discord.ext import commands
 from discord.ext.commands import Context
 import utils.prc_api
 from erm import Bot
-
+import asyncio
 
 async def shift_type_autocomplete(
     interaction: discord.Interaction, _: str
@@ -271,11 +271,11 @@ async def user_autocomplete(
     return choices
 
 
-async def infraction_type_autocomplete(
-    interaction: discord.Interaction, current: str
-) -> typing.List[app_commands.Choice[str]]:
+def infraction_type_autocomplete(
+    guild, client
+) -> typing.List[discord.SelectMenu[str]]:
     """Get all infraction types configured for the server"""
-    settings = await interaction.client.settings.find_by_id(interaction.guild.id)
+    settings = asyncio.run(client.settings.find_by_id(guild))
     if not settings or "infractions" not in settings:
         return []
 
@@ -283,6 +283,6 @@ async def infraction_type_autocomplete(
     for infraction in settings["infractions"].get("infractions", []):
         name = infraction.get("name")
         if name:
-            infraction_types.append(app_commands.Choice(name=name, value=name))
+            infraction_types.append(discord.SelectOption(label=name, value=name))
 
     return infraction_types[:25]  # Discord limits to max 25 choices
