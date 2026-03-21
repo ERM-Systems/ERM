@@ -1,6 +1,3 @@
-
-# Staff conduct is borked. Nothing saves so it needs to be redone, so I'm disabling infractions until they work properly.
-
 import datetime
 import discord
 import pytz
