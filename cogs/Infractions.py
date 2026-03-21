@@ -10,7 +10,7 @@ from erm import is_staff, management_predicate, is_management
 from utils.constants import BLANK_COLOR
 from utils.paginators import SelectPagination, CustomPage
 from utils.utils import require_settings, get_roblox_by_username
-from utils.autocompletes import user_autocomplete, infraction_type_autocomplete
+from utils.autocompletes import infraction_type_autocomplete_special
 
 
 class Infractions(commands.Cog):
@@ -25,7 +25,7 @@ class Infractions(commands.Cog):
 
         manager_roles = settings["infractions"].get("manager_roles", [])
         return any(role.id in manager_roles for role in ctx.author.roles)
-'''
+
     class InfractionsModal(discord.ui.Modal):
         def __init__(self, bot, guild):
             super().__init__(title = "Create Infraction")
@@ -44,7 +44,7 @@ class Infractions(commands.Cog):
                 component=discord.ui.Select(
                     placeholder="Select an infraction type",
                     max_values=1,
-                    options = infraction_type_autocomplete(guild, bot)
+                    options = infraction_type_autocomplete_special(guild, bot)
                 )
             )
 
@@ -61,7 +61,7 @@ class Infractions(commands.Cog):
                 description="Enter some notes. This is optional",
                 component=discord.ui.TextInput(style=discord.TextStyle.paragraph, placeholder="Enter some notes", required=False)
             )
-
+            self.add_item(self.users).add_item(self.type).add_item(self.reason).add_item(self.notes)
         async def on_submit(self, interaction: discord.Interaction):
             await interaction.response.defer()
 
@@ -277,7 +277,7 @@ class Infractions(commands.Cog):
             await ctx.send(embed=embeds[0])
 
     @commands.guild_only()
-    @commands.hybrid_command(name="infract", description="Issue an infraction to a user")
+    @commands.hybrid_command(name="infract", description="Issue an infraction to a user", extras={"ignoreDefer": True})
     @is_staff()
     @require_settings()
 
@@ -321,9 +321,14 @@ class Infractions(commands.Cog):
                     color=BLANK_COLOR
                 )
             )
-        target_id = user.id
-        target_name = user.name
 
+
+        modal = self.InfractionsModal(self.bot, ctx.interaction.guild.id)
+        await ctx.interaction.response.send_modal(modal)
+        await modal.wait()
+        type = modal.type.component.values[0]
+        reason = modal.reason.component.value
+        notes = modal.notes.component.value
         infraction_config = next(
             (
                 inf
@@ -332,23 +337,6 @@ class Infractions(commands.Cog):
             ),
             None,
         )
-
-        if not infraction_config:
-            return await ctx.send(
-                embed=discord.Embed(
-                    title="Invalid Type",
-                    description="This infraction type does not exist.",
-                    color=BLANK_COLOR,
-                ),
-                ephemeral=True,
-            )
-        modal = self.InfractionsModal(self.bot, ctx.interaction.guild.id)
-        await ctx.interaction.response.send_modal(modal)
-        await modal.wait()
-        type = modal.type.component.values[0]
-        reason = modal.reason.component.value
-        notes = modal.notes.component.value
-
         will_escalate = False
         existing_count = 0
         original_type = type
@@ -560,7 +548,7 @@ class Infractions(commands.Cog):
                     color=BLANK_COLOR,
                 )
             )
-'''
+
 
 async def setup(bot):
     await bot.add_cog(Infractions(bot))

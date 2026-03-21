@@ -58,6 +58,7 @@ from datamodels.PendingOAuth2 import PendingOAuth2
 from datamodels.OAuth2Users import OAuth2Users
 from datamodels.IntegrationCommandStorage import IntegrationCommandStorage
 from datamodels.SavedLogs import SavedLogs
+
 from menus import CompleteReminder, LOAMenu, RDMActions
 from utils.viewstatemanger import ViewStateManager
 from utils.bloxlink import Bloxlink
@@ -95,8 +96,10 @@ accepted_envs = ["PRODUCTION", "DEVELOPMENT", "ALPHA", "CUSTOM"]
 sentry_url = config("SENTRY_URL", "")
 bloxlink_api_key = config("BLOXLINK_API_KEY", "")
 dbname = config("DB_NAME", "erm").replace("$", "").replace(".", "") # Note that $ and . are forbidden chars
+
 discord.utils.setup_logging(level=logging.INFO)
 discord.VoiceClient.warn_nacl = False
+discord.VoiceClient.warn_dave = False
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -185,7 +188,6 @@ class Bot(commands.AutoShardedBot):
             self.punishments = Warnings(self)
             self.settings = Settings(self.db, "settings")
             self.server_keys = ServerKeys(self.db, "server_keys")
-
             self.maple_county = self.mongo[f"{f"{dbname}_" if dbname != "erm" else ""}MapleCounty"]
             self.mc_keys = MapleKeys(self.maple_county, "Auth")
 
