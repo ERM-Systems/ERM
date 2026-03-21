@@ -352,11 +352,11 @@ class Infractions(commands.Cog):
             target_name = user.name
             target_id = user.id
             # Create infraction document
-
+            
             if infraction_config.get("escalation"):
                 while True:
-                    threshold = infraction_config["escalation"].get("threshold", 0)
-                    next_infraction = infraction_config["escalation"].get("next_infraction")
+                    threshold = infraction_config.get("escalation", {}).get("threshold", 0)
+                    next_infraction = infraction_config.get("escalation", {}).get("next_infraction")
 
                     if not threshold or not next_infraction:
                         break

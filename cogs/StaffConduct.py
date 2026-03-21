@@ -184,6 +184,7 @@ class StaffConduct(commands.Cog):
                 base_type = base_infraction_type
                 base_type["name"] = infraction_type_name
                 guild_settings["infractions"]["infractions"].append(base_type)
+                
             elif view.value == "finish":
                 await message.edit(
                     content=f"{successEmoji} **{ctx.author.name},** have a great day!",
@@ -194,7 +195,9 @@ class StaffConduct(commands.Cog):
             else:
                 infraction_type_name = view.value
                 base_type = [type for type in guild_settings["infractions"]["infractions"] if type["name"] == infraction_type_name][0]
-            
+                
+
+            index = guild_settings["infractions"]["infractions"].index(base_type)
             # This continuously iterates until they're done with this type. The view will probably expire before then so oh well...
             while True:
                 await message.edit(
@@ -378,9 +381,12 @@ class StaffConduct(commands.Cog):
                             "next_infraction": type
                         }
                     case "finish":
+                        guild_settings["infractions"]["infractions"][index] = base_type
                         try:
                             await self.bot.settings.update(guild_settings)
-                        except ValueError: # If nothing changes this loves to error out. idk why but don't ask me, probably a pymongo thing
+                        except KeyError: # If nothing changes this loves to error out. idk why but don't ask me, probably a pymongo thing
+                            guild_settings["_id"] = ctx.guild.id
+                            await self.bot.settings.update(guild_settings)
                             logging.warning("_id failure")
                             pass
                         await message.edit(
