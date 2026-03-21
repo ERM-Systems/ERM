@@ -42,7 +42,10 @@ class ShiftLogging(commands.Cog):
         self.bot = bot
 
     @commands.hybrid_group(
-        name="duty"
+        name="duty",
+        aliases=[
+            "shifts"
+        ]
     ) # hey, maybe dont delete this next time noagonzales.
     async def duty(self, ctx):
         pass
