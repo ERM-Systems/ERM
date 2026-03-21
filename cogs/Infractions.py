@@ -1,5 +1,3 @@
-# Infractions are borked and the settings don't save. I'm disabling this module until I actually fix it.
-
 import datetime
 import discord
 import pytz
