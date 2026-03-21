@@ -20,7 +20,12 @@ from menus import (
     ChannelSelect,
 )
 from erm import Bot
-from utils.constants import base_infraction_type as base_type
+from utils.constants import base_infraction_type
+from utils.autocompletes import infraction_type_autocomplete_special
+import asyncio
+import logging
+
+
 successEmoji = "<:ERMCheck:1111089850720976906>"
 pendingEmoji = "<:ERMPending:1111097561588183121>"
 errorEmoji = "<:ERMClose:1111101633389146223>"
@@ -30,6 +35,9 @@ embedColour = 0xED4348
 class StaffConduct(commands.Cog):
     def __init__(self, bot):
         self.bot: Bot = bot
+
+
+    
 
     async def check_settings(self, ctx: commands.Context):
         error_text = "<:ERMClose:1111101633389146223> **{},** this server isn't setup with ERM! Please run `/setup` to setup the bot before trying to manage infractions".format(
@@ -65,16 +73,19 @@ class StaffConduct(commands.Cog):
     async def manage(self, ctx: commands.Context):
         bot = self.bot
         guild_settings = await bot.settings.find_by_id(ctx.guild.id)
-        guild_settings["infractions"] = {"infractions": []}
+        
         result = await self.check_settings(ctx)
         if result == -1:
             return
         first_time_setup = bool(not result)
-
+        message = await ctx.reply(
+            f"{pendingEmoji} **{ctx.author.name},** welcome to the set-up for **staff conduct**! Please wait while your experience loads.",
+        )
         if first_time_setup:
+            guild_settings["infractions"] = {"infractions": []}
             view = YesNoExpandedMenu(ctx.author.id)
-            message = await ctx.reply(
-                f"{pendingEmoji} **{ctx.author.name},** it looks like your server hasn't setup **Staff Conduct**! Do you want to run the **First-time Setup** wizard?",
+            await message.edit(
+                content=f"{pendingEmoji} **{ctx.author.name},** it looks like your server hasn't setup **Staff Conduct**! Do you want to run the **First-time Setup** wizard?",
                 view=view,
             )
             timeout = await view.wait()
@@ -125,36 +136,66 @@ class StaffConduct(commands.Cog):
             timeout = await view.wait()
             if timeout or not view.value:
                 return
-            
+        while True:
+            ac = await infraction_type_autocomplete_special(ctx.guild.id, bot)
+            values = [
+                discord.SelectOption(label = "Add Item", value = "add", emoji="<:ERMAdd:1113207792854106173>"),
+                
+            ]
+            values += ac
             await message.edit(
-                content=f"{pendingEmoji} **{ctx.author.name},** let's begin!",
+                content=f"{pendingEmoji} **{ctx.author.name},** select an option from the dropdown in order to configure the bot!!",
                 embed=None,
                 view=(
-                    view := CustomModalView(
+                    view := CustomSelectMenu(
                         ctx.author.id,
-                        "Add an Infraction Type",
-                        "Add Infraction Type",
-                        [
-                            (
-                                "type_name",
-                                discord.ui.TextInput(
-                                    placeholder="e.g. Strike, Termination, Suspension, Blacklist",
-                                    label="Name of Infraction Type",
-                                ),
-                            )
-                        ],
+                        options = values,
+                        limit=1
                     )
                 ),
             )
             timeout = await view.wait()
             if timeout:
                 return
-
-            try:
-                infraction_type_name = view.modal.type_name.value
-            except AttributeError:
-                return
-            base_type["name"] = infraction_type_name
+            if view.value == "add":
+                await message.edit(
+                    content=f"{pendingEmoji} **{ctx.author.name},** let's begin!",
+                    embed=None,
+                    view=(
+                        view := CustomModalView(
+                            ctx.author.id,
+                            "Add an Infraction Type",
+                            "Add Infraction Type",
+                            [
+                                (
+                                    "type_name",
+                                    discord.ui.TextInput(
+                                        placeholder="e.g. Strike, Termination, Suspension, Blacklist",
+                                        label="Name of Infraction Type",
+                                    ),
+                                )
+                            ],
+                        )
+                    ),
+                )
+                await view.wait()
+                if any(type["name"] == view.modal.type_name.value for type in guild_settings["infractions"]["infractions"]):
+                    return await message.edit(
+                        content = f"**{ctx.author.name},** this infraction type already exists"
+                    )
+                try:
+                    infraction_type_name = view.modal.type_name.value
+                except AttributeError:
+                    return
+                base_type = base_infraction_type
+                base_type["name"] = infraction_type_name
+                guild_settings["infractions"]["infractions"].append(base_type)
+                old_base_type = base_type
+                await self.bot.settings.update_by_id(guild_settings)
+            else:
+                infraction_type_name = view.value
+                base_type = [type for type in guild_settings["infractions"]["infractions"] if type["name"] == infraction_type_name][0]
+                old_base_type = base_type
             while True:
                 await message.edit(
                     content=f"{pendingEmoji} **{ctx.author.name},** what actions do you want to add to **{infraction_type_name}**?",
@@ -181,6 +222,12 @@ class StaffConduct(commands.Cog):
                                     value="send_message",
                                 ),
                                 discord.SelectOption(
+                                    label="Escalate",
+                                    description="Escalate this infraction if too many of them occur",
+                                    emoji="<:ERMLog:1113210855891423302>",
+                                    value="escalate",
+                                ),
+                                discord.SelectOption(
                                     label = "Finish",
                                     description="Finish setting up this infraction type",
                                     value = "finish"
@@ -194,14 +241,14 @@ class StaffConduct(commands.Cog):
 
                 value: list | None = None
                 if isinstance(view.value, str):
-                    value = [view.value]
-                elif isinstance(view.value, list):
                     value = view.value
+                elif isinstance(view.value, list):
+                    value = view.value[0]
                 # WE NEED TO MAKE THESE MESSAGES MORE NOTICABLE FOR WHICH YOU PICKED
                 # noticeable* 🤓
                 # lol
-                for item in value:
-                    if item == "add_role":  # Add to Database
+                match value:
+                    case "add_role":  # Add to Database
                         await message.edit(
                             content=f"{pendingEmoji} **{ctx.author.name},** what roles do you wish to be assigned when \
                         a user receives a **{infraction_type_name}**?",
@@ -210,7 +257,7 @@ class StaffConduct(commands.Cog):
                         await view.wait()
                         addRoleList = [role.id for role in view.value]
                         base_type["role_changes"]["add"]["roles"] = addRoleList
-                    elif item == "remove_role":  # Add to Database
+                    case "remove_role":  # Add to Database
                         await message.edit(
                             content=f"{pendingEmoji} **{ctx.author.name},** what roles do you wish to be removed when \
     a user receives a **{infraction_type_name}**?",
@@ -220,8 +267,7 @@ class StaffConduct(commands.Cog):
                         removeRoleList = [role.id for role in view.value]
                         base_type["role_changes"]["add"]["roles"] = removeRoleList
 
-                    
-                    elif item == "send_message":  # Add to Database
+                    case "send_message":  # Add to Database
                         constant_msg_data = None
                         # Get Channel(s) to Send Message To
                         await message.edit(
@@ -264,42 +310,81 @@ class StaffConduct(commands.Cog):
                         base_type["notifications"]["dm"] = constant_msg_data
                         base_type["notifications"]["dm"]["enabled"] = True
 
-                    elif item == "send_escalation":  # Add to Database
+                    case "escalate":
+                        types = await infraction_type_autocomplete_special(ctx.guild.id, bot)
+                        print(types)
+                        type = infraction_type_name
+                        print(type)
+                        while type == infraction_type_name:
+                            await message.edit(
+                                content=f"{pendingEmoji} **{ctx.author.name},** what infraction type should this escalate to?.",
+                                view=(view := CustomSelectMenu(
+                                    ctx.author.id,
+                                    types
+                                    )
+                                ),)
+                            await view.wait()
+                            type = view.value
+                            if type == infraction_type_name:
+                                await message.edit(
+                                    content=f"{pendingEmoji} **{ctx.author.name},** an infraction type cannot escalate to the same infraction type!.",view=None
+                                )
+                                await asyncio.sleep(2)
+
+                        
                         await message.edit(
-                            content=f"{pendingEmoji} **{ctx.author.name},** please select the channel you wish to send an escalation request to upon a user recieving a **{infraction_type_name}**.",
-                            view=(view := ChannelSelect(ctx.author.id, limit=1)),
+                            content=f"{pendingEmoji} **{ctx.author.name},** how many infractions of the infraction type you're editing should be issued for this user before it's escalated?",
+                            view = (view := CustomModalView(
+                                ctx.author.id,
+                                "Change threshold",
+                                "Enter an infraction threshold",
+                                [
+                                    (
+                                        "threshold",
+                                        discord.ui.TextInput(label="Enter the threshold as a number only", style=discord.TextStyle.short)
+                                    )
+                                ]
+                            ))
                         )
                         await view.wait()
-                        # print(view.value)
-                        await message.edit(
-                            content=f"{pendingEmoji} **{ctx.author.name},** should the member responsible for issuing the infraction that triggers an escalation request also have the authority to approve the escalation request? **{infraction_type_name}**.",
-                            view=(view := YesNoMenu(ctx.author.id)),
-                        )
-                        # print(view.value)
-                    elif item == "finish":
-                        guild_settings["infractions"]["infractions"].append(base_type)
-                        await self.bot.settings.update_by_id(guild_settings)
+                        while True:
+                            try:
+                                threshold = int(view.modal.threshold.value)
+                                break
+                            except TypeError:
+                                await message.edit(
+                                    content=f"{pendingEmoji} **{ctx.author.name},** the value you entered is not a number. How many infractions of the infraction type you're editing should be issued for this user before it's escalated?",
+                                    view = (view := CustomModalView(
+                                        ctx.author.id,
+                                        "Change threshold",
+                                        "Enter an infraction threshold",
+                                        [
+                                            (
+                                                "threshold",
+                                                discord.ui.TextInput(style=discord.TextStyle.short)
+                                            )
+                                        ]
+                                    ))
+                                )
+                                await view.wait()
+                        base_type["escalation"] = {
+                            "threshold": threshold,
+                            "next_infraction": type
+                        }
+                    case "finish":
+                        try:
+                            await self.bot.settings.update(guild_settings)
+                        except ValueError: # Badly detects id
+                            logging.warning("_id failure")
+                            pass
                         await message.edit(
                             content=f"{successEmoji} **{infraction_type_name}** has been successfully submitted!",
                             view=None,
                             embed=None,
                         )
                         break
-                else:
-                    guild_settings["infractions"]["infractions"].append(base_type)
-                    await self.bot.settings.update_by_id(guild_settings)
-                    await message.edit(
-                        content=f"{successEmoji} **{infraction_type_name}** has been successfully submitted!",
-                        view=None,
-                        embed=None,
-                    )
 
-        else:
-            del guild_settings["infractions"]
-            await self.bot.settings.update_by_id(guild_settings)
-            await ctx.reply(
-                f"{successEmoji} **{ctx.author.name},** I deleted your Staff Conduct configuration."
-            )
+
 
 
 async def setup(bot):

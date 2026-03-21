@@ -287,11 +287,11 @@ async def infraction_type_autocomplete(
     return infraction_types[:25]  # Discord limits to max 25 choices
 
 
-def infraction_type_autocomplete_special(
+async def infraction_type_autocomplete_special(
     guild, client
 ):
     """Get all infraction types configured for the server"""
-    settings = asyncio.run(client.settings.find_by_id(guild))
+    settings = await client.settings.find_by_id(guild)
     if not settings or "infractions" not in settings:
         return []
 
@@ -300,5 +300,5 @@ def infraction_type_autocomplete_special(
         name = infraction.get("name")
         if name:
             infraction_types.append(discord.SelectOption(label=name, value=name))
-
+    print(infraction_types)
     return infraction_types[:25]  # Discord limits to max 25 choices

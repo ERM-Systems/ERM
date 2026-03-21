@@ -27,7 +27,7 @@ class Infractions(commands.Cog):
         return any(role.id in manager_roles for role in ctx.author.roles)
 
     class InfractionsModal(discord.ui.Modal):
-        def __init__(self, bot, guild):
+        def __init__(self, bot, guild, options):
             super().__init__(title = "Create Infraction")
 
             # User Object
@@ -44,7 +44,7 @@ class Infractions(commands.Cog):
                 component=discord.ui.Select(
                     placeholder="Select an infraction type",
                     max_values=1,
-                    options = infraction_type_autocomplete_special(guild, bot)
+                    options = options
                 )
             )
 
@@ -322,8 +322,9 @@ class Infractions(commands.Cog):
                 )
             )
 
+        options = infraction_type_autocomplete_special(ctx.guild.id, self.bot)
 
-        modal = self.InfractionsModal(self.bot, ctx.interaction.guild.id)
+        modal = self.InfractionsModal(self.bot, ctx.interaction.guild.id, options)
         await ctx.interaction.response.send_modal(modal)
         await modal.wait()
         type = modal.type.component.values[0]
