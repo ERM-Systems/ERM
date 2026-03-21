@@ -36,16 +36,12 @@ class StaffConduct(commands.Cog):
     def __init__(self, bot):
         self.bot: Bot = bot
 
-
     
-
     async def check_settings(self, ctx: commands.Context):
         error_text = "<:ERMClose:1111101633389146223> **{},** this server isn't setup with ERM! Please run `/setup` to setup the bot before trying to manage infractions".format(
             ctx.author.name
         )
         guild_settings = await self.bot.settings.find_by_id(ctx.guild.id)
-        # print(guild_settings)
-        # print(guild_settings.get('staff_conduct'))
         if not guild_settings:
             await ctx.reply(error_text)
             return -1
@@ -79,8 +75,9 @@ class StaffConduct(commands.Cog):
             return
         first_time_setup = bool(not result)
         message = await ctx.reply(
-            f"{pendingEmoji} **{ctx.author.name},** welcome to the set-up for **staff conduct**! Please wait while your experience loads.",
+            f"{pendingEmoji} **{ctx.author.name},** welcome to the set-up for **Staff Conduct**! Please wait while your experience loads.",
         )
+        # I'm going to kill whoever made it so you can't edit your already made config for staff conduct. you made my life harder
         if first_time_setup:
             guild_settings["infractions"] = {"infractions": []}
             view = YesNoExpandedMenu(ctx.author.id)
@@ -159,7 +156,7 @@ class StaffConduct(commands.Cog):
                 return
             if view.value == "add":
                 await message.edit(
-                    content=f"{pendingEmoji} **{ctx.author.name},** let's begin!",
+                    content=f"{pendingEmoji} **{ctx.author.name},** click the button below!",
                     embed=None,
                     view=(
                         view := CustomModalView(
@@ -200,7 +197,8 @@ class StaffConduct(commands.Cog):
             else:
                 infraction_type_name = view.value
                 base_type = [type for type in guild_settings["infractions"]["infractions"] if type["name"] == infraction_type_name][0]
-                old_base_type = base_type
+            
+            # This continuously iterates until they're done with this type. The view will probably expire before then so oh well...
             while True:
                 await message.edit(
                     content=f"{pendingEmoji} **{ctx.author.name},** what actions do you want to add to **{infraction_type_name}**?",
@@ -253,8 +251,10 @@ class StaffConduct(commands.Cog):
                 # WE NEED TO MAKE THESE MESSAGES MORE NOTICABLE FOR WHICH YOU PICKED
                 # noticeable* 🤓
                 # lol
+
+                # Idk who's idea it was to use an if chain here but now it's match-case
                 match value:
-                    case "add_role":  # Add to Database
+                    case "add_role":
                         await message.edit(
                             content=f"{pendingEmoji} **{ctx.author.name},** what roles do you wish to be assigned when \
                         a user receives a **{infraction_type_name}**?",
@@ -263,7 +263,7 @@ class StaffConduct(commands.Cog):
                         await view.wait()
                         addRoleList = [role.id for role in view.value]
                         base_type["role_changes"]["add"]["roles"] = addRoleList
-                    case "remove_role":  # Add to Database
+                    case "remove_role":  # Add to Database. I'VE ADDED IT TO DATABASE BUDDY
                         await message.edit(
                             content=f"{pendingEmoji} **{ctx.author.name},** what roles do you wish to be removed when \
     a user receives a **{infraction_type_name}**?",
@@ -273,7 +273,7 @@ class StaffConduct(commands.Cog):
                         removeRoleList = [role.id for role in view.value]
                         base_type["role_changes"]["add"]["roles"] = removeRoleList
 
-                    case "send_message":  # Add to Database
+                    case "send_message":
                         constant_msg_data = None
                         # Get Channel(s) to Send Message To
                         await message.edit(
@@ -355,13 +355,14 @@ class StaffConduct(commands.Cog):
                             ))
                         )
                         await view.wait()
+                        # i dont think unknown will like this :(
                         while True:
                             try:
                                 threshold = int(view.modal.threshold.value)
                                 break
                             except TypeError:
                                 await message.edit(
-                                    content=f"{pendingEmoji} **{ctx.author.name},** the value you entered is not a number. How many infractions of the infraction type you're editing should be issued for this user before it's escalated?",
+                                    content=f"{errorEmoji} **{ctx.author.name},** the value you entered is not a number. How many infractions of the infraction type you're editing should be issued for this user before it's escalated?",
                                     view = (view := CustomModalView(
                                         ctx.author.id,
                                         "Change threshold",
@@ -382,7 +383,7 @@ class StaffConduct(commands.Cog):
                     case "finish":
                         try:
                             await self.bot.settings.update(guild_settings)
-                        except ValueError: # Badly detects id
+                        except ValueError: # If nothing changes this loves to error out. idk why but don't ask me, probably a pymongo thing
                             logging.warning("_id failure")
                             pass
                         await message.edit(
@@ -391,9 +392,6 @@ class StaffConduct(commands.Cog):
                             embed=None,
                         )
                         break
-
-
-
 
 async def setup(bot):
     await bot.add_cog(StaffConduct(bot))
