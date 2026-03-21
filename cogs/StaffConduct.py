@@ -230,6 +230,13 @@ class StaffConduct(commands.Cog):
                                     emoji="<:ERMLog:1113210855891423302>",
                                     value="escalate",
                                 ),
+                                
+                                discord.SelectOption(
+                                    label="Delete",
+                                    description="Delete this infraction type",
+                                    emoji=errorEmoji,
+                                    value="delete",
+                                ),
                                 discord.SelectOption(
                                     label = "Finish",
                                     description="Finish setting up this infraction type",
@@ -380,6 +387,19 @@ class StaffConduct(commands.Cog):
                             "threshold": threshold,
                             "next_infraction": type
                         }
+                    case "delete":
+                        guild_settings["infractions"]["infractions"].pop(index)
+                        try:
+                            await self.bot.settings.update(guild_settings)
+                        except KeyError:
+                            guild_settings["_id"] = ctx.guild.id
+                            await self.bot.settings.update(guild_settings)
+                        await message.edit(
+                            content=f"{successEmoji} **{infraction_type_name}** has been successfully deleted!",
+                            view=None,
+                            embed=None,
+                        )
+                        break
                     case "finish":
                         guild_settings["infractions"]["infractions"][index] = base_type
                         try:
@@ -388,7 +408,6 @@ class StaffConduct(commands.Cog):
                             guild_settings["_id"] = ctx.guild.id
                             await self.bot.settings.update(guild_settings)
                             logging.warning("_id failure")
-                            pass
                         await message.edit(
                             content=f"{successEmoji} **{infraction_type_name}** has been successfully submitted!",
                             view=None,
