@@ -322,7 +322,7 @@ class Infractions(commands.Cog):
                 )
             )
 
-        options = infraction_type_autocomplete_special(ctx.guild.id, self.bot)
+        options = await infraction_type_autocomplete_special(ctx.guild.id, self.bot)
 
         modal = self.InfractionsModal(self.bot, ctx.interaction.guild.id, options)
         await ctx.interaction.response.send_modal(modal)

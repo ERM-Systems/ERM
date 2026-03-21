@@ -141,10 +141,10 @@ class StaffConduct(commands.Cog):
             values = [
                 discord.SelectOption(label = "Add Item", value = "add", emoji="<:ERMAdd:1113207792854106173>"),
                 
-            ]
-            values += ac
+            ] + ac
+            values += [discord.SelectOption(label = "Finish", value = "finish", emoji = successEmoji)]
             await message.edit(
-                content=f"{pendingEmoji} **{ctx.author.name},** select an option from the dropdown in order to configure the bot!!",
+                content=f"{pendingEmoji} **{ctx.author.name},** select an option from the dropdown in order to configure the bot!",
                 embed=None,
                 view=(
                     view := CustomSelectMenu(
@@ -181,7 +181,7 @@ class StaffConduct(commands.Cog):
                 await view.wait()
                 if any(type["name"] == view.modal.type_name.value for type in guild_settings["infractions"]["infractions"]):
                     return await message.edit(
-                        content = f"**{ctx.author.name},** this infraction type already exists"
+                        content = f"{errorEmoji} **{ctx.author.name},** this infraction type already exists"
                     )
                 try:
                     infraction_type_name = view.modal.type_name.value
@@ -190,8 +190,13 @@ class StaffConduct(commands.Cog):
                 base_type = base_infraction_type
                 base_type["name"] = infraction_type_name
                 guild_settings["infractions"]["infractions"].append(base_type)
-                old_base_type = base_type
-                await self.bot.settings.update_by_id(guild_settings)
+            elif view.value == "finish":
+                await message.edit(
+                    content=f"{successEmoji} **{ctx.author.name},** have a great day!",
+                    embed=None,
+                    view=None
+                )
+                return
             else:
                 infraction_type_name = view.value
                 base_type = [type for type in guild_settings["infractions"]["infractions"] if type["name"] == infraction_type_name][0]
@@ -230,7 +235,8 @@ class StaffConduct(commands.Cog):
                                 discord.SelectOption(
                                     label = "Finish",
                                     description="Finish setting up this infraction type",
-                                    value = "finish"
+                                    value = "finish",
+                                    emoji = successEmoji
                                 )
                             ],
                         )
@@ -311,10 +317,8 @@ class StaffConduct(commands.Cog):
                         base_type["notifications"]["dm"]["enabled"] = True
 
                     case "escalate":
-                        types = await infraction_type_autocomplete_special(ctx.guild.id, bot)
-                        print(types)
+                        types = await infraction_type_autocomplete_special(ctx.guild.id, bot) + [discord.SelectOption(label="Back", description="Head back to the previous menu", value="back")]
                         type = infraction_type_name
-                        print(type)
                         while type == infraction_type_name:
                             await message.edit(
                                 content=f"{pendingEmoji} **{ctx.author.name},** what infraction type should this escalate to?.",
@@ -323,15 +327,19 @@ class StaffConduct(commands.Cog):
                                     types
                                     )
                                 ),)
+                            
                             await view.wait()
                             type = view.value
+                            if type == "back":
+                                break
                             if type == infraction_type_name:
                                 await message.edit(
-                                    content=f"{pendingEmoji} **{ctx.author.name},** an infraction type cannot escalate to the same infraction type!.",view=None
+                                    content=f"{errorEmoji} **{ctx.author.name},** an infraction type cannot escalate to the same infraction type!.",view=None
                                 )
                                 await asyncio.sleep(2)
 
-                        
+                        if type == "back":
+                            continue
                         await message.edit(
                             content=f"{pendingEmoji} **{ctx.author.name},** how many infractions of the infraction type you're editing should be issued for this user before it's escalated?",
                             view = (view := CustomModalView(

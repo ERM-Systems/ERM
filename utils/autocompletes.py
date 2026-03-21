@@ -299,6 +299,6 @@ async def infraction_type_autocomplete_special(
     for infraction in settings["infractions"].get("infractions", []):
         name = infraction.get("name")
         if name:
-            infraction_types.append(discord.SelectOption(label=name, value=name))
-    print(infraction_types)
+            infraction_types.append(discord.SelectOption(label=name, value=name, emoji="<:ERMArrow:1120534523181027358>"))
+
     return infraction_types[:25]  # Discord limits to max 25 choices
