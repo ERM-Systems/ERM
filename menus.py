@@ -943,14 +943,10 @@ class LOAMenu(discord.ui.View):
                 item.label = "Accepted"
             else:
                 self.remove_item(item)
-        s_loa = None
-
-        for loa in await self.bot.loas.get_all():
-            if (
-                loa["message_id"] == interaction.message.id
-                and loa["guild_id"] == interaction.guild.id
-            ):
-                s_loa = loa
+        s_loa = await self.bot.loas.db.find_one({
+            "message_id": interaction.message.id,
+            "guild_id": interaction.guild.id
+        })
 
         s_loa["accepted"] = True
         guild = self.bot.get_guild(s_loa["guild_id"])
