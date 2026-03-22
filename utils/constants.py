@@ -153,3 +153,21 @@ WMO_TO_ERLC = {
     96: "Thunderstorm", # Thunderstorm with hail
     99: "Thunderstorm", # Thunderstorm with heavy hail
 }
+
+base_infraction_type = {
+    "name": "",
+    "notifications": {
+        "dm": {},
+        "public": {}
+    },
+    "role_changes": {
+        "add": {
+            "roles": [],
+        },
+        "remove": {
+            "roles": [],
+        }
+    },
+    "remove_ingame_perms": False,
+    "end_shift": False
+}

@@ -20,7 +20,7 @@ from utils.prc_api import ServerLinkNotFound, ResponseFailure
 class OnCommandError(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-
+    
     @commands.Cog.listener("on_command_error")
     async def on_command_error(self, ctx, error):
         ctx.bot.internal_command_storage.pop(ctx, None)
