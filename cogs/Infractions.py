@@ -351,7 +351,8 @@ class Infractions(commands.Cog):
         for user in modal.users.component.values:
             target_name = user.name
             target_id = user.id
-            
+            reason = modal.reason.component.value
+            notes = modal.notes.component.value
             will_escalate = False
             existing_count = 0
             current_type = original_type
