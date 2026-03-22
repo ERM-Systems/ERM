@@ -269,15 +269,23 @@ class PRCApiClient:
             co_owner_users = await roblox_client.get_users(co_owners, expand=False)
             co_owner_names = [user.name for user in co_owner_users]
             co_owners = dict(zip(co_owners, co_owner_names))
-            
-            players = [Player(username=v, id=k, permission="Server Co-Owner") for k,v in co_owners.items()]
-            players += [Player(
-                username=v, id=k, permission="Server Administrator"
-            ) for k,v in response_json.get("Admins", {}).items()]
-            players += [Player(
-                username=v, id=k, permission="Server Moderator"
-            ) for k,v in response_json.get("Mods", {}).items()]
-
+            try:
+                players = [Player(username=v, id=k, permission="Server Co-Owner") for k,v in co_owners.items()]
+            except AttributeError:
+                players = []
+            try:
+                
+                players += [Player(
+                    username=v, id=k, permission="Server Administrator"
+                ) for k,v in response_json.get("Admins", {}).items()]
+            except AttributeError:
+                players += []
+            try:
+                players += [Player(
+                    username=v, id=k, permission="Server Moderator"
+                ) for k,v in response_json.get("Mods", {}).items()]
+            except:
+                players += []
             return players
         else:
             raise ResponseFailure(status_code=status_code, json_data=response_json)
