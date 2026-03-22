@@ -326,13 +326,8 @@ async def sub_vars(bot, ctx: commands.Context, channel, string, **kwargs):
         string = string.replace("{channel}", channel.mention)
         string = string.replace("{prefix}", list(await get_prefix(bot, ctx))[-1])
 
-        onduty: int = len(
-            [
-                i
-                async for i in bot.shift_management.shifts.db.find(
-                    {"Guild": ctx.guild.id, "EndEpoch": 0}
-                )
-            ]
+        onduty: int = await bot.shift_management.shifts.db.count_documents(
+            {"Guild": ctx.guild.id, "EndEpoch": 0}
         )
 
         string = string.replace("{onduty}", str(onduty))
