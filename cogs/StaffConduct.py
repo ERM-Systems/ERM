@@ -136,7 +136,7 @@ class StaffConduct(commands.Cog):
                 discord.SelectOption(label = "Add Item", value = "add", emoji="<:ERMAdd:1113207792854106173>"),
                 
             ] + ac
-            values += [discord.SelectOption(label = "Finish", value = "finish", emoji = successEmoji)]
+            values += [discord.SelectOption(label = "Global Settings", value = "global", emoji = "<:ERMLog:1113210855891423302>"), discord.SelectOption(label = "Finish", value = "finish", emoji = successEmoji)]
             await message.edit(
                 content=f"{pendingEmoji} **{ctx.author.name},** select an option from the dropdown in order to configure the bot!",
                 embed=None,
@@ -175,7 +175,7 @@ class StaffConduct(commands.Cog):
                 await view.wait()
                 if any(type["name"] == view.modal.type_name.value for type in guild_settings["infractions"]["infractions"]):
                     return await message.edit(
-                        content = f"{errorEmoji} **{ctx.author.name},** this infraction type already exists"
+                        content = f"{errorEmoji} **{ctx.author.name},** this infraction type already exists", view=None, embed=None
                     )
                 try:
                     infraction_type_name = view.modal.type_name.value
@@ -184,6 +184,7 @@ class StaffConduct(commands.Cog):
                 base_type = base_infraction_type
                 base_type["name"] = infraction_type_name
                 guild_settings["infractions"]["infractions"].append(base_type)
+                view.value = base_type["name"]
                 
             elif view.value == "finish":
                 await message.edit(
@@ -192,6 +193,54 @@ class StaffConduct(commands.Cog):
                     view=None
                 )
                 return
+            elif view.value == "global":
+                while True:
+                    await message.edit(
+                        content=f"{pendingEmoji} **{ctx.author.name},** what part of the infractions module would you like to change**?",
+                        view=(
+                            view := CustomSelectMenu(
+                                ctx.author.id,
+                                [
+                                    discord.SelectOption(
+                                        label="Infractions Manager Permission",
+                                        description='Select the roles permitted to use the infractions module',
+                                        emoji="<:SConductTitle:1053359821308567592>",
+                                        value="manager",
+                                    ),
+                                    discord.SelectOption(
+                                        label = "Finish",
+                                        description="Finish setting up this infraction type",
+                                        value = "finish",
+                                        emoji = successEmoji
+                                    )
+                                ],
+                            )
+                        ),
+                    )
+                    await view.wait()
+                    match view.value:
+                        case "manager":
+                            await message.edit(
+                                content=f"{pendingEmoji} **{ctx.author.name},** what roles do you wish are allowed to use the **Staff Conduct module**?",
+                                view=(view := ExpandedRoleSelect(ctx.author.id, limit=25)),
+                            )
+                            await view.wait()
+                            addRoleList = [role.id for role in view.value]
+                            guild_settings["infractions"]["manager_roles"] = addRoleList
+                        case "finish":
+                            try:
+                                await self.bot.settings.update(guild_settings)
+                            except KeyError: # If nothing changes this loves to error out. idk why but don't ask me, probably a pymongo thing
+                                guild_settings["_id"] = ctx.guild.id
+                                await self.bot.settings.update(guild_settings)
+                                logging.warning("_id failure")
+                            return await message.edit(
+                                content=f"{successEmoji} **Global Settings** have been successfully submitted!",
+                                view=None,
+                                embed=None,
+                            )
+                            
+                        
             else:
                 infraction_type_name = view.value
                 base_type = [type for type in guild_settings["infractions"]["infractions"] if type["name"] == infraction_type_name][0]
