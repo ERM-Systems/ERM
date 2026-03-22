@@ -3331,11 +3331,15 @@ class GoogleSpreadsheetModification(discord.ui.View):
 
         email = modal.email.value
 
-        client = gspread.service_account_from_dict(self.config)
-        sheet = client.open_by_url(self.url)
-        client.insert_permission(sheet.id, value=email, perm_type="user", role="writer")
-        permission_id = (sheet.list_permissions())[0]["id"]
-        sheet.transfer_ownership(permission_id)
+        def run_gspread_transfer():
+            client = gspread.service_account_from_dict(self.config)
+            sheet = client.open_by_url(self.url)
+            client.insert_permission(sheet.id, value=email, perm_type="user", role="writer")
+            permission_id = (sheet.list_permissions())[0]["id"]
+            sheet.transfer_ownership(permission_id)
+            
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, run_gspread_transfer)
 
         self.remove_item(button)
 
@@ -4260,48 +4264,60 @@ class RequestGoogleSpreadsheet(discord.ui.View):
             )
         )
 
-        client = gspread.service_account_from_dict(self.config)
+        guild_name = interaction.guild.name
+        guild_icon_url = interaction.guild.icon.url if interaction.guild.icon else None
 
-        sheet: gspread.Spreadsheet = client.copy(
-            self.template, interaction.guild.name, copy_permissions=True
-        )
-        new_sheet = sheet.get_worksheet(0)
-        try:
-            new_sheet.update_cell(4, 2, f'=IMAGE("{interaction.guild.icon.url}")')
-        except AttributeError:
-            pass
+        def generate_worksheet():
+            client = gspread.service_account_from_dict(self.config)
 
-        if self.type == "lb":
-            cell_list = new_sheet.range("D13:H999")
-        elif self.type == "ar":
-            cell_list = new_sheet.range("D13:I999")
-
-        try:
-            new_sheet.update_cell(
-                12, 1, td_format(datetime.timedelta(seconds=self.total_seconds))
+            sheet: gspread.Spreadsheet = client.copy(
+                self.template, guild_name, copy_permissions=True
             )
-        except OverflowError:
-            pass
-
-        for c, n_v in zip(cell_list, self.data):
-            c.value = str(n_v)
-
-        new_sheet.update_cells(cell_list, "USER_ENTERED")
-        if self.type == "ar":
-            LoAs = sheet.get_worksheet(1)
-            LoAs.update_cell(4, 2, f'=IMAGE("{interaction.guild.icon.url}")')
-            cell_list = LoAs.range("D13:H999")
-
-            for cell, new_value in zip(cell_list, self.additional_data):
-                if isinstance(new_value, int):
-                    cell.value = f"=({new_value}/ 86400 + DATE(1970, 1, 1))"
+            new_sheet = sheet.get_worksheet(0)
+            try:
+                if guild_icon_url:
+                    new_sheet.update_cell(4, 2, f'=IMAGE("{guild_icon_url}")')
                 else:
-                    cell.value = str(new_value)
-            LoAs.update_cells(cell_list, "USER_ENTERED")
+                    new_sheet.update_cell(4, 2, "No server icon available.")
+            except AttributeError:
+                pass
 
-        client.insert_permission(
-            sheet.id, value=None, perm_type="anyone", role="writer"
-        )
+            if self.type == "lb":
+                cell_list = new_sheet.range("D13:H999")
+            elif self.type == "ar":
+                cell_list = new_sheet.range("D13:I999")
+
+            try:
+                new_sheet.update_cell(
+                    12, 1, td_format(datetime.timedelta(seconds=self.total_seconds))
+                )
+            except OverflowError:
+                pass
+
+            for c, n_v in zip(cell_list, self.data):
+                c.value = str(n_v)
+
+            new_sheet.update_cells(cell_list, "USER_ENTERED")
+            if self.type == "ar":
+                LoAs = sheet.get_worksheet(1)
+                if guild_icon_url:
+                    LoAs.update_cell(4, 2, f'=IMAGE("{guild_icon_url}")')
+                cell_list = LoAs.range("D13:H999")
+
+                for cell, new_value in zip(cell_list, self.additional_data):
+                    if isinstance(new_value, int):
+                        cell.value = f"=({new_value}/ 86400 + DATE(1970, 1, 1))"
+                    else:
+                        cell.value = str(new_value)
+                LoAs.update_cells(cell_list, "USER_ENTERED")
+
+            client.insert_permission(
+                sheet.id, value=None, perm_type="anyone", role="writer"
+            )
+            return sheet
+
+        loop = asyncio.get_running_loop()
+        sheet = await loop.run_in_executor(None, generate_worksheet)
 
         view = GoogleSpreadsheetModification(
             self.bot, self.config, self.scopes, "Open Google Spreadsheet", sheet.url
