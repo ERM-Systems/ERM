@@ -351,6 +351,10 @@ class Infractions(commands.Cog):
         for user in modal.users.component.values:
             target_name = user.name
             target_id = user.id
+            
+            will_escalate = False
+            existing_count = 0
+            current_type = original_type
             # Create infraction document
             
             if infraction_config.get("escalation"):
@@ -460,6 +464,7 @@ class Infractions(commands.Cog):
                 await user.send(embed=embed)
             except Exception:
                 pass
+
 
         await ctx.interaction.followup.send(
             embed=embed2, ephemeral=True
