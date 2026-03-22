@@ -326,8 +326,6 @@ class Infractions(commands.Cog):
         await ctx.interaction.response.send_modal(modal)
         await modal.wait()
         type = modal.type.component.values[0]
-        reason = modal.reason.component.value
-        notes = modal.notes.component.value
         infraction_config = next(
             (
                 inf
@@ -340,7 +338,6 @@ class Infractions(commands.Cog):
         existing_count = 0
         original_type = type
         current_type = type
-
         
         embed2 = discord.Embed(
                 title=f"{self.bot.emoji_controller.get_emoji('success')} Infraction Issued",
