@@ -23,7 +23,7 @@ class OnCommandError(commands.Cog):
     
     @commands.Cog.listener("on_command_error")
     async def on_command_error(self, ctx, error):
-        ctx.bot.internal_command_storage.pop(ctx, None)
+        ctx.bot.internal_command_storage.pop(ctx.message.id, None)
         do_not_send = getattr(ctx, "dnr", False)
         bot = self.bot
         error_id = error_gen()
