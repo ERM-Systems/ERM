@@ -326,8 +326,6 @@ class Infractions(commands.Cog):
         await ctx.interaction.response.send_modal(modal)
         await modal.wait()
         type = modal.type.component.values[0]
-        reason = modal.reason.component.value
-        notes = modal.notes.component.value
         infraction_config = next(
             (
                 inf
@@ -340,7 +338,6 @@ class Infractions(commands.Cog):
         existing_count = 0
         original_type = type
         current_type = type
-
         
         embed2 = discord.Embed(
                 title=f"{self.bot.emoji_controller.get_emoji('success')} Infraction Issued",
@@ -351,7 +348,8 @@ class Infractions(commands.Cog):
         for user in modal.users.component.values:
             target_name = user.name
             target_id = user.id
-            
+            reason = modal.reason.component.value
+            notes = modal.notes.component.value
             will_escalate = False
             existing_count = 0
             current_type = original_type
