@@ -123,7 +123,6 @@ class StaffConduct(commands.Cog):
                 ctx.author.id, "Read the information in full before acknowledging."
             )
             await message.edit(
-                content=f"{pendingEmoji} **{ctx.author.name},** please read all the information below before continuing.",
                 embed=embed,
                 view=view,
             )
@@ -136,10 +135,14 @@ class StaffConduct(commands.Cog):
                 discord.SelectOption(label = "Add Item", value = "add", emoji="<:ERMAdd:1113207792854106173>"),
                 
             ] + ac
+            embed = discord.Embed(
+                title = "Select an infraction type",
+                description=f"**{ctx.author.name},** select an infraction type, add an infraction type, access global settings, or end this configuration session by using the drop-down below."
+            )
             values += [discord.SelectOption(label = "Global Settings", value = "global", emoji = "<:ERMLog:1113210855891423302>"), discord.SelectOption(label = "Finish", value = "finish", emoji = successEmoji)]
             await message.edit(
-                content=f"{pendingEmoji} **{ctx.author.name},** select an option from the dropdown in order to configure the bot!",
-                embed=None,
+                content=None,
+                embed=embed,
                 view=(
                     view := CustomSelectMenu(
                         ctx.author.id,
@@ -175,7 +178,7 @@ class StaffConduct(commands.Cog):
                 await view.wait()
                 if any(type["name"] == view.modal.type_name.value for type in guild_settings["infractions"]["infractions"]):
                     return await message.edit(
-                        content = f"{errorEmoji} **{ctx.author.name},** this infraction type already exists", view=None, embed=None
+                        embed = discord.Embed(title = "Already exists", description="**{ctx.author.name},** this infraction type already exists"), view=None
                     )
                 try:
                     infraction_type_name = view.modal.type_name.value
@@ -195,8 +198,12 @@ class StaffConduct(commands.Cog):
                 return
             elif view.value == "global":
                 while True:
+                    embed = discord.Embed(
+                        title = "Edit global settings",
+                        description = f"**{ctx.author.name},** use the dropdowns below to select a part of the infractions module to change in your server."
+                    )
                     await message.edit(
-                        content=f"{pendingEmoji} **{ctx.author.name},** what part of the infractions module would you like to change**?",
+                        embed=embed,
                         view=(
                             view := CustomSelectMenu(
                                 ctx.author.id,
@@ -221,6 +228,7 @@ class StaffConduct(commands.Cog):
                     match view.value:
                         case "manager":
                             await message.edit(
+                                embed=None,
                                 content=f"{pendingEmoji} **{ctx.author.name},** what roles do you wish are allowed to use the **Staff Conduct module**?",
                                 view=(view := ExpandedRoleSelect(ctx.author.id, limit=25)),
                             )
@@ -249,8 +257,13 @@ class StaffConduct(commands.Cog):
             index = guild_settings["infractions"]["infractions"].index(base_type)
             # This continuously iterates until they're done with this type. The view will probably expire before then so oh well...
             while True:
+                embed = discord.Embed(
+                    title = "Edit infraction type",
+                    description = "Select from the below list of options in order to customise this type."
+                )
                 await message.edit(
-                    content=f"{pendingEmoji} **{ctx.author.name},** what actions do you want to add to **{infraction_type_name}**?",
+                    content=None,
+                    embed=embed,
                     view=(
                         view := CustomSelectMenu(
                             ctx.author.id,
@@ -314,6 +327,7 @@ class StaffConduct(commands.Cog):
                         await message.edit(
                             content=f"{pendingEmoji} **{ctx.author.name},** what roles do you wish to be assigned when \
                         a user receives a **{infraction_type_name}**?",
+                            embed=None,
                             view=(view := ExpandedRoleSelect(ctx.author.id, limit=25)),
                         )
                         await view.wait()
@@ -324,6 +338,7 @@ class StaffConduct(commands.Cog):
                             content=f"{pendingEmoji} **{ctx.author.name},** what roles do you wish to be removed when \
     a user receives a **{infraction_type_name}**?",
                             view=(view := ExpandedRoleSelect(ctx.author.id, limit=25)),
+                            embed=None
                         )
                         await view.wait()
                         removeRoleList = [role.id for role in view.value]
@@ -335,6 +350,7 @@ class StaffConduct(commands.Cog):
                         await message.edit(
                             content=f"{pendingEmoji} **{ctx.author.name},** please select the channel(s) you wish to send a message to upon a user receiving a **{infraction_type_name}**.",
                             view=(view := ChannelSelect(ctx.author.id, limit=5)),
+                            embed=None
                         )
                         await view.wait()
 
@@ -378,6 +394,7 @@ class StaffConduct(commands.Cog):
                         while type == infraction_type_name:
                             await message.edit(
                                 content=f"{pendingEmoji} **{ctx.author.name},** what infraction type should this escalate to?.",
+                                embed=None,
                                 view=(view := CustomSelectMenu(
                                     ctx.author.id,
                                     types
