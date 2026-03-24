@@ -200,7 +200,7 @@ class APIRoutes:
             try:
                 await user.send(embed=embed)
             except discord.Forbidden:
-                pass
+                logging.warning(f"Could not send DM to user {user_id}")
 
             # Fetch and validate roles
             fetched_roles = await guild.fetch_roles()
@@ -303,7 +303,7 @@ class APIRoutes:
             try:
                 await user.send(embed=embed)
             except discord.Forbidden:
-                pass
+                logging.warning(f"Could not send DM to user {user_id}")
 
             # Fetch and validate roles
             fetched_roles = await guild.fetch_roles()

@@ -11647,7 +11647,7 @@ class ShiftLoggingManagement(discord.ui.View):
                     )
                 )
             except discord.Forbidden:
-                pass
+                logging.warning(f"Could not send DM to {member.name}")
 
     @discord.ui.button(
         label="Erase Past Shifts", style=discord.ButtonStyle.danger, row=1
