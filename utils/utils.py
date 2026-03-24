@@ -103,7 +103,6 @@ async def get_roblox_by_username(user: str, bot, ctx: commands.Context):
             )
             if member_converted:
                 bl_user_data = await bot.bloxlink.find_roblox(member_converted.id)
-                # print(bl_user_data)
                 roblox_user = await bot.bloxlink.get_roblox_info(
                     bl_user_data["robloxID"]
                 )

@@ -95,8 +95,8 @@ async def check_loa(bot):
                     if i + batch_size < len(loas):
                         await asyncio.sleep(1)
 
-            except Exception as e:
-                print(f"Error processing guild {guild_id}: {e}")
+            except Exception:
+                pass
 
     except ValueError:
         pass
@@ -151,5 +151,5 @@ async def process_loa(bot, guild, loaObject, settings, roles):
         except discord.Forbidden:
             pass
 
-    except Exception as e:
-        print(f"Error processing LOA {loaObject.get('_id')}: {e}")
+    except Exception:
+        pass

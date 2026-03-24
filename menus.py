@@ -3498,12 +3498,10 @@ class ConditionCreationToolkit(discord.ui.View):
             select.options = list(filter(set_default, select.options))
 
             if select.values[0] in condition_options.values():
-                print("op")
                 condition_data["Operation"] = select.values[0]
                 continue
 
             if select.values[0] in ["and", "or"]:
-                print("logic")
                 condition_data["LogicGate"] = select.values[0]
                 continue
 
@@ -3516,7 +3514,6 @@ class ConditionCreationToolkit(discord.ui.View):
                         select.values[0] + f" {self.select_data.get(select)}"
                     )
                     continue
-                print("var")
                 condition_data["Variable"] = select.values[0]
                 continue
             else:
@@ -3528,7 +3525,6 @@ class ConditionCreationToolkit(discord.ui.View):
                             select.values[0] + f" {self.select_data.get(select)}"
                         )
                         continue
-                    print("val")
                     condition_data["Value"] = select.values[0]
                     continue
 
@@ -7336,11 +7332,9 @@ class GameSecurityActions(discord.ui.View):
         affected_players = [
             i.strip() for i in field1.value.split("]:**")[1].split("\n")[0].split(", ")
         ]
-        print(affected_players)
         users = [
             await bot.roblox.get_user_by_username(item) for item in affected_players
         ]
-        print(users)
         for item in users:
             if item is not None:
                 users_ids.append(str(item.id))
@@ -8089,7 +8083,6 @@ class RemoteCommandConfiguration(discord.ui.View):
             self.auto_data["webhook_channel"] = None
         else:
             self.auto_data["webhook_channel"] = select.values[0].id
-        print(self.auto_data)
         embed = discord.Embed(
             title="Remote Commands", description="", color=BLANK_COLOR
         )
@@ -11654,7 +11647,7 @@ class ShiftLoggingManagement(discord.ui.View):
                     )
                 )
             except discord.Forbidden:
-                print(f"Could not send DM to {member.name}")
+                pass
 
     @discord.ui.button(
         label="Erase Past Shifts", style=discord.ButtonStyle.danger, row=1
