@@ -1,6 +1,6 @@
 import collections
 import logging
-
+from pymongo.asynchronous.database import AsyncDatabase
 """
 A helper file for using mongo db
 Class document aims to make using mongo calls easy, saves
@@ -10,7 +10,7 @@ on init and the document to create an instance on and boom
 
 
 class Document:
-    def __init__(self, connection, document_name):
+    def __init__(self, connection: AsyncDatabase, document_name):
         """
         Our init function, sets up the conenction to the specified document
         Params:

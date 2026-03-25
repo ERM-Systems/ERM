@@ -21,7 +21,10 @@ from utils.mongo import Document
 import aiohttp
 import decouple
 import discord.mentions
-import motor.motor_asyncio
+
+from pymongo import AsyncMongoClient
+
+
 import asyncio
 import pytz
 import sentry_sdk
@@ -154,7 +157,7 @@ class Bot(commands.AutoShardedBot):
                     self.user.name
                 )
             )
-            self.mongo = motor.motor_asyncio.AsyncIOMotorClient(str(mongo_url))
+            self.mongo = AsyncMongoClient(str(mongo_url))
 
             # The checking for this is defined just before the run method - approx line 649
             self.db = self.mongo[dbname]
