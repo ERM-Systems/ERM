@@ -137,7 +137,8 @@ async def sync_weather(bot):
 
         processed = 0
         async with aiohttp.ClientSession() as session:
-            async for guild_data in bot.settings.db.aggregate(pipeline):
+            cursor = await bot.settings.db.aggregate(pipeline)
+            async for guild_data in cursor:
                 processed += 1
                 guild_id = guild_data["_id"]
 

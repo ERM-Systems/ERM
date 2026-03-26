@@ -143,7 +143,8 @@ async def mc_discord_checks(bot):
                 return
 
     guild_tasks = []
-    async for items in bot.settings.db.aggregate(pipeline):
+    cursor = await bot.settings.db.aggregate(pipeline)
+    async for items in cursor:
         guild_tasks.append(process_guild(items))
 
         if len(guild_tasks) >= 5:
