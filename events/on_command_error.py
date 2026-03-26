@@ -302,9 +302,8 @@ class OnCommandError(commands.Cog):
                     {
                         "_id": error_id,
                         "error": str(error),
-                        "time": datetime.datetime.now(tz=pytz.UTC).strftime(
-                            "%m/%d/%Y, %H:%M:%S"
-                        ),
+                        "type": type(error).__name__,
+                        "time": int(datetime.datetime.now(tz=pytz.UTC).timestamp()),
                         "channel": ctx.channel.id,
                         "guild": ctx.guild.id,
                     }

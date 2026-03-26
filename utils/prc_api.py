@@ -274,7 +274,6 @@ class PRCApiClient:
             except AttributeError:
                 players = []
             try:
-                
                 players += [Player(
                     username=v, id=k, permission="Server Administrator"
                 ) for k,v in response_json.get("Admins", {}).items()]

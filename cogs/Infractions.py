@@ -465,7 +465,7 @@ class Infractions(commands.Cog):
 
 
         await ctx.interaction.followup.send(
-            embed=embed2, ephemeral=True
+            embed=embed2
 
         )
 
