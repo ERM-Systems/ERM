@@ -43,7 +43,7 @@ async def run_erlc_integration(bot, guild_id, integration):
 
     resp = await bot.prc_api.run_command(guild_id, full_command)
     if resp[0] != 200:
-        logging.info(f"Failed reaching PRC due to {resp[0]} status code")
+        logging.warning(f"Failed reaching PRC due to {resp[0]} status code")
     else:
         logging.info("Integration success with 200 status code")
 
@@ -150,7 +150,7 @@ async def check_reminders(bot):
             return
 
     try:
-        async for guild_obj in bot.reminders.db.find(query):
+        for guild_obj in await bot.reminders.db.find(query).to_list(None):
             try:
                 await iterate_reminder(bot, guild_obj)
             except Exception as e:
