@@ -64,11 +64,7 @@ class MC(commands.Cog):
             self.bot, guild_id, author_id, interpret_type, command_string, attempted
         )
 
-    @commands.hybrid_group(name="erlc")
-    async def server(self, ctx: commands.Context):
-        pass
-
-    @commands.hybrid_group(name="mc")  # hmmmm...
+    @commands.hybrid_group(name="mc")
     async def mc(self, ctx: commands.Context):
         pass
 
