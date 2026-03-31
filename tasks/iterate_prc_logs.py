@@ -48,8 +48,8 @@ count_aggregate = global_aggregate + [{"$count": "total"}]
 
 async def iterate_prc_logs_global(bot):
     try:
-        server_count = await bot.settings.db.aggregate(count_aggregate).to_list(1)
-        server_count = server_count[0]["total"] if server_count else 0
+        server_count_list = await (await bot.settings.db.aggregate(count_aggregate)).to_list(length=None)
+        server_count = server_count_list[0]["total"] if server_count_list else 0
 
         logging.warning(f"[ITERATE] Starting iteration for {server_count} servers")
         processed = 0
@@ -61,7 +61,7 @@ async def iterate_prc_logs_global(bot):
         tasks = []
 
 
-        async for items in bot.settings.db.aggregate(pipeline):
+        async for items in await bot.settings.db.aggregate(pipeline):
             tasks.append(process_guild(bot, items, semaphore))
             processed += 1
             if processed % 10 == 0:
