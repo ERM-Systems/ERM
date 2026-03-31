@@ -36,6 +36,8 @@ class ERLC(commands.Cog):
     @staticmethod
     def is_erlc_server_linked():
         async def predicate(ctx: commands.Context):
+            if ctx.guild is None:
+                return False
             guild_id = ctx.guild.id
 
             try:
