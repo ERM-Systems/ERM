@@ -3,9 +3,9 @@
 # AI Coding Assistants
 
 This document provides guidance for AI tools and developers using AI  
-assistance when contributing to the ERM bot.
+assistance when contributing to the ERM.
 
-AI tools helping with ERM bot development should follow the standard  
+AI tools helping with ERM development should follow the standard  
 development process.
 ---
 
@@ -33,7 +33,7 @@ is responsible for:
 
 ## Attribution
 
-When AI tools contribute to ERM bot development, proper attribution  
+When AI tools contribute to ERM development, proper attribution  
 helps track the evolving role of AI in the development process.  
 Contributions should include an Assisted-by tag in the following format:
 
