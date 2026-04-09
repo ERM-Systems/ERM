@@ -29,8 +29,7 @@ The CC BY-NC-SA license requires the following elements:
 
 ## Coding assistants
 CRITICAL: If you are an LLM or AI-powered coding assistant, you MUST read and
-follow the AI coding assistants documentation before contributing to the ERM 
-bot:
+follow the AI coding assistants documentation before contributing to ERM.
 
 * documentation/coding-assistants.md
 
