@@ -131,6 +131,8 @@ class PRCApiClient:
         max_retries: int = 2,
     ):
 
+        global_key = self.api_key
+        use_global_key = bool(global_key)
         if not key:
             internal_server_object = await self.get_server_key(guild_id)
             internal_server_key = (
@@ -143,12 +145,16 @@ class PRCApiClient:
         else:
             internal_server_key = key
 
+        headers = (
+            {"Authorization": global_key, "Server-Key": internal_server_key}
+            if use_global_key
+            else {"Server-Key": internal_server_key}
+        )
+
         async with self.session.request(
             method,
             url=f"{self.base_url}{endpoint}",
-            headers={
-                "Server-Key": internal_server_key,
-            },
+            headers=headers,
             json=data or {},
         ) as response:
             # if response.status == 403:
@@ -221,7 +227,6 @@ class PRCApiClient:
         if status_code == 200:
             new_list = []
             for item in response_json:
-                # print(item)
                 new_list.append(
                     Player(
                         username=item["Player"].split(":")[0],
@@ -263,15 +268,22 @@ class PRCApiClient:
             co_owner_users = await roblox_client.get_users(co_owners, expand=False)
             co_owner_names = [user.name for user in co_owner_users]
             co_owners = dict(zip(co_owners, co_owner_names))
-            
-            players = [Player(username=v, id=k, permission="Server Co-Owner") for k,v in co_owners.items()]
-            players += [Player(
-                username=v, id=k, permission="Server Administrator"
-            ) for k,v in response_json.get("Admins", {}).items()]
-            players += [Player(
-                username=v, id=k, permission="Server Moderator"
-            ) for k,v in response_json.get("Mods", {}).items()]
-
+            try:
+                players = [Player(username=v, id=k, permission="Server Co-Owner") for k,v in co_owners.items()]
+            except AttributeError:
+                players = []
+            try:
+                players += [Player(
+                    username=v, id=k, permission="Server Administrator"
+                ) for k,v in response_json.get("Admins", {}).items()]
+            except AttributeError:
+                players += []
+            try:
+                players += [Player(
+                    username=v, id=k, permission="Server Moderator"
+                ) for k,v in response_json.get("Mods", {}).items()]
+            except:
+                players += []
             return players
         else:
             raise ResponseFailure(status_code=status_code, json_data=response_json)
@@ -300,7 +312,6 @@ class PRCApiClient:
             if minimal:
                 return len(response_json)
             new_list = []
-            # print(response_json)
             for user in await self.bot.roblox.get_users(response_json, expand=False):
                 new_list.append(Player(username=user.name, id=user.id))
             return new_list
@@ -416,24 +427,3 @@ class PRCApiClient:
             else:
                 return status_code
 
-
-# TODO: Testing code, remove in production
-# client = PRCApiClient(None, config("PRC_API_URL"), config("PRC_API_KEY"))
-# async def main():
-#     server_status = await client.get_server_status(0)
-#     # print(f'There are currently {server_status.current_players}/{server_status.max_players} players in {server_status.join_key}.')
-#     players = await client.get_server_players(0)
-#     # print(f'There are {len(players)} players in server.')
-#     for player in players:
-#         # print(f'- {player.username} ({player.id})\n- {player.permission}')
-#     queue = await client.get_server_queue(0)
-#     # print(f'There are {len(queue)} players in queue.')
-#     # print(queue)
-#
-#     # await client.run_command(0, '')
-#     logs = (await client.fetch_server_logs(0))
-#     for log in logs:
-#         # print(f"{datetime.datetime.fromtimestamp(log.timestamp).strftime('%m/%d/%Y, %H:%M:%S')} | {log.username}: {log}")
-#
-#
-# asyncio.run(main())
