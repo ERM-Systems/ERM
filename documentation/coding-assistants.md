@@ -3,7 +3,7 @@
 # AI Coding Assistants
 
 This document provides guidance for AI tools and developers using AI  
-assistance when contributing to the ERM.
+assistance when contributing to ERM.
 
 AI tools helping with ERM development should follow the standard  
 development process.
