@@ -21,7 +21,7 @@ or self-hosted use.
 Clone the repository and install dependencies:
 
 ```bash
-git clone https://github.com/mikeyusersrec/erm
+git clone https://github.com/mikeywhiston/erm
 cd erm
 pip install -r requirements.txt
 ```
