@@ -5,7 +5,7 @@ from menus import YesNoMenu, AccountLinkingMenu
 from utils.constants import BLANK_COLOR, GREEN_COLOR
 import asyncio
 import time
-
+import datetime
 
 class OAuth2(commands.Cog):
     def __init__(self, bot):
@@ -79,8 +79,12 @@ class OAuth2(commands.Cog):
             else:
                 if item := await self.bot.oauth2_users.db.find_one(
                     {"discord_id": ctx.author.id}
-                ):
-                    if item.get("last_updated", 0) > timestamp:
+                ):  
+                    if isinstance(item.get("last_uopdated", 0, datetime.datetime):
+                        check = item.get("last_updated", 0).timestamp() > timestamp
+                    else:
+                        check = item.get("last_updated", 0) > timestamp 
+                    if check:
                         await msg.edit(
                             embed=discord.Embed(
                                 title=f"{self.bot.emoji_controller.get_emoji('success')} Linked",
