@@ -88,6 +88,8 @@ class Utility(commands.Cog):
                     punishment["UntilEpoch"] = int(violator_field.value.split("Until:** <t:")[1].split(">")[0])
                 except:
                     punishment["UntilEpoch"] = punishment["Epoch"]
+            else:
+                punishment["UntilEpoch"] = 0 # i messed things up 2026-04-25
 
             if await self.bot.punishments.db.find_one({"Snowflake": punishment["Snowflake"]}):
                 continue
