@@ -50,24 +50,8 @@ cp .env.template .env
 - `API_URL` / `API_AUTH` — Endpoint and auth token for the AI API  
 - `REMINDERS_ENABLED` — `TRUE` or `FALSE`. Controls the Reminders cog  
 - `ACTIONS_ENABLED` — `TRUE` or `FALSE`. Controls the Actions cog and  
-  the `iterate_conditions` background task  
-
-### Optional — Internal API
-
-These are used by the FastAPI backend in `utils/api.py` and are not  
-required for basic bot operation:
-
-- `API_PRIVATE_KEY` / `API_STATIC_TOKEN` / `BASE_API_URL` / `PANEL_API_URL`  
-- `IPC_SECRET_KEY` — Used for inter-process communication  
-
-### Optional — OAuth2
-
-Required only if running the website backend:
-
-- `DEVELOPMENT_CLIENT_ID` / `PRODUCTION_CLIENT_ID`  
-- `DEVELOPMENT_CLIENT_SECRET` / `PRODUCTION_CLIENT_SECRET`  
-- `DEVELOPMENT_REDIRECT_URI` / `PRODUCTION_REDIRECT_URI`  
-
+  the `iterate_conditions` background task
+  
 ### Optional — Google Sheets
 
 Required only for Activity Report and Duty Leaderboard spreadsheet exports:
