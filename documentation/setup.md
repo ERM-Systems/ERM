@@ -105,6 +105,7 @@ MONGO_URL=mongodb://localhost:27017/test
 
 When inviting the bot, the following are required:
 
+-  `Bot`
 - `Administrator` (the invite link in the README uses this)  
 - `applications.commands` scope for slash command registration  
 
