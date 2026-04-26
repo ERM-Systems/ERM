@@ -18,10 +18,10 @@ This document covers the process for contributing to ERM.
 
 ## Workflow
 
-1. Fork the repository and create a branch from `main`.  
+1. Fork the repository and create a branch from `Development`.  
 2. Make your changes.  
 3. Run the test suite locally with `pytest` before pushing.  
-4. Open a pull request against `main` with a clear description of  
+4. Open a pull request against `Development` with a clear description of  
    what changed and why.  
 
 ---
@@ -61,14 +61,15 @@ certifying the Developer Certificate of Origin (DCO). See
 
 - Python 3.12. Match the style of the surrounding code.  
 - All database calls must be `async`. Use `await` throughout — do not  
-  use blocking pymongo calls.  
-- Use `discord.ext.tasks.loop` for new background tasks. Register  
-  them in `utils/task_loader.py`.  
-- New interactive Discord flows belong in `menus.py`. Check there  
-  before creating a new file for a View or Modal.  
+  use blocking pymongo calls.
+- Ensure the use of the `Document` class whenever accessing different collections.
+- Do not create Documents in commands, define them on the instance method `self` in the setup hook.
+- Use `discord.ext.tasks.loop` for new background tasks. 
+- New interactive Discord flows must have their own UI file in `ui/`. Do not add new enties to `menus.py`. 
 - Use `utils/constants.py` for shared colour values (`BLANK_COLOR`,  
   `GREEN_COLOR`, `RED_COLOR`) rather than hardcoding hex values.  
-- Use `decouple.config()` for all environment variable access.  
+- Use `decouple.config()` for all environment variable access.
+- Do not use inline ENV comments
 
 ---
 
