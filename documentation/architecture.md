@@ -166,8 +166,13 @@ for most development work.
 
 ## Menus
 
+
 `menus.py` is a large single file containing the majority of the  
 bot's interactive Discord UI flows — multi-step modals, confirmation  
 prompts, paginated views, and context-sensitive menus. When adding  
 new interactive flows, check `menus.py` first for existing patterns  
 to follow or reuse.
+
+Do not use this file for any new views, instead, please create a new file
+in the `ui` folder and reference that. `menus.py` will be removed in a later
+version of ERM.
