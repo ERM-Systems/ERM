@@ -224,7 +224,7 @@ class ActivityMonitoring(commands.Cog):
                 embed=embeds[0], ephemeral=True, wait=True
             )
             paginator = SelectPagination(self.bot, ctx.author.id, pages=pages, edit_method=msg.edit)
-            await msg.edit(view=paginator)
+            await msg.edit(view=paginator.get_current_view())
 
         button = CustomExecutionButton(
             ctx.author.id,
