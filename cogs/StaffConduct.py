@@ -178,7 +178,7 @@ class StaffConduct(commands.Cog):
                 await view.wait()
                 if any(type["name"] == view.modal.type_name.value for type in guild_settings["infractions"]["infractions"]):
                     return await message.edit(
-                        embed = discord.Embed(title = "Already exists", description="**{ctx.author.name},** this infraction type already exists"), view=None
+                        embed = discord.Embed(title = "Already exists", description=f"**{ctx.author.name},** this infraction type already exists"), view=None
                     )
                 try:
                     infraction_type_name = view.modal.type_name.value

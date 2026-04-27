@@ -219,10 +219,12 @@ class ActivityMonitoring(commands.Cog):
                 CustomPage(embeds=[embed], identifier=str(index + 1))
                 for index, embed in enumerate(embeds)
             ]
-            paginator = SelectPagination(self.bot, ctx.author.id, pages=pages)
-            await interaction.response.send_message(
-                embed=embeds[0], view=paginator, ephemeral=True
+            await interaction.response.defer(ephemeral=True)
+            msg = await interaction.followup.send(
+                embed=embeds[0], ephemeral=True, wait=True
             )
+            paginator = SelectPagination(self.bot, ctx.author.id, pages=pages, edit_method=msg.edit)
+            await msg.edit(view=paginator)
 
         button = CustomExecutionButton(
             ctx.author.id,
