@@ -221,7 +221,7 @@ class ActivityMonitoring(commands.Cog):
             ]
             await interaction.response.defer(ephemeral=True)
             msg = await interaction.followup.send(
-                embed=embeds[0], ephemeral=True, wait=True
+                embed=embeds[0], ephemeral=True
             )
             paginator = SelectPagination(self.bot, ctx.author.id, pages=pages, edit_method=msg.edit)
             await msg.edit(view=paginator.get_current_view())
