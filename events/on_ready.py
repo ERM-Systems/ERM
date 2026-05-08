@@ -2,7 +2,8 @@ import logging
 import discord
 from discord.ext import commands
 from utils.constants import BLANK_COLOR
-
+from utils.task_loader import start_tasks
+import asyncio
 on_ready = False
 
 
@@ -16,6 +17,8 @@ class OnReady(commands.Cog):
         if on_ready:
             logging.info("{} has connected to gateway!".format(self.bot.user.name))
             on_ready = False
+        asyncio.create_task(start_tasks(self.bot))
+        await start_tasks(self.bot)
 
     @commands.Cog.listener("on_shard_connect")
     async def on_shard_connect(self, sid: int):

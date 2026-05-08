@@ -9,6 +9,9 @@ from discord import app_commands
 from discord.app_commands import AppCommandGroup
 from discord.ext import commands
 import pytz
+import matplotlib.pyplot as plt
+
+import io, time
 
 from menus import LinkView, CustomSelectMenu, MultiPaginatorMenu, APIKeyConfirmation
 from utils.constants import BLANK_COLOR, GREEN_COLOR
@@ -20,7 +23,8 @@ from erm import is_staff, is_management
 class Utility(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-
+        plt.style.use("dark_background")
+        self.fig = plt.figure(figsize=(8, 2))
 
     @commands.hybrid_group(
         name="import",
@@ -301,49 +305,77 @@ class Utility(commands.Cog):
     )
     async def ping(self, ctx):
         latency = round(self.bot.latency * 1000)
-        embed = discord.Embed(
-            title="Bot Status",
-            color=BLANK_COLOR,
+        data = await self.bot.db.command("ping")
+        t1 = time.time()
+        self.fig.clear()
+        times = [a for a in [v[0] for k,v in self.bot.saved_latencies.items()]]
+        for k, v in self.bot.saved_latencies.items():
+            times, latencies = zip(*v)
+            plt.plot(times, latencies, label=k)
+        plt.xticks([])
+        plt.title("Bot Latency")
+        plt.ylabel("Latency (ms)")
+        plt.legend(facecolor="black", edgecolor="white", labelcolor="white")
+        buf = io.BytesIO()
+
+        plt.savefig(buf, format="png", bbox_inches="tight", dpi=100, facecolor="black")
+        buf.seek(0)
+        t2 = time.time() - t1
+        print(t2)
+
+        view = discord.ui.Container()
+        section = discord.ui.Section(
+            accessory=discord.ui.Thumbnail(
+                media=ctx.guild.icon.with_format("png").url
+            )
         )
 
-        if ctx.guild is not None:
-            embed.set_author(
-                name=ctx.guild.name,
-                icon_url=ctx.guild.icon,
-            )
-        else:
-            embed.set_author(
-                name=ctx.author.name,
-                icon_url=ctx.author.display_avatar.url,
-            )
-
-        data = await self.bot.db.command("ping")
-
+        values = (
+            "### Bot Status\n"
+        )
         status: str | None = None
-
+        print(data)
         if list(data.keys())[0] == "ok":
             status = "Connected"
         else:
             status = "Not Connected"
 
-        embed.add_field(
-            name="Information",
-            value=(
-                f"> **Latency:** `{latency}ms`\n"
-                f"> **Uptime:** <t:{int(self.bot.start_time)}:R>\n"
-                f"> **Database Connection:** {status}\n"
-                f"> **Shards:** `{self.bot.shard_count-1 if isinstance(self.bot, commands.AutoShardedBot) else 0}`\n"
+        values += (
+            f"**Information about service**\n"
+            f"> **Latency:** `{latency}ms`\n"
+            f"> **Uptime:** <t:{int(self.bot.start_time)}:R>\n"
+            f"> **Database Connection:** {status}\n"
+            f"> **Shards:** `{self.bot.shard_count-1 if isinstance(self.bot, commands.AutoShardedBot) else 0}`\n"
+        )
+        text = section.add_item(
+            discord.ui.TextDisplay(
+                values
+            )
+        )
+        if latency > 75 and latency < 200:
+            style = discord.ButtonStyle.blurple
+        elif latency >= 200:
+            style = discord.ButtonStyle.danger
+        else:
+            style = discord.ButtonStyle.green
+        buttons = discord.ui.ActionRow(
+            discord.ui.Button(
+                label = f"{latency}ms",
+                style = style,
+                disabled=True
             ),
-            inline=False,
+            discord.ui.Button(
+                label = f"Shard {ctx.guild.shard_id if ctx.guild and isinstance(self.bot, commands.AutoShardedBot) else 0}/{self.bot.shard_count-1 if isinstance(self.bot, commands.AutoShardedBot) else 0}",
+                disabled=True
+            )
         )
+        file = discord.File(buf, filename="graph.png")
+        view.add_item(section).add_item(discord.ui.Separator())
+        view.add_item(discord.ui.MediaGallery(discord.MediaGalleryItem(media=discord.UnfurledMediaItem("attachment://graph.png"))))
+        view.add_item(discord.ui.Separator())
+        view.add_item(buttons)
 
-        embed.set_footer(
-            text=f"Shard {ctx.guild.shard_id if ctx.guild and isinstance(self.bot, commands.AutoShardedBot) else 0}/{self.bot.shard_count-1 if isinstance(self.bot, commands.AutoShardedBot) else 0}"
-        )
-        embed.timestamp = datetime.datetime.utcnow()
-        embed.set_thumbnail(url=ctx.guild.icon)
-        await ctx.send(embed=embed)
-
+        await ctx.send(view=discord.ui.LayoutView().add_item(view), files=[file])
     @commands.hybrid_command(
         name="modpanel",
         aliases=["panel"],
