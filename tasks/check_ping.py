@@ -21,4 +21,3 @@ async def check_ping(bot: Bot):
     after = time.monotonic()
     db_latency = round((after - before) * 1000)
     bot.saved_latencies["db"].append(db_latency)
-    print(bot.saved_latencies)
