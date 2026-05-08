@@ -26,7 +26,7 @@ async def get_cached_guild(bot, guild_id):
     
     try:
         guild = await bot.fetch_guild(guild_id)
-    except discord.errors.NotFound:
+    except discord.NotFound:
         guild = None
     except Exception as e:
         logging.error(f"Error fetching guild {guild_id}: {e}")
