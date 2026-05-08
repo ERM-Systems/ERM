@@ -284,7 +284,7 @@ class Bot(commands.AutoShardedBot):
                 # guild specific: leave blank if global (global registration can take 1-24 hours)
             bot.is_synced = True
             self.saved_latencies = {
-                "shards": {},
+                "shards": [],
                 "rest": [],
                 "db": []
             }

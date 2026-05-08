@@ -4,12 +4,7 @@ from erm import Bot
 import time
 @tasks.loop(seconds=5)
 async def check_ping(bot: Bot):
-    for latency in bot.latencies:
-        if not bot.saved_latencies["shards"].get(f"Shard {latency[0]}"):
-            bot.saved_latencies["shards"][f"Shard {latency[0]}"] = []
-        bot.saved_latencies["shards"][f"Shard {latency[0]}"].append(round(latency[1]*1000))
-        bot.saved_latencies["shards"][f"Shard {latency[0]}"] = bot.saved_latencies["shards"][f"Shard {latency[0]}"][-300:]
-    
+    bot.saved_latencies["shards"].append(round(sum(l for _, l in bot.latencies) / len(bot.latencies) * 1000))
     before = time.monotonic()
     user = await bot.fetch_user(993781395761676298)
     after = time.monotonic()
