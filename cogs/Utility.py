@@ -309,13 +309,15 @@ class Utility(commands.Cog):
         t1 = time.time()
         self.fig.clear()
         times = [a for a in [v[0] for k,v in self.bot.saved_latencies.items()]]
+
         for k, v in self.bot.saved_latencies.items():
             times, latencies = zip(*v)
             plt.plot(times, latencies, label=k)
         plt.xticks([])
         plt.title("Bot Latency")
         plt.ylabel("Latency (ms)")
-        plt.legend(facecolor="black", edgecolor="white", labelcolor="white")
+        plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=8, frameon=True)
+        plt.tight_layout()
         buf = io.BytesIO()
 
         plt.savefig(buf, format="png", bbox_inches="tight", dpi=100, facecolor="black")
