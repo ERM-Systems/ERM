@@ -285,6 +285,7 @@ class Bot(commands.AutoShardedBot):
             bot.is_synced = True
             self.saved_latencies = {}
             
+            asyncio.create_task(start_tasks(self.bot))
             async for document in self.views.db.find({}):
                 if document["view_type"] == "LOAMenu":
                     for index, item in enumerate(document["args"]):
