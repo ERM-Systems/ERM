@@ -10,21 +10,23 @@ from discord.app_commands import AppCommandGroup
 from discord.ext import commands
 import pytz
 import matplotlib.pyplot as plt
-
+import matplotlib
+matplotlib.use("Agg")
+import asyncio
 import io, time
 
 from menus import LinkView, CustomSelectMenu, MultiPaginatorMenu, APIKeyConfirmation
 from utils.constants import BLANK_COLOR, GREEN_COLOR
 from utils.timestamp import td_format
 from utils.utils import invis_embed, failure_embed, require_settings, time_converter
-from erm import is_staff, is_management
+from erm import is_staff, is_management, Bot
 
 
 class Utility(commands.Cog):
     def __init__(self, bot):
-        self.bot = bot
+        self.bot: Bot = bot
         plt.style.use("dark_background")
-        self.fig = plt.figure(figsize=(8, 2))
+        self.fig, self.ax = plt.subplots(figsize=(8, 6))
 
     @commands.hybrid_group(
         name="import",
@@ -298,6 +300,24 @@ class Utility(commands.Cog):
             )
         )
 
+    def generate_graph(self):
+        self.ax.clear()
+        result = [sum(values)/len(values) for values in zip(*self.bot.saved_latencies["shards"].values())]
+        
+        self.ax.plot(result, label="Discord (avg.)")
+        self.ax.plot(self.bot.saved_latencies["rest"], label="REST API")
+        self.ax.plot(self.bot.saved_latencies["db"], label="DB")
+        self.ax.set_xticks([])
+        self.ax.set_title("Bot Latency")
+        self.ax.set_ylabel("Latency (ms)")
+        self.ax.legend(loc='upper center', ncol=8, frameon=True)
+        self.ax.margins(x=0)
+        self.fig.tight_layout()
+        buf = io.BytesIO()
+
+        self.fig.savefig(buf, format="png", bbox_inches="tight", dpi=100, facecolor="black")
+        buf.seek(0)
+        return buf
     @commands.hybrid_command(
         name="ping",
         description="Shows information of the bot, such as uptime and latency",
@@ -306,24 +326,13 @@ class Utility(commands.Cog):
     async def ping(self, ctx):
         latency = round(self.bot.latency * 1000)
         data = await self.bot.db.command("ping")
-        t1 = time.time()
-        self.fig.clear()
-        times = [a for a in [v[0] for k,v in self.bot.saved_latencies.items()]]
+    
 
-        for k, v in self.bot.saved_latencies.items():
-            times, latencies = zip(*v)
-            plt.plot(times, latencies, label=k)
-        plt.xticks([])
-        plt.title("Bot Latency")
-        plt.ylabel("Latency (ms)")
-        plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=8, frameon=True)
-        plt.tight_layout()
-        buf = io.BytesIO()
+        # Matplot is blocking so I must run it in an executor
+        loop = asyncio.get_running_loop()
+        func = loop.run_in_executor(None, self.generate_graph)
+        buf = await func
 
-        plt.savefig(buf, format="png", bbox_inches="tight", dpi=100, facecolor="black")
-        buf.seek(0)
-        t2 = time.time() - t1
-        print(t2)
 
         view = discord.ui.Container()
         section = discord.ui.Section(
@@ -336,7 +345,6 @@ class Utility(commands.Cog):
             "### Bot Status\n"
         )
         status: str | None = None
-        print(data)
         if list(data.keys())[0] == "ok":
             status = "Connected"
         else:
