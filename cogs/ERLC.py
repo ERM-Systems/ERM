@@ -761,7 +761,7 @@ class ERLC(commands.Cog):
     @is_erlc_server_linked()
     async def server_unlink(self, ctx: commands.Context):
         await log_command_usage(self.bot, ctx.guild, ctx.author, f"ER:LC Unlink")
-        await self.bot.server_keys.delete_one({"_id": ctx.guild.id})
+        await self.bot.server_keys.delete_by_id(ctx.guild.id)
         await ctx.send(
             embed=discord.Embed(
                 title=f"{self.bot.emoji_controller.get_emoji('success')} Successfully Unlinked",
