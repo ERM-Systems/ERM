@@ -80,7 +80,7 @@ class OAuth2(commands.Cog):
                 if item := await self.bot.oauth2_users.db.find_one(
                     {"discord_id": ctx.author.id}
                 ):
-                    if item.get("last_updated", 0) > timestamp:
+                    if item.get("last_updated", 0).timestamp() > timestamp:
                         await msg.edit(
                             embed=discord.Embed(
                                 title=f"{self.bot.emoji_controller.get_emoji('success')} Linked",
