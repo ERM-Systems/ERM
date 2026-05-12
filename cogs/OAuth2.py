@@ -55,7 +55,7 @@ class OAuth2(commands.Cog):
         await self.bot.pending_oauth2.db.insert_one({"discord_id": ctx.author.id})
 
         if msg is None:
-            await ctx.send(**verification_message)
+            msg = await ctx.send(**verification_message)
         else:
             await msg.edit(**verification_message)
 

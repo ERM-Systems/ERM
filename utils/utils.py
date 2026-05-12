@@ -591,6 +591,8 @@ async def fetch_get_channel(target, identifier):
     if not channel:
         try:
             channel = await target.fetch_channel(identifier)
+        except discord.NotFound:
+            channel = None
         except discord.HTTPException as e:
             channel = None
     return channel

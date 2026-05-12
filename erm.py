@@ -283,10 +283,13 @@ class Bot(commands.AutoShardedBot):
                 # await bot.tree.sync()
                 # guild specific: leave blank if global (global registration can take 1-24 hours)
             bot.is_synced = True
-
-            # we do this so the bot can get a cache of things before we spam discord with fetches
-            asyncio.create_task(start_tasks(self))
+            self.saved_latencies = {
+                "shards": [],
+                "rest": [],
+                "db": []
+            }
             
+            asyncio.create_task(start_tasks(self))
             async for document in self.views.db.find({}):
                 if document["view_type"] == "LOAMenu":
                     for index, item in enumerate(document["args"]):

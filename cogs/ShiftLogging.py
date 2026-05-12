@@ -1050,7 +1050,9 @@ class ShiftLogging(commands.Cog):
                     )
 
         my_data = None
-        member_list = await ctx.guild.chunk()
+        if not ctx.guild.chunked:
+            await ctx.guild.chunk()
+        member_list = ctx.guild.members
         members = {m.id: m for m in member_list}  # Cache guild members
         total_seconds = 0
 
