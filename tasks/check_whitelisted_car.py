@@ -173,6 +173,8 @@ async def get_cached_guild(bot, guild_id):
     if not guild:
         try:
             guild = await bot.fetch_guild(guild_id)
+        except discord.NotFound:
+            guild = None
         except discord.HTTPException:
             guild = None
 

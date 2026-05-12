@@ -204,13 +204,20 @@ class Search(commands.Cog):
 
         def add_warning_field(warning):
             new_line = "\n"
+            until_epoch = None
+            try:
+                # someone messed up bad - 2026-04-25
+                until_epoch = warning.until_epoch
+            except KeyError:
+                until_epoch = None # don't raise
+            
             embed_list[-1].add_field(
                 name=f"{warning['Type']}",
                 inline=False,
                 value=(
                     f"> **Reason:** {warning.reason}\n"
                     f"> **At:** <t:{int(warning.time_epoch)}>\n"
-                    f'{"> **Until:** <t:{}>{}".format(int(warning.until_epoch), new_line) if warning.until_epoch is not None else ""}'
+                    f'{"> **Until:** <t:{}>{}".format(int(until_epoch), new_line) if until_epoch is not None else ""}'
                     f"> **ID:** `{warning.snowflake}`"
                 ),
             )
@@ -421,6 +428,13 @@ class Search(commands.Cog):
 
         def add_warning_field(warning):
             new_line = "\n"
+            until_epoch = None
+            try:
+                # someone messed up bad - 2026-04-25
+                until_epoch = warning.until_epoch
+            except KeyError:
+                until_epoch = None # don't raise
+            
             embed_list[-1].add_field(
                 name=f"{warning['Type']}",
                 inline=False,
@@ -428,7 +442,7 @@ class Search(commands.Cog):
                     f"> **Moderator:** <@{warning.moderator_id}>\n"
                     f"> **Reason:** {warning.reason}\n"
                     f"> **At:** <t:{int(warning.time_epoch)}>\n"
-                    f'{"> **Until:** <t:{}>{}".format(int(warning.until_epoch), new_line) if warning.until_epoch is not None else ""}'
+                    f'{"> **Until:** <t:{}>{}".format(int(until_epoch), new_line) if until_epoch is not None else ""}'
                     f"> **ID:** `{warning.snowflake}`"
                 ),
             )

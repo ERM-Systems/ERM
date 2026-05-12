@@ -2,7 +2,8 @@ import logging
 import discord
 from discord.ext import commands
 from utils.constants import BLANK_COLOR
-
+from utils.task_loader import start_tasks
+import asyncio
 on_ready = False
 
 

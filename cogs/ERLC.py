@@ -386,7 +386,7 @@ class ERLC(commands.Cog):
             if ctx.author != interaction.user:
                 return
             
-            command_response = self.bot.prc_api.run_command(
+            command_response = await self.bot.prc_api.run_command(
                 ctx.guild.id, (command := f":kick {roblox_player.name}")
             )
             await self.secure_logging(
@@ -426,7 +426,7 @@ class ERLC(commands.Cog):
                     ephemeral=True,
                 )
 
-            command_response = self.bot.prc_api.run_command(
+            command_response = await self.bot.prc_api.run_command(
                 ctx.guild.id, (command := f":ban {roblox_player.id}")
             )
             await self.secure_logging(
@@ -761,7 +761,7 @@ class ERLC(commands.Cog):
     @is_erlc_server_linked()
     async def server_unlink(self, ctx: commands.Context):
         await log_command_usage(self.bot, ctx.guild, ctx.author, f"ER:LC Unlink")
-        await self.bot.server_keys.delete_one({"_id": ctx.guild.id})
+        await self.bot.server_keys.delete_by_id(ctx.guild.id)
         await ctx.send(
             embed=discord.Embed(
                 title=f"{self.bot.emoji_controller.get_emoji('success')} Successfully Unlinked",
