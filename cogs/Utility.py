@@ -303,7 +303,6 @@ class Utility(commands.Cog):
     def generate_graph(self):
         self.ax.clear()
         self.ax.plot(self.bot.saved_latencies["shards"], label="Discord (avg.)")
-        self.ax.plot(self.bot.saved_latencies["rest"], label="REST API")
         self.ax.plot(self.bot.saved_latencies["db"], label="DB")
         self.ax.set_xticks([])
         self.ax.set_title("Bot Latency")
