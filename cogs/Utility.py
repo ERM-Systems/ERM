@@ -273,33 +273,6 @@ class Utility(commands.Cog):
             )
         )
 
-
-    @commands.hybrid_command(
-        name="staff_sync",
-        description="Internal Use Command, used for connection staff privileged individuals to their Roblox counterparts.",
-        extras={"category": "Utility"},
-        hidden=True,
-        with_app_command=False,
-    )
-    @commands.has_role(988055417907200010)
-    async def staff_sync(self, ctx: commands.Context, discord_id: int, roblox_id: int):
-        from bson import ObjectId
-        from datamodels.StaffConnections import StaffConnection
-
-        await self.bot.staff_connections.insert_connection(
-            StaffConnection(
-                roblox_id=roblox_id, discord_id=discord_id, document_id=ObjectId()
-            )
-        )
-        roblox_user = await self.bot.roblox.get_user(roblox_id)
-        await ctx.send(
-            embed=discord.Embed(
-                title="Staff Sync",
-                description=f"Successfully synced <@{discord_id}> to {roblox_user.name}",
-                color=BLANK_COLOR,
-            )
-        )
-
     def generate_graph(self):
         self.ax.clear()
         self.ax.plot(self.bot.saved_latencies["shards"], label="Discord (avg.)")
