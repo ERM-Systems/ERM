@@ -54,16 +54,16 @@ class OnShiftEnd(commands.Cog):
                     responses = await asyncio.gather(*tasks, return_exceptions=True)
                     for response in responses:
                         if isinstance(response, Exception):
-                            logging.error(
+                            logging.warning(
                                 f"End shift API sync failed: {str(response)}"
                             )
 
         try:
             await sync_end_with_apis()
         except aiohttp.ClientError as e:
-            logging.error(f"Failed to sync shift end with APIs: {str(e)}")
+            logging.warning(f"Failed to sync shift end with APIs: {str(e)}")
         except Exception as e:
-            logging.error(f"Unexpected error during end shift API sync: {str(e)}")
+            logging.warning(f"Unexpected error during end shift API sync: {str(e)}")
 
         guild: discord.Guild = self.bot.get_guild(shift.guild)
         if guild is None:

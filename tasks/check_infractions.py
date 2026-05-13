@@ -63,7 +63,7 @@ async def check_infractions(bot):
                         },
                     )
                 except Exception as e:
-                    logging.error(
+                    logging.warning(
                         f"Error processing temporary roles for infraction {infraction['_id']}: {str(e)}"
                     )
 
@@ -167,7 +167,7 @@ async def check_infractions(bot):
                                     guild_id, f":mod {infraction['user_id']}"
                                 )
                             except Exception as e:
-                                logging.error(
+                                logging.warning(
                                     f"Failed to restore in-game permissions: {str(e)}"
                                 )
 
@@ -185,16 +185,16 @@ async def check_infractions(bot):
                     )
 
             except Exception as e:
-                logging.error(
+                logging.warning(
                     f"Error processing infraction expiry for {infraction['_id']}: {str(e)}"
                 )
 
         end_time = time.time()
-        logging.warning(
+        logging.info(
             "Event check_infractions took {} seconds".format(
                 str(end_time - initial_time)
             )
         )
 
     except Exception as e:
-        logging.error(f"Error in check_infractions task: {str(e)}")
+        logging.warning(f"Error in check_infractions task: {str(e)}")

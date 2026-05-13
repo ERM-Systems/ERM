@@ -394,7 +394,7 @@ class OnMessage(commands.Cog):
                 try:
                     person = command.split(" ")[1]
                 except IndexError:
-                    logging.error("IndexError in remote command usage embed")
+                    logging.warning("IndexError in remote command usage embed")
                     break
                 # Adding check for the command to see if only admin is using the ban command
 
@@ -439,7 +439,7 @@ class OnMessage(commands.Cog):
                         await message.add_reaction("⛔")
                         return
                 except Exception as e:
-                    logging.error(f"Error checking command permissions: {e}")
+                    logging.warning(f"Error checking command permissions: {e}")
                     continue
 
                 combined = ""
