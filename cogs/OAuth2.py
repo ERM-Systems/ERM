@@ -80,7 +80,7 @@ class OAuth2(commands.Cog):
                 if item := await self.bot.oauth2_users.db.find_one(
                     {"discord_id": ctx.author.id}
                 ):  
-                    if isinstance(item.get("last_uopdated", 0), datetime.datetime):
+                    if isinstance(item.get("last_updated", 0), datetime.datetime):
                         check = item.get("last_updated", 0).timestamp() > timestamp
                     else:
                         check = item.get("last_updated", 0) > timestamp 
