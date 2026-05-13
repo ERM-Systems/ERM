@@ -179,6 +179,3 @@ Do not use this file for any new views, instead, please create a new file
 in the `ui` folder and reference that. `menus.py` will be removed in a later
 version of ERM.
 
-Do not use this file for any new views, instead, please create a new file
-in the `ui` folder and reference that. `menus.py` will be removed in a later
-version of ERM.
