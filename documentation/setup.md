@@ -41,7 +41,9 @@ cp .env.template .env
 - `MONGO_URL` — MongoDB connection string (e.g. `mongodb://localhost:27017/erm`)  
 - `ENVIRONMENT` — `PRODUCTION` or `DEVELOPMENT`  
 - `PRODUCTION_BOT_TOKEN` — Bot token for the production environment  
-- `DEVELOPMENT_BOT_TOKEN` — Bot token for the development environment  
+- `DEVELOPMENT_BOT_TOKEN` — Bot token for the development environment
+- `CUSTOM_GUILD_ID` must stay 0 in order to be used in other servers. If set to a specific server the bot cannot operate in other servers.
+
 
 ### Optional — Bot Features
 
