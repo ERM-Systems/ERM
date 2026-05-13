@@ -74,20 +74,20 @@ async def iterate_prc_logs_global(bot):
         )
 
     except Exception as e:
-        logging.error(f"[ITERATE] Error in iteration: {str(e)}", exc_info=True)
+        logging.warning(f"[ITERATE] Error in iteration: {str(e)}", exc_info=True)
 
 
 
 async def iterate_prc_logs_custom(bot):
     guild_id = config("CUSTOM_GUILD_ID")
     if not guild_id:
-        logging.error("No custom guild ID provided for custom environment")
+        logging.info("No custom guild ID provided for custom environment")
         return
 
     try:
         await unprimitive_guild_process({"_id": int(guild_id)}, bot)
     except Exception as e:
-        logging.error(f"error processing guild: {e}")
+        logging.warning(f"error processing guild: {e}")
 
 async def unprimitive_guild_process(items, bot):
     guild = bot.get_guild(items["_id"]) or await bot.fetch_guild(
@@ -294,7 +294,7 @@ async def send_log_batch(channel, embeds):
         try:
             await channel.send(embeds=chunk)
         except discord.HTTPException as e:
-            logging.error(f"Failed to send log batch: {e}")
+            logging.waring(f"Failed to send log batch: {e}")
 
 
 def process_kill_logs(kill_logs, last_timestamp):
@@ -374,7 +374,7 @@ async def process_player_logs(bot, settings, guild_id, player_logs, last_timesta
                         allowed_mentions=discord.AllowedMentions.all(),
                     )
                 except Exception as e:
-                    logging.error(f"Error processing unrealistic username alert: {e}")
+                    logging.warning(f"Error processing unrealistic username alert: {e}")
 
     for log in sorted(player_logs):
         if log.timestamp <= last_timestamp:
@@ -478,7 +478,7 @@ async def process_player_logs(bot, settings, guild_id, player_logs, last_timesta
                                             )
                                             avatar_url = avatar[0].image_url
                                         except Exception as e:
-                                            logging.error(
+                                            logging.warning(
                                                 f"Error fetching user data: {e}"
                                             )
                                             return embeds, latest_timestamp
@@ -526,7 +526,7 @@ async def process_player_logs(bot, settings, guild_id, player_logs, last_timesta
                                                 )
                                             )
             except Exception as e:
-                logging.error(f"Error in avatar check: {e}")
+                logging.warning(f"Error in avatar check: {e}")
 
     return embeds, latest_timestamp
 
@@ -950,12 +950,12 @@ async def handle_kick_timer(bot, settings, guild_id, player_logs, command_logs):
             try:
                 await bot.prc_api.run_command(guild_id, f":ban {usernames_str}")
             except Exception as e:
-                logging.error(f"Failed to ban users: {e}")
+                logging.warning(f"Failed to ban users: {e}")
         else:
             try:
                 await bot.prc_api.run_command(guild_id, f":kick {usernames_str}")
             except Exception as e:
-                logging.error(f"Failed to kick users: {e}")
+                logging.warning(f"Failed to kick users: {e}")
 
         for username in rejoined_users:
             try:
@@ -979,4 +979,4 @@ async def handle_kick_timer(bot, settings, guild_id, player_logs, command_logs):
                         time_epoch=current_time,
                     )
             except Exception as e:
-                logging.error(f"Failed to log punishment for {username}: {e}")
+                logging.warning(f"Failed to log punishment for {username}: {e}")

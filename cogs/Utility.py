@@ -516,7 +516,7 @@ class Utility(commands.Cog):
                             )
                     else:
                         error_msg = f"API returned non-200 status: {response.status}"
-                        logging.error(error_msg)
+                        logging.warning(error_msg)
                         await ctx.send(
                             embed=discord.Embed(
                                 title="Error",
@@ -527,7 +527,7 @@ class Utility(commands.Cog):
                         )
             except aiohttp.ClientError as e:
                 error_msg = f"API request failed: {str(e)}"
-                logging.error(error_msg)
+                logging.warning(error_msg)
                 await ctx.send(
                     embed=discord.Embed(
                         title="Error",

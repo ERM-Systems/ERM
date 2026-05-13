@@ -89,6 +89,6 @@ async def tempban_checks(bot):
         )
     del cached_servers
     end_time = time.time()
-    logging.warning(
+    logging.info(
         "Event tempban_checks took {} seconds".format(str(end_time - initial_time))
     )

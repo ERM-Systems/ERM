@@ -256,14 +256,14 @@ class Bot(commands.AutoShardedBot):
                         await self.load_extension(extension)
                         logging.info(f"Loaded {extension}")
                 except Exception as e:
-                    logging.error(f"Failed to load extension {extension}.", exc_info=e)
+                    logging.critical(f"Failed to load extension {extension}.", exc_info=e)
 
             for extension in Events:
                 try:
                     await self.load_extension(extension)
                     logging.info(f"Loaded {extension}")
                 except Exception as e:
-                    logging.error(f"Failed to load extension {extension}.", exc_info=e)
+                    logging.critical(f"Failed to load extension {extension}.", exc_info=e)
 
             bot.error_list = []
             logging.info("Connected to MongoDB!")

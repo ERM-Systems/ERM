@@ -102,11 +102,11 @@ async def check_whitelisted_car(bot):
                     )
 
                     if isinstance(players, Exception) or isinstance(vehicles, Exception):
-                        logging.error(f"Failed to fetch server data for guild {guild_id}")
+                        logging.warning(f"Failed to fetch server data for guild {guild_id}")
                         return
 
                 except Exception as e:
-                    logging.error(f"Failed to fetch server data for guild {guild_id}: {e}")
+                    logging.warning(f"Failed to fetch server data for guild {guild_id}: {e}")
                     return
 
                 player_lookup = {p.username: p for p in players}
@@ -135,10 +135,10 @@ async def check_whitelisted_car(bot):
                         await asyncio.sleep(1)
 
             except discord.errors.NotFound:
-                logging.error(f"Guild or channel not found: {guild_id}")
+                logging.warning(f"Guild or channel not found: {guild_id}")
                 return
             except Exception as e:
-                logging.error(f"Error processing guild {guild_id}: {e}", exc_info=True)
+                logging.warning(f"Error processing guild {guild_id}: {e}", exc_info=True)
                 return
 
     guild_tasks = []
@@ -261,7 +261,7 @@ async def process_vehicle(
             await handle_non_member(bot, player, guild, alert_channel, alert_message)
 
     except Exception as e:
-        logging.error(f"Error processing vehicle for {vehicle.username}: {e}")
+        logging.waring(f"Error processing vehicle for {vehicle.username}: {e}")
 
 
 async def get_cached_member_by_username(bot, guild, username, exotic_roles):
@@ -318,8 +318,8 @@ async def send_warning_embed(bot, player, guild, alert_channel):
 
         await alert_channel.send(embed=embed)
     except discord.HTTPException as e:
-        logging.error(f"Failed to send embed for {player.username}: {e}")
+        logging.warning(f"Failed to send embed for {player.username}: {e}")
     except Exception as e:
-        logging.error(
+        logging.warning(
             f"Error in send_warning_embed for {player.username}: {e}", exc_info=True
         )

@@ -39,7 +39,7 @@ async def geocode_location(session: aiohttp.ClientSession, location: str) -> tup
             r = results[0]
             return r["latitude"], r["longitude"], r.get("timezone", "UTC")
     except Exception as e:
-        logging.error(f"Geocoding failed for location '{location}': {e}")
+        logging.warning(f"Geocoding failed for location '{location}': {e}")
         return None
 
 
@@ -76,7 +76,7 @@ async def fetch_weather(session: aiohttp.ClientSession, lat: float, lon: float, 
                 "time": hour_to_erlc_time(hour),
             }
     except Exception as e:
-        logging.error(f"Weather fetch failed for ({lat}, {lon}): {e}")
+        logging.warning(f"Weather fetch failed for ({lat}, {lon}): {e}")
         return None
 
 
@@ -157,14 +157,14 @@ async def sync_weather(bot):
 
                     geo = geocode_cache[location]
                     if geo is None:
-                        logging.error(f"Could not geocode location '{location}' for guild {guild_id}")
+                        logging.warning(f"Could not geocode location '{location}' for guild {guild_id}")
                         continue
 
                     lat, lon, timezone = geo
                     weather_data = await fetch_weather(session, lat, lon, timezone)
 
                     if weather_data is None:
-                        logging.error(f"Could not fetch weather for guild {guild_id}")
+                        logging.warning(f"Could not fetch weather for guild {guild_id}")
                         continue
 
                     logging.info(f"Weather data for guild {guild_id}: {weather_data}")
@@ -174,19 +174,19 @@ async def sync_weather(bot):
                             await bot.prc_api.run_command(guild_id, f":weather {weather_data['weatherType']}")
                             logging.info(f"Set weather to {weather_data['weatherType']} for guild {guild_id}")
                         except ResponseFailure as e:
-                            logging.error(f"Failed to sync weather for guild {guild_id}: {str(e)}")
+                            logging.warning(f"Failed to sync weather for guild {guild_id}: {str(e)}")
 
                     if weather_settings.get("sync_time"):
                         try:
                             await bot.prc_api.run_command(guild_id, f":time {weather_data['time']}")
                             logging.info(f"Set time to {weather_data['time']} for guild {guild_id}")
                         except ResponseFailure as e:
-                            logging.error(f"Failed to sync time for guild {guild_id}: {str(e)}")
+                            logging.warning(f"Failed to sync time for guild {guild_id}: {str(e)}")
 
                 except Exception as e:
-                    logging.error(f"Error syncing weather for guild {guild_id}: {str(e)}", exc_info=True)
+                    logging.warning(f"Error syncing weather for guild {guild_id}: {str(e)}", exc_info=True)
 
         logging.info(f"Weather sync task completed. Processed {processed}/{server_count} servers")
 
     except Exception as e:
-        logging.error(f"Critical error in weather sync task: {str(e)}", exc_info=True)
+        logging.warning(f"Critical error in weather sync task: {str(e)}", exc_info=True)

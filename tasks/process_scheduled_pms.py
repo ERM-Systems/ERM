@@ -21,4 +21,4 @@ async def process_scheduled_pms(bot):
                     )
                     await bot.scheduled_pm_queue.put(pm_data)
     except Exception as e:
-        logging.error(f"Error in process_scheduled_pms: {e}")
+        logging.warning(f"Error in process_scheduled_pms: {e}")

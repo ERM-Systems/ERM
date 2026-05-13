@@ -114,7 +114,7 @@ async def mc_discord_checks(bot):
                 if channel_id != 0:
                     channel = await get_cached_channel(bot, channel_id)
                     if not channel:
-                        logging.error(f"Channel {channel_id} not found in guild {guild_id}.")
+                        logging.warning(f"Channel {channel_id} not found in guild {guild_id}.")
                         return
                     
                 guild = await get_cached_guild(bot, guild_id)
@@ -128,7 +128,7 @@ async def mc_discord_checks(bot):
                         return
 
                 except Exception as e:
-                    logging.error(f"Failed to fetch server data for guild {guild_id}: {e}")
+                    logging.warning(f"Failed to fetch server data for guild {guild_id}: {e}")
                     return
                 
                 not_in_discord = []
@@ -141,7 +141,7 @@ async def mc_discord_checks(bot):
                     await handle_discord_check_batch(bot, guild, not_in_discord, channel)
             
             except Exception as e:
-                logging.error(f"Error processing guild {guild_id}: {e}", exc_info=True)
+                logging.warning(f"Error processing guild {guild_id}: {e}", exc_info=True)
                 return
 
     guild_tasks = []
@@ -170,7 +170,7 @@ async def handle_discord_check_batch(bot, guild, players_not_in_discord, alert_c
             await send_batch_warning_embed(players_not_in_discord, alert_channel)
 
     except Exception as e:
-        logging.error(f"Error in handle_discord_check_batch: {e}")
+        logging.warning(f"Error in handle_discord_check_batch: {e}")
 
 
 async def send_batch_warning_embed(players, alert_channel):
@@ -193,6 +193,6 @@ async def send_batch_warning_embed(players, alert_channel):
 
         await alert_channel.send(embed=embed)
     except discord.HTTPException as e:
-        logging.error(f"Failed to send batch embed: {e}")
+        logging.warning(f"Failed to send batch embed: {e}")
     except Exception as e:
-        logging.error(f"Error in send_batch_warning_embed: {e}", exc_info=True)
+        logging.warning(f"Error in send_batch_warning_embed: {e}", exc_info=True)

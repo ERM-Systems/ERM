@@ -465,7 +465,7 @@ async def run_command(bot, guild_id, username, message):
             logging.warning(f"Rate limited. Retrying after {retry_after} seconds.")
             await asyncio.sleep(retry_after)
         else:
-            logging.error(f"Failed to send PM to {username} in guild {guild_id}")
+            logging.warning(f"Failed to send PM to {username} in guild {guild_id}")
             break
 
 

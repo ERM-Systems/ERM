@@ -17,12 +17,12 @@ class OnPunishment(commands.Cog):
         warning: WarningItem = await self.bot.punishments.fetch_warning(objectid)
         guild = self.bot.get_guild(warning.guild_id)
         if guild is None:
-            logging.error(f"Guild with ID {warning.guild_id} not found.")
+            logging.warning(f"Guild with ID {warning.guild_id} not found.")
             return
 
         guild_settings = await self.bot.settings.find_by_id(guild.id)
         if not guild_settings:
-            logging.error(f"Settings for guild ID {guild.id} not found.")
+            logging.warning(f"Settings for guild ID {guild.id} not found.")
             return
 
         punishment_types = await self.bot.punishment_types.get_punishment_types(
@@ -68,11 +68,11 @@ class OnPunishment(commands.Cog):
         try:
             moderator: discord.Member = guild.get_member(warning.moderator_id)
         except discord.NotFound:
-            logging.error(f"Moderator with ID {warning.moderator_id} not found.")
+            logging.warning(f"Moderator with ID {warning.moderator_id} not found.")
             return
 
         if not moderator:
-            logging.error(
+            logging.warning(
                 f"Moderator with ID {warning.moderator_id} not found in guild {guild.id}."
             )
             return
@@ -98,7 +98,7 @@ class OnPunishment(commands.Cog):
                     self, warning.user_id
                 )
             except Exception as e:
-                logging.error(f"Error getting warned discord ID: {e}")
+                logging.warning(f"Error getting warned discord ID: {e}")
 
             try:
                 document = await self.bot.consent.db.find_one(

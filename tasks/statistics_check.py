@@ -29,7 +29,7 @@ async def get_cached_guild(bot, guild_id):
     except discord.NotFound:
         guild = None
     except Exception as e:
-        logging.error(f"Error fetching guild {guild_id}: {e}")
+        logging.warning(f"Error fetching guild {guild_id}: {e}")
         guild = None
     
     _guild_cache[cache_key] = (guild, now)
@@ -48,7 +48,7 @@ async def get_cached_channel(bot, guild, channel_id):
     try:
         channel = await fetch_get_channel(guild, int(channel_id))
     except Exception as e:
-        logging.error(f"Error fetching channel {channel_id} in guild {guild.id}: {e}")
+        logging.warning(f"Error fetching channel {channel_id} in guild {guild.id}: {e}")
         channel = None
     
     _channel_cache[cache_key] = (channel, now)
@@ -72,9 +72,9 @@ async def update_channel(bot, guild, channel_id, stat_config, placeholders):
                     f"Skipped update for channel {channel_id} in guild {guild.id} - no changes needed"
                 )
         else:
-            logging.error(f"Channel {channel_id} not found in guild {guild.id}")
+            logging.warning(f"Channel {channel_id} not found in guild {guild.id}")
     except Exception as e:
-        logging.error(
+        logging.warning(
             f"Failed to update channel {channel_id} in guild {guild.id}: {e}", exc_info=True
         )
 
@@ -96,7 +96,7 @@ async def statistics_check(bot):
             try:
                 guild = await get_cached_guild(bot, guild_id)
                 if not guild:
-                    logging.error(f"Guild {guild_id} not found")
+                    logging.warning(f"Guild {guild_id} not found")
                     return
 
                 settings = await bot.settings.find_by_id(guild_id)
@@ -115,7 +115,7 @@ async def statistics_check(bot):
                     status: ServerStatus = await bot.prc_api.get_server_status(guild_id)
                     queue: int = await bot.prc_api.get_server_queue(guild_id, minimal=True)
                 except prc_api.ResponseFailure as e:
-                    logging.error(f"PRC ResponseFailure for guild {guild_id}: {e}")
+                    logging.warning(f"PRC ResponseFailure for guild {guild_id}: {e}")
                     return
 
                 on_duty = await bot.shift_management.shifts.db.count_documents(
@@ -150,7 +150,7 @@ async def statistics_check(bot):
                 await asyncio.gather(*channel_tasks, return_exceptions=True)
                 
             except Exception as e:
-                logging.error(f"Error processing guild {guild_id}: {e}", exc_info=True)
+                logging.warning(f"Error processing guild {guild_id}: {e}", exc_info=True)
                 return
 
     # Process guilds in batches
