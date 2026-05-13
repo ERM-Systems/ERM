@@ -2,8 +2,8 @@ import asyncio
 import typing
 import aiohttp
 from datamodels.ServerKeys import ServerKey
-from utils.prc_api import ResponseFailure, ServerStatus, Player, CommandLog, BanItem
-
+from utils.prc_api import ServerStatus, Player, CommandLog, BanItem
+from utils.game_api_classes import ResponseFailure
 
 class MCApiClient:
     def __init__(self, bot, base_url: str, api_key: str):
