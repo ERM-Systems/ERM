@@ -1024,11 +1024,10 @@ class APIRoutes:
         if not authorization:
             return HTTPException(status_code=401, detail="Invalid authorization")
 
-        base_auth = await validate_authorization(
-            self.bot, authorization, disable_static_tokens=False
-        )
-        if not base_auth:
-            return HTTPException(status_code=401, detail="Invalid authorization")
+        if not await validate_authorization(self.bot, authorization):
+            raise HTTPException(
+                status_code=401, detail="Invalid or expired authorization."
+            )
 
         guild_id = json_data.get("Guild") or json_data.get("guild")
         if not guild_id:
@@ -1056,7 +1055,7 @@ class APIRoutes:
             except (TypeError, ValueError):
                 return HTTPException(status_code=400, detail="Invalid UserID")
 
-        if before_snowflake not in (None, ""):
+        if before_snowflake:
             try:
                 query["Snowflake"] = {"$lt": int(before_snowflake)}
             except (TypeError, ValueError):
