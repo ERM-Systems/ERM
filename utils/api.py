@@ -1050,7 +1050,7 @@ class APIRoutes:
         user_id = json_data.get("UserID")
         before_snowflake = json_data.get("BeforeSnowflake")
 
-        if user_id not in (None, ""):
+        if user_id:
             try:
                 query["UserID"] = int(user_id)
             except (TypeError, ValueError):
