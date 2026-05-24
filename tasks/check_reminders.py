@@ -71,6 +71,9 @@ async def notify_panel(guild_id, message):
 
 async def process_reminder(bot, guild, item, guild_obj):
     """Process a single reminder item."""
+    if not item.get("channel"):
+        return
+    
     channel = guild.get_channel(int(item["channel"]))
     if not channel:
         try:
