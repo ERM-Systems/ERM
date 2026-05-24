@@ -1017,6 +1017,83 @@ class APIRoutes:
 
         # return warning_objects
 
+    async def POST_get_punishments(self, request: Request):
+        json_data = await request.json()
+        authorization = request.headers.get("authorization")
+
+        if not authorization:
+            return HTTPException(status_code=401, detail="Invalid authorization")
+
+        if not await validate_authorization(self.bot, authorization):
+            raise HTTPException(
+                status_code=401, detail="Invalid or expired authorization."
+            )
+
+        guild_id = json_data.get("Guild") or json_data.get("guild")
+        if not guild_id:
+            return HTTPException(status_code=400, detail="Invalid guild")
+
+        try:
+            guild_id_int = int(guild_id)
+        except (TypeError, ValueError):
+            return HTTPException(status_code=400, detail="Invalid guild")
+
+        query: dict[str, typing.Any] = {"Guild": guild_id_int}
+
+        username = json_data.get("Username")
+        if username:
+            query["Username"] = username
+
+        reason_contains = json_data.get("ReasonContains")
+        type_filter = json_data.get("TypeFilter")
+        user_id = json_data.get("UserID")
+        before_snowflake = json_data.get("BeforeSnowflake")
+
+        if user_id:
+            try:
+                query["UserID"] = int(user_id)
+            except (TypeError, ValueError):
+                return HTTPException(status_code=400, detail="Invalid UserID")
+
+        if before_snowflake:
+            try:
+                query["Snowflake"] = {"$lt": int(before_snowflake)}
+            except (TypeError, ValueError):
+                return HTTPException(
+                    status_code=400, detail="Invalid BeforeSnowflake"
+                )
+
+        cursor = self.bot.punishments.db.find(query)
+
+        cursor = cursor.sort([("Epoch", -1), ("_id", -1)])
+
+        moderations: list[dict[str, typing.Any]] = []
+        async for document in cursor:
+            if type_filter and document.get("Type") != type_filter:
+                continue
+            if reason_contains and reason_contains.lower() not in str(
+                document.get("Reason", "")
+            ).lower():
+                continue
+
+            moderations.append(
+                {
+                    "ID": str(document["_id"]),
+                    "Snowflake": document.get("Snowflake", 0),
+                    "Username": document.get("Username", ""),
+                    "UserID": document.get("UserID", 0),
+                    "Type": document.get("Type", ""),
+                    "Reason": document.get("Reason", ""),
+                    "Moderator": document.get("Moderator", ""),
+                    "ModeratorID": document.get("ModeratorID", 0),
+                    "Guild": document.get("Guild", guild_id_int),
+                    "Epoch": document.get("Epoch", 0),
+                    "UntilEpoch": document.get("UntilEpoch", 0),
+                }
+            )
+
+        return moderations
+
     async def GET_get_token(
         self, authorization: Annotated[str | None, Header()], request: Request
     ):
