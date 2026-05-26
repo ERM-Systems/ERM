@@ -239,3 +239,223 @@ class SelectPagination(discord.ui.View):
             ephemeral=True,
         )
         return False
+
+class CustomPageV2:
+    view: typing.Optional[discord.ui.LayoutView]
+    identifier: typing.Optional[str]
+    containers: list[discord.ui.Container]
+    aliases: list[str]
+
+    def __init__(self, **kwargs):
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+
+class SelectPaginationV2(discord.ui.LayoutView):
+    def __init__(
+        self,
+        bot,
+        user_id: int,
+        pages: list[CustomPageV2],
+        start_at=0,
+        edit_method=None,
+    ):
+        super().__init__(timeout=900)
+        self.bot = bot
+        self.pages = pages
+        self.user_id = user_id
+        self.current_index = start_at
+        self.edit_method = edit_method
+
+        self.index_button = discord.ui.Button(
+            label = f"Page {self.current_index+1}/{len(pages)}",
+            disabled=True
+        )
+
+        self.back_button = discord.ui.Button(
+            emoji=discord.PartialEmoji.from_str(
+                bot.emoji_controller.get_emoji("l_arrow")
+            )
+        )
+        self.set_current_page = discord.ui.Button(
+            label=pages[start_at].identifier or "TEMP"
+        )
+        self.next_button = discord.ui.Button(
+            emoji=discord.PartialEmoji.from_str(
+                bot.emoji_controller.get_emoji("arrow")
+            )
+        )
+        self.end_button = discord.ui.Button(
+            emoji = "<:check:1163142000271429662>"
+        )
+
+        self.back_button.callback = self._back_callback
+        self.set_current_page.callback = self._set_page_callback
+        self.next_button.callback = self._next_callback
+        self.end_button.callback = self._end_callback
+        self.nav_row = discord.ui.ActionRow(
+            self.index_button,
+            self.back_button,
+            self.set_current_page,
+            self.next_button,
+            self.end_button
+        )
+        self.nav_container = discord.ui.Container()
+        self.nav_container.interaction_check = self.interaction_check
+        self.nav_container.add_item(self.nav_row)
+        self.add_item(self.nav_container)
+        
+    async def on_timeout(self):
+        self.remove_item(self.nav_container)
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        print(f"{self.user_id}, {type(self.user_id)}")
+        print(interaction.user.id)
+        if interaction.user.id != int(self.user_id):
+            await interaction.response.defer()
+            await generalised_interaction_check_failure(interaction.followup)
+            return False
+        else:
+            return True
+    def _validate_page_items(self, page_view: discord.ui.LayoutView):
+        for item in page_view.children:
+            if getattr(item, "default", None) is not None:
+                if item.default > len(item.options):
+                    item.default = 0
+            elif getattr(item, "default_values", None) is not None:
+                if len(item.default_values) > item.max_values:
+                    item.default_values = []
+
+    def _update_identifier_label(self, new_page: CustomPageV2):
+        if new_page.identifier:
+            self.set_current_page.label = new_page.identifier
+
+    def _build_view(self, page: CustomPageV2, detach: bool=False) -> discord.ui.LayoutView:
+        view = discord.ui.LayoutView(timeout=None)
+
+        for container in getattr(page, "containers", []):
+            view.add_item(container)
+
+        page_view = getattr(page, "view", None)
+        if page_view:
+            self._validate_page_items(page_view)
+            for item in page_view.children:
+                view.add_item(item)
+         
+        if not detach:
+            view.add_item(self.nav_container)
+
+        return view
+
+    def get_current_view(self) -> discord.ui.LayoutView:
+        page = self.pages[self.current_index]
+        self._update_identifier_label(page)
+        return self._build_view(page)
+    async def _paginate(
+        self,
+        interaction: discord.Interaction,
+        increment_index: int,
+        mode: typing.Literal["set", "increment", "detach"],
+    ):
+        if mode == "set":
+            new_index = increment_index
+        elif mode == "detach":
+            new_index = self.current_index
+        else:
+            new_index = (self.current_index + increment_index) % len(self.pages)
+
+        self.current_index = new_index
+        self.index_button.label = f"Page {self.current_index+1}/{len(self.pages)}"
+        new_page = self.pages[new_index]
+
+        self._update_identifier_label(new_page)
+        if not mode == "detach":
+            new_view = self._build_view(new_page)
+        else:
+            new_view = self._build_view(new_page, detach=True)
+
+        if self.edit_method:
+            await self.edit_method(view=new_view)
+        else:
+            await interaction.message.edit(view=new_view)
+
+    async def _back_callback(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        await self._paginate(interaction, -1, "increment")
+
+    async def _set_page_callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.user_id:
+            return await interaction.response.send_message(
+                embed=discord.Embed(
+                    title="Not Permitted",
+                    description="You are not permitted to interact with these buttons.",
+                    color=000000,
+                ),
+                ephemeral=True,
+            )
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        cont = discord.ui.Container()
+        cont.add_item(
+            discord.ui.TextDisplay(
+                (
+                    "### Change the Page\n"
+                    "What page would you like to go to?"
+                )
+            )
+        ).add_item(
+            discord.ui.Separator()
+        )
+        containers: list[discord.ui.Container] = []
+        containers.append(cont)
+        indexed_pages = list(enumerate(self.pages))
+        page_chunks = list(chunk_list(indexed_pages, 25))  # 25 options per select
+
+        for container_index in range(4):  # max 4 containers
+            if not page_chunks:
+                break
+
+            container = discord.ui.Container()
+
+            for _ in range(5):  # max 5 selects per container
+                if not page_chunks:
+                    break
+
+                chunk = page_chunks.pop(0)
+
+                options = [
+                    discord.SelectOption(label=page.identifier, value=str(index))
+                    for index, page in chunk
+                ]
+
+                container.add_item(
+                    discord.ui.ActionRow(
+                        CustomDropdown(self.user_id, options)
+                    )
+                )
+
+            containers.append(container)
+            
+        view = discord.ui.LayoutView()
+        for container in containers:
+            view.add_item(container)
+        msg = await interaction.followup.send(
+            embed=None,
+            view=view)
+        
+
+        await view.wait()
+        index = int(view.value or "1000")
+        await msg.delete()
+        if index != 1000:
+            await self._paginate(interaction, index, "set")
+
+    async def _next_callback(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        await self._paginate(interaction, 1, "increment")
+
+    async def _end_callback(self, interaction: discord.Interaction):
+        self.remove_item(self.nav_container)
+        await interaction.response.defer()
+        await self._paginate(interaction, 0, "detach")
+        
+
+
