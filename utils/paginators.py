@@ -346,10 +346,13 @@ class SelectPaginationV2(discord.ui.LayoutView):
 
         return view
 
-    def get_current_view(self) -> discord.ui.LayoutView:
+    def get_current_view(self, alias: str|None=None) -> discord.ui.LayoutView:
+        if alias:
+            self.current_index = self.pages.index([page for page in self.pages if alias in page.aliases][0]) 
         page = self.pages[self.current_index]
         self._update_identifier_label(page)
         return self._build_view(page)
+    
     async def _paginate(
         self,
         interaction: discord.Interaction,
