@@ -461,6 +461,9 @@ class Utility(commands.Cog):
     @is_management()
     @require_settings()
     async def api_generate(self, ctx: commands.Context):
+
+        return await ctx.reply(f"{self.bot.emoji_controller.get_emoji} **{ctx.author.mention}**, this command has been disabled due to it being nonfunctional for a long time. It is unknown when it will return.")
+        """
         view = APIKeyConfirmation(ctx.author.id)
         msg = await ctx.send(
             embed=discord.Embed(
@@ -536,7 +539,7 @@ class Utility(commands.Cog):
                     ),
                     ephemeral=isinstance(ctx.interaction, discord.Interaction),
                 )
-
+        """
 
 async def setup(bot):
     await bot.add_cog(Utility(bot))
