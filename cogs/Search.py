@@ -138,7 +138,7 @@ class Search(commands.Cog):
         embed_list[0].add_field(
             name="Player Information",
             value=(
-                f"> **Username:** [{roblox_player.name}](https://www.roblox.com/users/{roblox_player.id}/profile)\n"
+                f"> **Username:** {roblox_player.name}\n"
                 f"> **Display Name:** {roblox_player.display_name}\n"
                 f"> **User ID:** `{roblox_player.id}`\n"
                 f"> **Friend Count:** {await roblox_player.get_friend_count()}\n"
@@ -396,7 +396,7 @@ class Search(commands.Cog):
         embed_list[0].add_field(
             name="Player Information",
             value=(
-                f"> **Username:** [{roblox_player.name}](https://www.roblox.com/users/{roblox_player.id}/profile)\n"
+                f"> **Username:** {roblox_player.name}\n"
                 f"> **Display Name:** {roblox_player.display_name}\n"
                 f"> **User ID:** `{roblox_player.id}`\n"
                 f"> **Friend Count:** {await roblox_player.get_friend_count()}\n"
@@ -526,7 +526,7 @@ class Search(commands.Cog):
         embed.add_field(
             name="Player Information",
             value=(
-                f"> **Username:** [{roblox_player.name}](https://www.roblox.com/users/{roblox_player.id}/profile)\n"
+                f"> **Username:** {roblox_player.name}\n"
                 f"> **Display Name:** {roblox_player.display_name}\n"
                 f"> **User ID:** `{roblox_player.id}`\n"
                 f"> **Created At:** <t:{int(roblox_player.created.timestamp())}>"
