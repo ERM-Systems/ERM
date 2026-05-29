@@ -23,7 +23,7 @@ class Privacy(commands.Cog):
                     "> **Shift Logging**: Consent to your shifts being logged by ERM.\n"
                     "> **Automatic Shifts**: Allow shifts to be started when you join a server you are a moderator in."
                 )
-            ), accessory=discord.ui.Thumbnail(media=user.avatar.with_format("png").url))).add_item(discord.ui.Separator())
+            ), accessory=discord.ui.Thumbnail(media=user.display_avatar.with_format("png").url))).add_item(discord.ui.Separator())
             self.punishments_button = discord.ui.Button(label = "Punishment Alerts", emoji=bot.emoji_controller.get_emoji('check') if data.get("punishments", True) is True else bot.emoji_controller.get_emoji('xmark'), style=discord.ButtonStyle.green if data.get("punishments", True) is True else discord.ButtonStyle.red)
             self.shift_button = discord.ui.Button(label = "Shift Logging", emoji=bot.emoji_controller.get_emoji('check') if data.get("shift_reports", True) is True else bot.emoji_controller.get_emoji('xmark'), style=discord.ButtonStyle.green if data.get("shift_reports", True) is True else discord.ButtonStyle.red)
             self.automatic_shifts = discord.ui.Button(label = "Automatic Shifts", emoji=bot.emoji_controller.get_emoji('check') if data.get("automatic_shifts", True) is True else bot.emoji_controller.get_emoji('xmark'), style=discord.ButtonStyle.green if data.get("automatic_shifts", True) is True else discord.ButtonStyle.red)
@@ -100,7 +100,7 @@ class Privacy(commands.Cog):
     )
     async def consent(self, ctx: commands.Context):
         bot = self.bot
-        data = await bot.consent.find_by_id(ctx.author.id)
+        data = await bot.consent.find_by_id(ctx.author.id) or {}
 
         view = discord.ui.LayoutView()
         view.add_item(self.ConsentContainer(self.bot, ctx.author, data))
