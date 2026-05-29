@@ -41,8 +41,8 @@ from menus import (
 )
 from utils.AI import AI
 from utils.autocompletes import punishment_autocomplete, user_autocomplete
-from utils.constants import BLANK_COLOR, GREEN_COLOR
-from utils.paginators import SelectPagination, CustomPage
+from utils.constants import BLANK_COLOR, GREEN_COLOR, ONE_WEEK, DAY_NAMES
+from utils.paginators import SelectPagination, CustomPage, SelectPaginationV2, CustomPageV2
 from utils.utils import (
     admin_check,
     failure_embed,
@@ -1059,6 +1059,426 @@ class Punishments(commands.Cog):
             )
             .set_thumbnail(url=thumbnail)
         )
+
+
+    @punishments.command(
+        name="analytics",
+        description="View punishment analytics overview for the server.",
+        extras={"category": "Punishments"},
+    )
+    @is_staff()
+    @require_settings()
+    @app_commands.describe(
+        timeframe="The timeframe to analyze (e.g. '7d', '30d', '1w'). Leave blank for all time."
+    )
+    async def punishment_analytics(self, ctx: commands.Context, timeframe: typing.Optional[str] = None):
+        page_aliases = {
+            "overview": "Overview", "summary": "Overview", "stats": "Overview",
+            "staff": "Staff", "moderators": "Staff", "mods": "Staff",
+            "offenders": "Offenders", "repeat": "Offenders", "players": "Offenders",
+        }
+        start_alias = None
+        if timeframe and timeframe.lower() in page_aliases:
+            start_alias = timeframe.lower()
+            timeframe = None
+
+        gt_time = 0
+        timeframe_label = "All Time"
+        if timeframe and timeframe.lower() not in ["all", "total"]:
+            gt_time = int(datetime.datetime.now().timestamp()) - time_converter(timeframe)
+            timeframe_label = f"Last {timeframe}"
+
+        now = int(datetime.datetime.now().timestamp())
+
+        pipeline = [
+            {"$match": {"Guild": ctx.guild.id, "Epoch": {"$gte": gt_time}}},
+            {"$addFields": {"date": {"$toDate": {"$multiply": ["$Epoch", 1000]}}}},
+            {"$facet": {
+                "total": [{"$count": "count"}],
+                "by_type": [
+                    {"$group": {"_id": "$Type", "count": {"$sum": 1}}},
+                    {"$sort": {"count": -1}},
+                ],
+                "top_staff": [
+                    {"$group": {"_id": "$ModeratorID", "count": {"$sum": 1}}},
+                    {"$sort": {"count": -1}},
+                    {"$limit": 5},
+                ],
+                "top_offenders": [
+                    {"$group": {"_id": {"user_id": "$UserID", "username": "$Username"}, "count": {"$sum": 1}}},
+                    {"$sort": {"count": -1}},
+                    {"$limit": 5},
+                ],
+                "busiest_day": [
+                    {"$group": {"_id": {"$dayOfWeek": "$date"}, "count": {"$sum": 1}}},
+                    {"$sort": {"count": -1}},
+                    {"$limit": 1},
+                ],
+                "this_week": [
+                    {"$match": {"Epoch": {"$gte": now - ONE_WEEK}}},
+                    {"$count": "count"},
+                ],
+                "last_week": [
+                    {"$match": {"Epoch": {"$gte": now - (2 * ONE_WEEK), "$lt": now - ONE_WEEK}}},
+                    {"$count": "count"},
+                ],
+            }},
+        ]
+
+        result = [doc async for doc in await self.bot.punishments.db.aggregate(pipeline)]
+        data = result[0]
+
+        total = data["total"][0]["count"] if data["total"] else 0
+        if total == 0:
+            container = discord.ui.Container()
+            container.add_item(discord.ui.TextDisplay("### Punishment Analytics\n> There are no punishments in this server for the selected timeframe."))
+            return await ctx.send(view=discord.ui.LayoutView().add_item(container), allowed_mentions=discord.AllowedMentions.none())
+
+        day_names = DAY_NAMES
+        busiest_day = day_names.get(data["busiest_day"][0]["_id"], "Unknown") if data["busiest_day"] else "N/A"
+
+        this_week_count = data["this_week"][0]["count"] if data["this_week"] else 0
+        last_week_count = data["last_week"][0]["count"] if data["last_week"] else 0
+        if last_week_count > 0:
+            change_pct = ((this_week_count - last_week_count) / last_week_count) * 100
+            trend_text = f"{'+' if change_pct >= 0 else ''}{change_pct:.0f}%"
+        elif this_week_count > 0:
+            trend_text = "New activity"
+        else:
+            trend_text = "No recent activity"
+
+        type_breakdown = "\n".join(f"> **{r['_id']}:** {r['count']:,}" for r in data["by_type"])
+        staff_lines = "\n".join(
+            f"> **{i + 1}.** <@{item['_id']}> - {item['count']:,} punishments"
+            for i, item in enumerate(data["top_staff"])
+        )
+        offender_lines = "\n".join(
+            f"> **{i + 1}.** {item['_id'].get('username', 'Unknown')} - {item['count']:,} punishments"
+            for i, item in enumerate(data["top_offenders"])
+        )
+
+        overview_page = discord.ui.Container()
+        overview_page.add_item(discord.ui.TextDisplay(
+            f"### Punishment Analytics\n"
+            f"> **Timeframe:** {timeframe_label}\n"
+            f"> **Total Punishments:** {total:,}\n"
+            f"> **Busiest Day:** {busiest_day}\n"
+            f"> **Week-over-Week:** {trend_text}"
+        ))
+        overview_page.add_item(discord.ui.Separator())
+        overview_page.add_item(discord.ui.TextDisplay(
+            f"**Breakdown by Type**\n{type_breakdown or '> None'}"
+        ))
+
+        staff_page = discord.ui.Container()
+        staff_page.add_item(discord.ui.TextDisplay(
+            f"### Punishment Analytics\n**Most Active Staff**\n{staff_lines or '> None'}"
+        ))
+
+        offender_page = discord.ui.Container()
+        offender_page.add_item(discord.ui.TextDisplay(
+            f"### Punishment Analytics\n**Top Repeat Offenders**\n{offender_lines or '> None'}"
+        ))
+
+        pages = [
+            CustomPageV2(containers=[overview_page], identifier="Overview", aliases=["overview", "summary", "stats"]),
+            CustomPageV2(containers=[staff_page], identifier="Staff", aliases=["staff", "moderators", "mods"]),
+            CustomPageV2(containers=[offender_page], identifier="Offenders", aliases=["offenders", "repeat", "players"]),
+        ]
+        paginator = SelectPaginationV2(self.bot, ctx.author.id, pages)
+        await ctx.send(view=paginator.get_current_view(alias=start_alias), allowed_mentions=discord.AllowedMentions.none())
+
+    @punishments.command(
+        name="staff",
+        description="View detailed punishment stats for a specific staff member.",
+        extras={"category": "Punishments"},
+    )
+    @is_staff()
+    @require_settings()
+    @app_commands.describe(
+        member="The staff member to view stats for.",
+        timeframe="The timeframe to analyze (e.g. '7d', '30d'). Leave blank for all time.",
+    )
+    async def punishment_staff(self, ctx: commands.Context, member: discord.Member, timeframe: typing.Optional[str] = None):
+        gt_time = 0
+        timeframe_label = "All Time"
+        if timeframe and timeframe.lower() not in ["all", "total"]:
+            gt_time = int(datetime.datetime.now().timestamp()) - time_converter(timeframe)
+            timeframe_label = f"Last {timeframe}"
+
+        pipeline = [
+            {"$match": {"Guild": ctx.guild.id, "ModeratorID": member.id, "Epoch": {"$gte": gt_time}}},
+            {"$addFields": {"date": {"$toDate": {"$multiply": ["$Epoch", 1000]}}}},
+            {"$facet": {
+                "total": [{"$count": "count"}],
+                "by_type": [
+                    {"$group": {"_id": "$Type", "count": {"$sum": 1}}},
+                    {"$sort": {"count": -1}},
+                ],
+                "by_hour": [
+                    {"$group": {"_id": {"$hour": "$date"}, "count": {"$sum": 1}}},
+                    {"$sort": {"count": -1}},
+                    {"$limit": 3},
+                ],
+                "top_players": [
+                    {"$group": {"_id": {"user_id": "$UserID", "username": "$Username"}, "count": {"$sum": 1}}},
+                    {"$sort": {"count": -1}},
+                    {"$limit": 5},
+                ],
+                "recent": [
+                    {"$sort": {"Epoch": -1}},
+                    {"$limit": 5},
+                    {"$project": {"Username": 1, "Type": 1, "Epoch": 1}},
+                ],
+            }},
+        ]
+
+        result = [doc async for doc in await self.bot.punishments.db.aggregate(pipeline)]
+        data = result[0]
+
+        total = data["total"][0]["count"] if data["total"] else 0
+        if total == 0:
+            container = discord.ui.Container()
+            container.add_item(discord.ui.TextDisplay(f"### Staff Analytics\n> <@{member.id}> has no punishments logged for the selected timeframe."))
+            return await ctx.send(view=discord.ui.LayoutView().add_item(container), allowed_mentions=discord.AllowedMentions.none())
+
+        type_breakdown = "\n".join(f"> **{r['_id']}:** {r['count']:,}" for r in data["by_type"])
+        hour_lines = "\n".join(f"> **{r['_id']:02d}:00 UTC:** {r['count']:,}" for r in data["by_hour"])
+        player_lines = "\n".join(
+            f"> **{i + 1}.** {r['_id'].get('username', 'Unknown')} - {r['count']:,}"
+            for i, r in enumerate(data["top_players"])
+        )
+        recent_lines = "\n".join(
+            f"> **{r.get('Username', 'Unknown')}** - {r.get('Type', '?')} - <t:{int(r.get('Epoch', 0))}:R>"
+            for r in data["recent"]
+        )
+
+        overview_page = discord.ui.Container()
+        overview_page.add_item(discord.ui.TextDisplay(
+            f"### Staff Analytics - {member.display_name}\n"
+            f"> **Timeframe:** {timeframe_label}\n"
+            f"> **Total Punishments:** {total:,}"
+        ))
+        overview_page.add_item(discord.ui.Separator())
+        overview_page.add_item(discord.ui.TextDisplay(
+            f"**By Type**\n{type_breakdown or '> None'}"
+        ))
+        overview_page.add_item(discord.ui.Separator())
+        overview_page.add_item(discord.ui.TextDisplay(
+            f"**Most Active Hours**\n{hour_lines or '> N/A'}"
+        ))
+
+        details_page = discord.ui.Container()
+        details_page.add_item(discord.ui.TextDisplay(
+            f"### Staff Analytics - {member.display_name}\n**Most Punished Players**\n{player_lines or '> None'}"
+        ))
+        details_page.add_item(discord.ui.Separator())
+        details_page.add_item(discord.ui.TextDisplay(
+            f"**Recent Punishments**\n{recent_lines or '> None'}"
+        ))
+
+        pages = [
+            CustomPageV2(containers=[overview_page], identifier="Overview", aliases=["overview", "summary", "stats"]),
+            CustomPageV2(containers=[details_page], identifier="Details", aliases=["details", "players", "recent"]),
+        ]
+        paginator = SelectPaginationV2(self.bot, ctx.author.id, pages)
+        await ctx.send(view=paginator.get_current_view(), allowed_mentions=discord.AllowedMentions.none())
+
+    @punishments.command(
+        name="player",
+        description="View punishment history and trends for a specific player.",
+        extras={"category": "Punishments"},
+    )
+    @is_staff()
+    @require_settings()
+    @app_commands.autocomplete(user=user_autocomplete)
+    @app_commands.describe(
+        user="The Roblox username or Discord mention to look up.",
+        timeframe="The timeframe to analyze (e.g. '7d', '30d'). Leave blank for all time.",
+    )
+    async def punishment_player(self, ctx: commands.Context, user: str, timeframe: typing.Optional[str] = None):
+        gt_time = 0
+        timeframe_label = "All Time"
+        if timeframe and timeframe.lower() not in ["all", "total"]:
+            gt_time = int(datetime.datetime.now().timestamp()) - time_converter(timeframe)
+            timeframe_label = f"Last {timeframe}"
+
+        roblox_user = await get_roblox_by_username(user, self.bot, ctx)
+        if not roblox_user or roblox_user.get("errors"):
+            return await ctx.send(
+                embed=discord.Embed(
+                    title="Could not find player",
+                    description="I could not find a Roblox player with that username.",
+                    color=BLANK_COLOR,
+                )
+            )
+
+        pipeline = [
+            {"$match": {"Guild": ctx.guild.id, "UserID": roblox_user["id"], "Epoch": {"$gte": gt_time}}},
+            {"$facet": {
+                "total": [{"$count": "count"}],
+                "by_type": [
+                    {"$group": {"_id": "$Type", "count": {"$sum": 1}}},
+                    {"$sort": {"count": -1}},
+                ],
+                "by_moderator": [
+                    {"$group": {"_id": "$ModeratorID", "count": {"$sum": 1}}},
+                    {"$sort": {"count": -1}},
+                    {"$limit": 5},
+                ],
+                "chronological": [
+                    {"$sort": {"Epoch": 1}},
+                    {"$project": {"Type": 1, "Epoch": 1, "ModeratorID": 1, "Reason": 1}},
+                ],
+            }},
+        ]
+
+        result = [doc async for doc in await self.bot.punishments.db.aggregate(pipeline)]
+        data = result[0]
+
+        total = data["total"][0]["count"] if data["total"] else 0
+        if total == 0:
+            container = discord.ui.Container()
+            container.add_item(discord.ui.TextDisplay(f"### Player Analytics\n> **{roblox_user['name']}** has no punishments for the selected timeframe."))
+            return await ctx.send(view=discord.ui.LayoutView().add_item(container), allowed_mentions=discord.AllowedMentions.none())
+
+        all_punishments = data["chronological"]
+
+        escalation = " → ".join(p.get("Type", "?") for p in all_punishments[-10:])
+
+        if len(all_punishments) >= 2:
+            gaps = [all_punishments[i]["Epoch"] - all_punishments[i - 1]["Epoch"] for i in range(1, len(all_punishments))]
+            avg_gap = sum(gaps) / len(gaps)
+            if avg_gap < 3600:
+                avg_gap_text = f"{avg_gap / 60:.0f} minutes"
+            elif avg_gap < 86400:
+                avg_gap_text = f"{avg_gap / 3600:.1f} hours"
+            else:
+                avg_gap_text = f"{avg_gap / 86400:.1f} days"
+        else:
+            avg_gap_text = "N/A"
+
+        try:
+            roblox_player = await self.bot.roblox.get_user(roblox_user["id"])
+            thumbnails = await self.bot.roblox.thumbnails.get_user_avatar_thumbnails(
+                [roblox_player], type=roblox.thumbnails.AvatarThumbnailType.headshot
+            )
+            thumbnail = thumbnails[0].image_url
+        except Exception:
+            thumbnail = None
+
+        type_breakdown = "\n".join(f"> **{r['_id']}:** {r['count']:,}" for r in data["by_type"])
+        mod_lines = "\n".join(f"> <@{r['_id']}> - {r['count']:,}" for r in data["by_moderator"])
+        recent_lines = "\n".join(
+            f"> **{r.get('Type', '?')}** by <@{r.get('ModeratorID', 0)}> - <t:{int(r.get('Epoch', 0))}:R>\n> {r.get('Reason', 'No reason')}"
+            for r in all_punishments[-5:]
+        )
+
+        header_text = (
+            f"### Player Analytics - {roblox_user['name']}\n"
+            f"> **Timeframe:** {timeframe_label}\n"
+            f"> **Total Punishments:** {total:,}\n"
+            f"> **Avg. Time Between:** {avg_gap_text}"
+        )
+
+        overview_page = discord.ui.Container()
+        if thumbnail:
+            section = discord.ui.Section(accessory=discord.ui.Thumbnail(media=thumbnail))
+            section.add_item(header_text)
+            overview_page.add_item(section)
+        else:
+            overview_page.add_item(discord.ui.TextDisplay(header_text))
+        overview_page.add_item(discord.ui.Separator())
+        overview_page.add_item(discord.ui.TextDisplay(
+            f"**By Type**\n{type_breakdown or '> None'}"
+        ))
+        overview_page.add_item(discord.ui.Separator())
+        overview_page.add_item(discord.ui.TextDisplay(
+            f"**Issued By**\n{mod_lines or '> None'}"
+        ))
+
+        history_page = discord.ui.Container()
+        history_page.add_item(discord.ui.TextDisplay(
+            f"### Player Analytics - {roblox_user['name']}\n"
+            f"**Escalation Pattern (Last 10)**\n> {escalation}" if escalation else
+            f"### Player Analytics - {roblox_user['name']}\n**Escalation Pattern**\n> N/A"
+        ))
+        history_page.add_item(discord.ui.Separator())
+        history_page.add_item(discord.ui.TextDisplay(
+            f"**Recent Punishments**\n{recent_lines or '> None'}"
+        ))
+
+        pages = [
+            CustomPageV2(containers=[overview_page], identifier="Overview", aliases=["overview", "summary", "stats"]),
+            CustomPageV2(containers=[history_page], identifier="History", aliases=["history", "escalation", "recent"]),
+        ]
+        paginator = SelectPaginationV2(self.bot, ctx.author.id, pages)
+        await ctx.send(view=paginator.get_current_view(), allowed_mentions=discord.AllowedMentions.none())
+
+    @punishments.command(
+        name="top",
+        description="View the top repeat offenders in the server.",
+        extras={"category": "Punishments"},
+    )
+    @is_staff()
+    @require_settings()
+    @app_commands.describe(
+        timeframe="The timeframe to analyze (e.g. '7d', '30d'). Leave blank for all time.",
+        type="Filter by punishment type (e.g. 'Warning', 'Ban').",
+    )
+    @app_commands.autocomplete(type=punishment_autocomplete)
+    async def punishment_top(self, ctx: commands.Context, timeframe: typing.Optional[str] = None, type: typing.Optional[str] = None):
+        gt_time = 0
+        timeframe_label = "All Time"
+        if timeframe and timeframe.lower() not in ["all", "total"]:
+            gt_time = int(datetime.datetime.now().timestamp()) - time_converter(timeframe)
+            timeframe_label = f"Last {timeframe}"
+
+        match_filter = {"Guild": ctx.guild.id, "Epoch": {"$gte": gt_time}}
+        if type:
+            match_filter["Type"] = {"$regex": f"^{type}$", "$options": "i"}
+
+        pipeline = [
+            {"$match": match_filter},
+            {"$facet": {
+                "total": [{"$count": "count"}],
+                "offenders": [
+                    {"$group": {
+                        "_id": {"user_id": "$UserID", "username": "$Username"},
+                        "count": {"$sum": 1},
+                        "latest": {"$max": "$Epoch"},
+                        "types": {"$addToSet": "$Type"},
+                    }},
+                    {"$sort": {"count": -1}},
+                    {"$limit": 20},
+                ],
+            }},
+        ]
+
+        result = [doc async for doc in await self.bot.punishments.db.aggregate(pipeline)]
+        data = result[0]
+
+        total = data["total"][0]["count"] if data["total"] else 0
+        if total == 0:
+            container = discord.ui.Container()
+            container.add_item(discord.ui.TextDisplay("### Top Offenders\n> No punishments found for the selected filters."))
+            return await ctx.send(view=discord.ui.LayoutView().add_item(container), allowed_mentions=discord.AllowedMentions.none())
+
+        filter_text = f" ({type})" if type else ""
+        offender_lines = "\n".join(
+            f"> **{i + 1}.** {item['_id'].get('username', 'Unknown')} - **{item['count']:,}** punishments\n>    Types: {', '.join(item['types'])} | Last: <t:{int(item['latest'])}:R>"
+            for i, item in enumerate(data["offenders"])
+        )
+
+        container = discord.ui.Container()
+        container.add_item(discord.ui.TextDisplay(
+            f"### Top Offenders{filter_text}\n"
+            f"> **{timeframe_label}** - {total:,} total punishments"
+        ))
+        container.add_item(discord.ui.Separator())
+        container.add_item(discord.ui.TextDisplay(offender_lines))
+
+        await ctx.send(view=discord.ui.LayoutView().add_item(container), allowed_mentions=discord.AllowedMentions.none())
 
 
 async def setup(bot):
