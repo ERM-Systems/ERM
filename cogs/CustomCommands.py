@@ -66,9 +66,9 @@ class CustomCommands(commands.Cog):
                 )
 
             current_embed.add_field(
-                name=f"{item['name']}",
-                value=f"> **Name:** {item['name']}\n"
-                f"> **Command ID:** `{item['id']}`\n"
+                name=f"{item.get('name', 'Unknown')}",
+                value=f"> **Name:** {item.get('name', 'Unknown')}\n"
+                f"> **Command ID:** `{item.get('id', 'N/A')}`\n"
                 f"> **Creator:** {'<@{}>'.format(item.get('author') if item.get('author') is not None else '1')}\n"
                 f"> **Default Channel:** {'<#{}>'.format(item.get('channel')) if item.get('channel') is not None else 'None selected'}",
                 inline=False,
@@ -111,8 +111,8 @@ class CustomCommands(commands.Cog):
                     title="Custom Commands",
                     description=(
                         "**Command Information**\n"
-                        f"> **Command ID:** `{data['id']}`\n"
-                        f"> **Command Name:** {data['name']}\n"
+                        f"> **Command ID:** `{data.get('id', 'N/A')}`\n"
+                        f"> **Command Name:** {data.get('name', 'Unknown')}\n"
                         f"> **Creator:** <@{data.get('author', '0')}>\n"  # this is just to be sure that author actually exists!
                         f"> **Default Channel:** {'<#{}>'.format(data.get('channel')) if data.get('channel') is not None else 'None selected'}\n"
                         f"\n**Message:**\n"
@@ -214,9 +214,9 @@ class CustomCommands(commands.Cog):
                     title="Custom Commands",
                     description=(
                         "**Command Information**\n"
-                        f"> **Command ID:** `{data['id']}`\n"
-                        f"> **Command Name:** {data['name']}\n"
-                        f"> **Creator:** <@{data['author']}>\n"
+                        f"> **Command ID:** `{data.get('id', 'N/A')}`\n"
+                        f"> **Command Name:** {data.get('name', 'Unknown')}\n"
+                        f"> **Creator:** <@{data.get('author', '0')}>\n"
                         f"> **Default Channel:** {'<#{}>'.format(data.get('channel')) if data.get('channel') is not None else 'None selected'}\n"
                         f"\n**Message:**\n"
                         f"View the message below by clicking 'View Message'."
