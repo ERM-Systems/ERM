@@ -71,6 +71,18 @@ GREEN_COLOR = discord.Colour.brand_green()
 RED_COLOR = 0xD12F32
 ORANGE_COLOR = discord.Colour.orange()
 
+"""
+    Time constants
+"""
+
+ONE_WEEK = 7 * 24 * 60 * 60
+
+"""
+    Day name mapping (MongoDB $dayOfWeek returns 1=Sunday, 7=Saturday)
+"""
+
+DAY_NAMES = {1: "Sunday", 2: "Monday", 3: "Tuesday", 4: "Wednesday", 5: "Thursday", 6: "Friday", 7: "Saturday"}
+
 SERVER_CONDITIONS = {
     "In-Game Players": "ERLC_Players",
     "In-Game Moderators": "ERLC_Moderators",

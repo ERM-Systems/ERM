@@ -6,8 +6,13 @@ import reactionmenu
 import typing
 
 from erm import Bot
-from menus import CustomSelectMenu
+from menus import CustomSelectMenu, CustomDropdown
 from utils.constants import blank_color
+
+
+def chunk_list(lst, n):
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
 import asyncio
 import nest_asyncio
 
