@@ -895,26 +895,32 @@ class Punishments(commands.Cog):
     @is_staff()
     @require_settings()
     @app_commands.describe(
-        timeframe="The timeframe to view the leaderboard for (e.g. '1d', '1w', '1m'). Leave blank for all time."
+        timeframe="The timeframe to view the leaderboard for (e.g. '1d', '1w', '1m'). Leave blank for all time.",
+        role="Filter the leaderboard to only show members with this role.",
     )
-    async def punishment_leaderboard(self, ctx: commands.Context, timeframe: typing.Optional[str] = None):
+    async def punishment_leaderboard(self, ctx: commands.Context, role: typing.Optional[discord.Role] = None, timeframe: typing.Optional[str] = None):
         gt_time = 0
         if timeframe not in ["", None, " ", "all", "total"]:
             gt_time = int(datetime.datetime.now().timestamp()) - time_converter(timeframe)
 
+        title = "Punishment Leaderboard"
+        if role:
+            title += f" — {role.name}"
+
         embed = discord.Embed(
-            title="Punishment Leaderboard",
+            title=title,
             description="**Total Punishments**\n",
             color=BLANK_COLOR,
         )
         embed.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon)
+
+        match_filter = {"Guild": ctx.guild.id, "Epoch": {"$gte": gt_time}}
+        if role:
+            role_member_ids = [m.id for m in role.members]
+            match_filter["ModeratorID"] = {"$in": role_member_ids}
+
         pipeline = [
-            {
-                "$match": {
-                    "Guild": ctx.guild.id,
-                    "Epoch": {"$gte": gt_time}
-                }
-            },
+            {"$match": match_filter},
             {
                 "$group": {
                     "_id": {
