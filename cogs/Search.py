@@ -86,7 +86,7 @@ class Search(commands.Cog):
 
         magic_flags = {
             "ERM Team": 1001972346661384302,
-            "ERM Developer": 1046204873496068176,
+            "ERM Developer": 1420925542848528436,
             "ERM Management": 1038597868023447552,
             "ERM Senior Support": 1028848687927013396,
             "ERM Support": 1053417531278364713,
@@ -342,7 +342,7 @@ class Search(commands.Cog):
 
         magic_flags = {
             "ERM Team": 1001972346661384302,
-            "ERM Developer": 1046204873496068176,
+            "ERM Developer": 1420925542848528436,
             "ERM Management": 1038597868023447552,
             "ERM Senior Support": 1028848687927013396,
             "ERM Support": 1053417531278364713,
