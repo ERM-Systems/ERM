@@ -840,8 +840,11 @@ class ShiftLogging(commands.Cog):
     )
     @require_settings()
     @app_commands.autocomplete(type=all_shift_type_autocomplete)
+    @app_commands.describe(
+        role="Filter the leaderboard to only show members with this role.",
+    )
     @is_staff()
-    async def shift_leaderboard(self, ctx: commands.Context, *, type: str = None):
+    async def shift_leaderboard(self, ctx: commands.Context, role: typing.Optional[discord.Role] = None, *, type: str = None):
         if self.bot.shift_management_disabled is True:
             return await new_failure_embed(
                 ctx,
@@ -1004,7 +1007,10 @@ class ShiftLogging(commands.Cog):
         buffer = None
         embeds = []
 
-        embed = discord.Embed(color=BLANK_COLOR, title="Shift Leaderboard")
+        title = "Shift Leaderboard"
+        if role:
+            title += f" — {role.name}"
+        embed = discord.Embed(color=BLANK_COLOR, title=title)
         embed.set_author(
             name=f"{ctx.guild.name}",
             icon_url=ctx.guild.icon,
@@ -1054,6 +1060,11 @@ class ShiftLogging(commands.Cog):
             await ctx.guild.chunk()
         member_list = ctx.guild.members
         members = {m.id: m for m in member_list}  # Cache guild members
+
+        if role:
+            role_member_ids = {m.id for m in role.members}
+            sorted_staff = [s for s in sorted_staff if s["id"] in role_member_ids]
+
         total_seconds = 0
 
         for index, i in enumerate(sorted_staff):
