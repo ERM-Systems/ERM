@@ -39,7 +39,7 @@ cp .env.template .env
 ### Required
 
 - `MONGO_URL` — MongoDB connection string (e.g. `mongodb://localhost:27017/erm`)  
-- `ENVIRONMENT` — `PRODUCTION` or `DEVELOPMENT`  
+- `ENVIRONMENT` — `PRODUCTION` or `DEVELOPMENT`. Do not use `CUSTOM`.  
 - `PRODUCTION_BOT_TOKEN` — Bot token for the production environment  
 - `DEVELOPMENT_BOT_TOKEN` — Bot token for the development environment
 - `CUSTOM_GUILD_ID` must stay 0 in order to be used in other servers. If set to a specific server the bot cannot operate in other servers.
@@ -105,11 +105,10 @@ MONGO_URL=mongodb://localhost:27017/test
 
 ## Discord Bot Permissions
 
-When inviting the bot, the following are required:
+When inviting the bot, the following scopes are required:
 
--  `Bot`
-- `Administrator` (the invite link in the README uses this)  
-- `applications.commands` scope for slash command registration  
+- `bot`  
+- `applications.commands`  
 
 ---
 

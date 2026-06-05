@@ -48,7 +48,7 @@ They are loaded automatically on startup via `pkgutil.iter_modules`.
 | `ERLC` | ER:LC in-game integration (bans, kicks, player lookup) |
 | `GameLogging` | In-game event log forwarding to Discord channels |
 | `Infractions` | Staff infraction tracking and management |
-| `Jishaku` | Developer/debug REPL (conditionally loaded) |
+| `Jishaku` | Developer/debug REPL |
 | `MC` | MapleCounty game integration |
 | `OAuth2` | Discord OAuth2 flow handling |
 | `Privacy` | User data and consent management |
@@ -94,7 +94,7 @@ staggered 30-second delay between each to avoid startup load spikes.
 | `statistics_check` | Periodic | Updates analytics records |
 | `tempban_checks` | Periodic | Lifts expired temporary bans |
 | `check_whitelisted_car` | Periodic | Enforces whitelisted vehicle rules in-game |
-| `change_status` | Periodic | Rotates the bot's Discord presence status |
+| `change_status` | Runs once | Sets the bot's initial Discord presence status |
 | `process_scheduled_pms` | Periodic | Delivers scheduled direct messages |
 | `sync_weather` | Periodic | Syncs real-world weather to ERLC in-game weather |
 | `iterate_conditions` | Periodic | Evaluates server conditions and triggers actions |
@@ -165,8 +165,6 @@ for most development work.
 ---
 
 ## Menus
-
-
 
 
 `menus.py` is a large single file containing the majority of the  
