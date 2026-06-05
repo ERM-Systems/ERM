@@ -229,6 +229,7 @@ Keys flagged for prohibited or abusive use.
   `Bot` instance as `bot.db.<collection_name>`.  
 - Document IDs (`_id`) are typically either Discord snowflake integers  
   or MongoDB `ObjectId` values depending on the collection.  
-- The `Document` base class in `utils/mongo.py` provides all standard  
-  async CRUD methods. Use those rather than accessing `bot.db` directly  
-  with raw pymongo calls.  
+- The `Document` base class in `utils/mongo.py` provides standard  
+  async CRUD methods. Prefer those where possible, but raw pymongo  
+  calls (`find_one`, `find`, `aggregate`) may be necessary for  
+  operations not exposed by the `Document` class.  

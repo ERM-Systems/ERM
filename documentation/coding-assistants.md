@@ -42,4 +42,4 @@ Contributions should include an Assisted-by tag in the following format:
 
 Example: *Assisted-by: Claude Haiku 4.5*
 
-This document was taken as a example from https://github.com/torvalds/linux
+This document was taken as an example from https://github.com/torvalds/linux
