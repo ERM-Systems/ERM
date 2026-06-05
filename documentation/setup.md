@@ -42,7 +42,7 @@ cp .env.template .env
 - `ENVIRONMENT` — `PRODUCTION` or `DEVELOPMENT`. Do not use `CUSTOM`.  
 - `PRODUCTION_BOT_TOKEN` — Bot token for the production environment  
 - `DEVELOPMENT_BOT_TOKEN` — Bot token for the development environment
-- `CUSTOM_GUILD_ID` must stay 0 in order to be used in other servers. If set to a specific server the bot cannot operate in other servers.
+- `CUSTOM_GUILD_ID`Must be set to `0` regardless of usage.
 
 
 ### Optional — Bot Features
