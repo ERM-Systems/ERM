@@ -205,14 +205,11 @@ class ShiftLogging(commands.Cog):
                     view=(
                         view := CustomSelectMenu(
                             ctx.author.id,
-                            [
-                                discord.SelectOption(
+                            list({i["name"]: discord.SelectOption(
                                     label=i["name"],
                                     value=i["name"],
                                     description=i["name"],
-                                )
-                                for i in shift_types
-                            ],
+                                ) for i in shift_types}.values()),
                         )
                     ),
                 )
@@ -408,14 +405,11 @@ class ShiftLogging(commands.Cog):
                     view=(
                         view := CustomSelectMenu(
                             ctx.author.id,
-                            [
-                                discord.SelectOption(
+                            list({i["name"]: discord.SelectOption(
                                     label=i["name"],
                                     value=i["name"],
                                     description=i["name"],
-                                )
-                                for i in shift_types
-                            ],
+                                ) for i in shift_types}.values()),
                         )
                     ),
                 )
@@ -643,24 +637,27 @@ class ShiftLogging(commands.Cog):
             if len(shift_types.get("types")) > 1:
                 shift_types = shift_types.get("types")
 
-                view = CustomSelectMenu(
-                    ctx.author.id,
-                    [
-                        discord.SelectOption(
-                            label=i["name"],
-                            value=i["name"],
-                            description=i["name"],
+                seen_names = set()
+                unique_options = []
+                for i in shift_types:
+                    if i["name"] not in seen_names:
+                        seen_names.add(i["name"])
+                        unique_options.append(
+                            discord.SelectOption(
+                                label=i["name"],
+                                value=i["name"],
+                                description=i["name"],
+                            )
                         )
-                        for i in shift_types
-                    ]
-                    + [
-                        discord.SelectOption(
-                            label="All",
-                            value="all",
-                            description="Data from all shift types",
-                        )
-                    ],
+                unique_options.append(
+                    discord.SelectOption(
+                        label="All",
+                        value="all",
+                        description="Data from all shift types",
+                    )
                 )
+
+                view = CustomSelectMenu(ctx.author.id, unique_options)
                 type_value = (type or "").lower()
                 if (
                     type_value not in [i["name"].lower() for i in shift_types]
@@ -696,7 +693,7 @@ class ShiftLogging(commands.Cog):
                         if shift_list:
                             shift_type = shift_list[0]
                         else:
-                            shift_type = None # default to None - instead of error
+                            shift_type = None
 
                 else:
                     return
@@ -868,14 +865,11 @@ class ShiftLogging(commands.Cog):
 
                 view = CustomSelectMenu(
                     ctx.author.id,
-                    [
-                        discord.SelectOption(
-                            label=i["name"],
-                            value=i["name"],
-                            description=i["name"],
-                        )
-                        for i in shift_types
-                    ]
+                    list({i["name"]: discord.SelectOption(
+                        label=i["name"],
+                        value=i["name"],
+                        description=i["name"],
+                    ) for i in shift_types}.values())
                     + [
                         discord.SelectOption(
                             label="All",
@@ -1376,14 +1370,11 @@ class ShiftLogging(commands.Cog):
                     view=(
                         view := CustomSelectMenu(
                             ctx.author.id,
-                            [
-                                discord.SelectOption(
+                            list({i["name"]: discord.SelectOption(
                                     label=i["name"],
                                     value=i["name"],
                                     description=i["name"],
-                                )
-                                for i in shift_types
-                            ],
+                                ) for i in shift_types}.values()),
                         )
                     ),
                 )
