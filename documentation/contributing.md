@@ -65,7 +65,7 @@ certifying the Developer Certificate of Origin (DCO). See
 - Ensure the use of the `Document` class whenever accessing different collections.
 - Do not create Documents in commands, define them on the instance method `self` in the setup hook.
 - Use `discord.ext.tasks.loop` for new background tasks. 
-- New interactive Discord flows must have their own UI file in `ui/`. Do not add new enties to `menus.py`. 
+- New interactive Discord flows must have their own UI file in `ui/`. Do not add new entries to `menus.py`. 
 - Use `utils/constants.py` for shared colour values (`BLANK_COLOR`,  
   `GREEN_COLOR`, `RED_COLOR`) rather than hardcoding hex values.  
 - Use `decouple.config()` for all environment variable access.
