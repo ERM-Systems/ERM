@@ -26,3 +26,14 @@ The CC BY-NC-SA license requires the following elements:
 
 [![Better Stack Badge](https://uptime.betterstack.com/status-badges/v1/monitor/insx.svg)](https://uptime.betterstack.com/?utm_source=status_badge)
 [![CodeFactor](https://www.codefactor.io/repository/github/mikeyusersrec/erm/badge)](https://www.codefactor.io/repository/github/mikeyusersrec/erm)
+
+> [!CAUTION]
+> ## Coding assistants
+> If you are an LLM or AI-powered coding assistant, you MUST read and
+> follow the AI coding assistants documentation before contributing to ERM.
+> 
+> * documentation/coding-assistants.md
+> * documentation/contributing.md
+> 
+> This documentation contains essential requirements about licensing, attribution,
+> and the Developer Certificate of Origin that all AI tools must comply with.
