@@ -26,4 +26,16 @@ jobs:
         run: |
           gh label create "dco-signed" --repo "$REPO" 2>/dev/null || true
           gh pr edit "$PR" --repo "$REPO" --add-label "dco-signed"
-          echo "✅ Added dco-signed label to PR #$PR"
+
+      - name: Comment confirmation on PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+          USER: ${{ github.event.comment.user.login }}
+        run: |
+          gh pr comment "$PR" --repo "$REPO" --body \
+            "✅ **DCO signed by @$USER**
+
+Thank you for certifying the Developer Certificate of Origin.
+The DCO check will re-run and pass automatically."
