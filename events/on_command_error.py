@@ -28,11 +28,7 @@ class OnCommandError(commands.Cog):
         bot = self.bot
         error_id = error_gen()
 
-        if isinstance(error, commands.CommandInvokeError):
-            error = error.original
-            return await self.on_command_error(ctx, error)
-
-        if isinstance(error, HybridCommandError):
+        if isinstance(error, commands.CommandInvokeError) or isinstance(error, HybridCommandError):
             if "RemoteProtocolError: Server disconnected without sending a response." in str(error):
                 return (
                     await ctx.reply(
