@@ -34,17 +34,17 @@ class OnPunishmentDelete(commands.Cog):
                         custom_warning_type = item
 
         if custom_warning_type is None:
+            default_channel = guild_settings.get("punishments", {}).get("channel")
             associations = {
-                "warning": guild_settings.get("punishments").get("channel"),
-                "kick": guild_settings.get("punishments").get("kick_channel"),
-                "ban": guild_settings.get("punishments").get("ban_channel"),
-                "bolo": guild_settings.get("punishments").get("bolo_channel"),
+                "warning": default_channel,
+                "kick": guild_settings.get("punishments", {}).get("kick_channel"),
+                "ban": guild_settings.get("punishments", {}).get("ban_channel"),
+                "bolo": guild_settings.get("punishments", {}).get("bolo_channel"),
             }
+            channel_id = associations.get(warning_type.lower().strip()) or default_channel
             try:
-                channel = await guild.fetch_channel(
-                    associations[warning_type.lower().strip()]
-                )
-            except discord.HTTPException:
+                channel = await guild.fetch_channel(channel_id)
+            except (discord.HTTPException, TypeError):
                 channel = None
         else:
             try:
