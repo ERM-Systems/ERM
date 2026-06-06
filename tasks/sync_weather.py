@@ -58,6 +58,7 @@ async def fetch_weather(session: aiohttp.ClientSession, lat: float, lon: float, 
             },
         ) as resp:
             if resp.status != 200:
+                logging.warning(f"Weather API returned status {resp.status} for ({lat}, {lon})")
                 return None
             data = await resp.json()
 
@@ -132,8 +133,9 @@ async def sync_weather(bot):
         )
         logging.info(f"Found {server_count} servers with weather sync enabled")
 
-        # Cache geocoding results within this run to avoid duplicate lookups
+        # Cache geocoding and weather results within this run to avoid duplicate lookups
         geocode_cache: dict[str, tuple[float, float, str] | None] = {}
+        weather_cache: dict[tuple[float, float], dict | None] = {}
 
         processed = 0
         async with aiohttp.ClientSession() as session:
@@ -161,7 +163,10 @@ async def sync_weather(bot):
                         continue
 
                     lat, lon, timezone = geo
-                    weather_data = await fetch_weather(session, lat, lon, timezone)
+                    cache_key = (lat, lon)
+                    if cache_key not in weather_cache:
+                        weather_cache[cache_key] = await fetch_weather(session, lat, lon, timezone)
+                    weather_data = weather_cache[cache_key]
 
                     if weather_data is None:
                         logging.warning(f"Could not fetch weather for guild {guild_id}")
