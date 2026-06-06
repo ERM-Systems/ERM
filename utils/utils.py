@@ -189,9 +189,9 @@ def time_converter(parameter: str) -> int:
                 number = number.replace("-", "")  # prevent those negative times!
                 if not number.strip()[-1].isdigit():
                     continue
-                if int(number.strip()) * multiplier > 15552000:
+                if int(number.strip()) * multiplier > 31536000:
                     raise OverflowError(
-                        "Time value exceeds the maximum allowed duration of 180 days."
+                        "Time value exceeds the maximum allowed duration of 365 days."
                     )
                 return int(number.strip()) * multiplier
 
