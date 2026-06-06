@@ -1,0 +1,109 @@
+name: DCO Check
+
+on:
+  pull_request:
+    branches: [Development]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+jobs:
+  dco:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check if DCO was signed via /sign command
+        id: label_check
+        run: |
+          LABELS='${{ toJSON(github.event.pull_request.labels) }}'
+          if echo "$LABELS" | grep -q '"dco-signed"'; then
+            echo "✅ DCO already signed via /sign command"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out repository code
+        if: steps.label_check.outputs.signed != 'true'
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Check Signed-off-by on all commits
+        if: steps.label_check.outputs.signed != 'true'
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          missing_signed_off=0
+          for commit in $(git rev-list HEAD ^"$BASE_SHA"); do
+            msg=$(git log --format="%B" -1 "$commit")
+            if ! echo "$msg" | grep -q "^Signed-off-by:"; then
+              echo "❌ Commit $commit is missing a Signed-off-by tag"
+              missing_signed_off=1
+            fi
+          done
+
+          if [ "$missing_signed_off" -eq 1 ]; then
+            echo ""
+            echo "Each commit must include a Signed-off-by tag to certify the"
+            echo "Developer Certificate of Origin (DCO), or you can comment"
+            echo "\`/sign\` on this PR to sign the DCO."
+            echo ""
+            echo "  Signed-off-by: YourGitHubUsername"
+            echo ""
+            echo "Only human contributors may add this tag — AI agents must not."
+            echo "See documentation/contributing.md for details."
+            exit 1
+          fi
+          echo "✅ All commits have a Signed-off-by tag"
+
+      - name: Check AI attribution in PR body
+        if: steps.label_check.outputs.signed != 'true'
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if [ -z "$PR_BODY" ]; then
+            echo "❌ Pull request description is empty"
+            echo ""
+            echo "Your PR description must include:"
+            echo "  1. A declaration of whether AI was used"
+            echo "  2. If AI was used: Assisted-by: AGENT_NAME:MODEL_VERSION"
+            echo "  3. A statement that you reviewed the contribution and certify the DCO"
+            echo ""
+            echo "Example (AI used):"
+            echo "  ---"
+            echo "  Assisted-by: Claude 4.5 Sonnet"
+            echo "  I have reviewed all AI-generated code, ensured it complies with"
+            echo "  the CC BY-NC-SA license, and certify the DCO with my"
+            echo "  Signed-off-by tag on each commit."
+            echo "  ---"
+            echo ""
+            echo "Example (no AI):"
+            echo "  ---"
+            echo "  No AI coding assistants were used in this contribution."
+            echo "  I certify the DCO with my Signed-off-by tag on each commit."
+            echo "  ---"
+            exit 1
+          fi
+
+          if echo "$PR_BODY" | grep -qi "assisted-by:"; then
+            echo "✅ AI usage declared with Assisted-by tag"
+          elif echo "$PR_BODY" | grep -qi "no AI"; then
+            echo "✅ No AI usage declared"
+          else
+            echo "❌ PR body must declare AI usage"
+            echo ""
+            echo "If you used an AI coding assistant, add:"
+            echo "  Assisted-by: AGENT_NAME:MODEL_VERSION"
+            echo ""
+            echo "If you did not use AI, add:"
+            echo "  No AI coding assistants were used in this contribution."
+            echo ""
+            echo "See documentation/coding-assistants.md for details."
+            exit 1
+          fi
+
+          if echo "$PR_BODY" | grep -qi "dco\|signed-off-by\|certify"; then
+            echo "✅ DCO certification acknowledged in PR body"
+          else
+            echo "⚠️  No DCO certification statement found in PR body"
+            echo "Consider adding: I certify the DCO with my Signed-off-by tag on each commit."
+          fi

@@ -51,9 +51,9 @@ Fix break duration calculation on overnight shifts
 Remove unused LOA reminder fallback
 ```
 
-Do not use `Signed-off-by` tags unless you are a human contributor  
-certifying the Developer Certificate of Origin (DCO). See  
-[coding-assistants.md](coding-assistants.md) for details on AI attribution.
+Use `Signed-off-by: YourGitHubUsername` to certify the Developer  
+Certificate of Origin (DCO). Do not include an email address.  
+See [coding-assistants.md](coding-assistants.md) for details on AI attribution.
 
 ---
 

@@ -1,0 +1,29 @@
+name: DCO Sign
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  sign:
+    if: |
+      github.event.issue.pull_request &&
+      (github.event.comment.body == '/sign' ||
+       github.event.comment.body == '/signature' ||
+       github.event.comment.body == '/sign-off')
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    steps:
+      - name: Add dco-signed label
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh label create "dco-signed" --repo "$REPO" 2>/dev/null || true
+          gh pr edit "$PR" --repo "$REPO" --add-label "dco-signed"
+          echo "✅ Added dco-signed label to PR #$PR"
