@@ -28,7 +28,19 @@ class OnCommandError(commands.Cog):
         bot = self.bot
         error_id = error_gen()
 
-        if isinstance(error, commands.CommandInvokeError):
+        if isinstance(error, commands.CommandInvokeError) or isinstance(error, HybridCommandError):
+            if "RemoteProtocolError: Server disconnected without sending a response." in str(error):
+                return (
+                    await ctx.reply(
+                        embed=discord.Embed(
+                            title="Connection Error",
+                            description="The server disconnected without sending a response. Your issue should be fixed if you try again.",
+                            color=BLANK_COLOR,
+                        )
+                    )
+                    if not do_not_send
+                    else None
+                )
             error = error.original
             return await self.on_command_error(ctx, error)
 
@@ -52,23 +64,6 @@ class OnCommandError(commands.Cog):
             or isinstance(error, asyncio.TimeoutError)
         ):
             return
-
-        if isinstance(
-            error, HybridCommandError
-        ) and "RemoteProtocolError: Server disconnected without sending a response." in str(
-            error
-        ):
-            return (
-                await ctx.reply(
-                    embed=discord.Embed(
-                        title="Connection Error",
-                        description="The server disconnected without sending a response. Your issue should be fixed if you try again.",
-                        color=BLANK_COLOR,
-                    )
-                )
-                if not do_not_send
-                else None
-            )
 
         if isinstance(error, httpcore.ConnectTimeout):
             return (
