@@ -43,13 +43,21 @@ jobs:
 
           if [ "$missing_signed_off" -eq 1 ]; then
             echo ""
-            echo "Each commit must include a Signed-off-by tag to certify the"
-            echo "Developer Certificate of Origin (DCO), or you can comment"
-            echo "\`/sign\` on this PR to sign the DCO."
+            echo "=============================================="
+            echo "  DCO check failed — missing Signed-off-by"
+            echo "=============================================="
             echo ""
+            echo "Fix by adding to each commit:"
             echo "  Signed-off-by: YourGitHubUsername"
             echo ""
-            echo "Only human contributors may add this tag — AI agents must not."
+            echo "Or sign off without amending commits by commenting"
+            echo "one of the following on this PR:"
+            echo "  /sign"
+            echo "  /signature"
+            echo "  /sign-off"
+            echo ""
+            echo "Only human contributors may add the Signed-off-by"
+            echo "tag — AI agents must not."
             echo "See documentation/contributing.md for details."
             exit 1
           fi
@@ -67,6 +75,11 @@ jobs:
             echo "  1. A declaration of whether AI was used"
             echo "  2. If AI was used: Assisted-by: AGENT_NAME:MODEL_VERSION"
             echo "  3. A statement that you reviewed the contribution and certify the DCO"
+            echo ""
+            echo "Alternatively, sign off by commenting on this PR:"
+            echo "  /sign"
+            echo "  /signature"
+            echo "  /sign-off"
             echo ""
             echo "Example (AI used):"
             echo "  ---"
@@ -97,6 +110,11 @@ jobs:
             echo "If you did not use AI, add:"
             echo "  No AI coding assistants were used in this contribution."
             echo ""
+            echo "Or sign off by commenting on this PR:"
+            echo "  /sign"
+            echo "  /signature"
+            echo "  /sign-off"
+            echo ""
             echo "See documentation/coding-assistants.md for details."
             exit 1
           fi
@@ -105,5 +123,12 @@ jobs:
             echo "✅ DCO certification acknowledged in PR body"
           else
             echo "⚠️  No DCO certification statement found in PR body"
-            echo "Consider adding: I certify the DCO with my Signed-off-by tag on each commit."
+            echo ""
+            echo "Consider adding to your PR description:"
+            echo "  I certify the DCO with my Signed-off-by tag on each commit."
+            echo ""
+            echo "Or sign off by commenting on this PR:"
+            echo "  /sign"
+            echo "  /signature"
+            echo "  /sign-off"
           fi
