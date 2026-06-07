@@ -69,6 +69,7 @@ from utils.prc_api import PRCApiClient
 from utils.prc_api import ResponseFailure
 from utils.utils import *
 from utils.constants import *
+from datamodels.Democracy import Democracy
 import utils.prc_api
 
 
@@ -199,6 +200,8 @@ class Bot(commands.AutoShardedBot):
             self.actions = Actions(self.db, "actions")
             self.prohibited = ProhibitedUseKeys(self.db, "prohibited_keys")
             self.saved_logs = SavedLogs(self.db, "saved_logs")
+            self.democracy = Democracy(self.db, "motions_config")
+            self.motions = Document(self.db, "motions")
             self.whitelabel = Whitelabel(self.mongo[f"{dbname.upper()}Processing"], "Instances")
 
             self.pending_oauth2 = PendingOAuth2(self.db, "pending_oauth2")
@@ -304,6 +307,16 @@ class Bot(commands.AutoShardedBot):
                     self.add_view(
                         LOAMenu(*document["args"]), message_id=document["message_id"]
                     )
+            from cogs.Democracy import MotionView
+            async for motion in self.motions.db.find({"status": "active"}):
+                if motion.get("message_id"):
+                    try:
+                        self.add_view(
+                            MotionView(motion["_id"], self),
+                            message_id=int(motion["message_id"]),
+                        )
+                    except Exception:
+                        pass
             self.setup_status = True
 
 
