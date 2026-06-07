@@ -307,7 +307,7 @@ class Utility(commands.Cog):
         view = discord.ui.Container()
         section = discord.ui.Section(
             accessory=discord.ui.Thumbnail(
-                media=ctx.guild.icon.with_format("png").url
+                media=(ctx.guild.icon or self.bot.user.display_avatar).with_format("png").url
             )
         )
 
