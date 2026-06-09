@@ -5,17 +5,36 @@ from discord.ext import commands
 class LogTracker:
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        # Initialize last_timestamps with a starting time
-        self.last_timestamps = defaultdict(
-            lambda: defaultdict(lambda: int(self.bot.start_time))
-        )
+        self.cache = defaultdict(lambda: defaultdict(lambda: 0))
+        self.loaded_guilds = set()
+
+    async def _load_guild(self, guild_id: int):
+        if guild_id in self.loaded_guilds:
+            return
+        doc = await self.bot.db.log_timestamps.find_one({"_id": guild_id})
+        if doc:
+            for log_type, ts in doc.get("timestamps", {}).items():
+                self.cache[guild_id][log_type] = ts
+        self.loaded_guilds.add(guild_id)
 
     def get_last_timestamp(self, guild_id: int, log_type: str) -> int:
-        # Get the last timestamp for the given guild and log type
-        return self.last_timestamps[guild_id][log_type]
+        if guild_id not in self.loaded_guilds:
+            return int(self.bot.start_time)
+        return self.cache[guild_id][log_type] or int(self.bot.start_time)
 
     def update_timestamp(self, guild_id: int, log_type: str, timestamp: int):
-        # Update the timestamp if the provided one is more recent
-        self.last_timestamps[guild_id][log_type] = max(
-            timestamp, self.last_timestamps[guild_id][log_type]
+        self.cache[guild_id][log_type] = max(
+            timestamp, self.cache[guild_id][log_type]
+        )
+
+    async def load_guild(self, guild_id: int):
+        await self._load_guild(guild_id)
+
+    async def save_guild(self, guild_id: int):
+        if guild_id not in self.loaded_guilds:
+            return
+        await self.bot.db.log_timestamps.update_one(
+            {"_id": guild_id},
+            {"$set": {"timestamps": dict(self.cache[guild_id])}},
+            upsert=True,
         )
