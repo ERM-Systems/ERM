@@ -133,6 +133,8 @@ async def unprimitive_guild_process(items, bot):
     )
     current_time = int(time.time())
 
+    await bot.log_tracker.load_guild(guild.id)
+
     if command_logs:
         await save_new_logs(bot, guild.id, command_logs, current_time)
 
@@ -205,6 +207,8 @@ async def unprimitive_guild_process(items, bot):
 
     if subtasks:
         await asyncio.gather(*subtasks, return_exceptions=True)
+
+    await bot.log_tracker.save_guild(guild.id)
 
 async def process_guild(bot, items, semaphore):
     async with semaphore:
