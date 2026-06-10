@@ -8,25 +8,20 @@ import discord
 from discord import app_commands
 from discord.app_commands import AppCommandGroup
 from discord.ext import commands
+from discord import ui
 import pytz
-import matplotlib.pyplot as plt
-import matplotlib
-matplotlib.use("Agg")
-import asyncio
-import io, time
 
 from menus import LinkView, CustomSelectMenu, MultiPaginatorMenu, APIKeyConfirmation
 from utils.constants import BLANK_COLOR, GREEN_COLOR
 from utils.timestamp import td_format
 from utils.utils import invis_embed, failure_embed, require_settings, time_converter
-from erm import is_staff, is_management, Bot
+from erm import is_staff, is_management
 
 
 class Utility(commands.Cog):
     def __init__(self, bot):
-        self.bot: Bot = bot
-        plt.style.use("dark_background")
-        self.fig, self.ax = plt.subplots(figsize=(8, 6))
+        self.bot = bot
+
 
     @commands.hybrid_group(
         name="import",
@@ -94,8 +89,6 @@ class Utility(commands.Cog):
                     punishment["UntilEpoch"] = int(violator_field.value.split("Until:** <t:")[1].split(">")[0])
                 except:
                     punishment["UntilEpoch"] = punishment["Epoch"]
-            else:
-                punishment["UntilEpoch"] = 0 # i messed things up 2026-04-25
 
             if await self.bot.punishments.db.find_one({"Snowflake": punishment["Snowflake"]}):
                 continue
@@ -273,21 +266,33 @@ class Utility(commands.Cog):
             )
         )
 
-    def generate_graph(self):
-        self.ax.clear()
-        self.ax.plot(self.bot.saved_latencies["shards"], label="Discord (avg.)")
-        self.ax.plot(self.bot.saved_latencies["db"], label="DB")
-        self.ax.set_xticks([])
-        self.ax.set_title("Bot Latency")
-        self.ax.set_ylabel("Latency (ms)")
-        self.ax.legend(loc='upper center', ncol=8, frameon=True)
-        self.ax.margins(x=0)
-        self.fig.tight_layout()
-        buf = io.BytesIO()
 
-        self.fig.savefig(buf, format="png", bbox_inches="tight", dpi=100, facecolor="black")
-        buf.seek(0)
-        return buf
+    @commands.hybrid_command(
+        name="staff_sync",
+        description="Internal Use Command, used for connection staff privileged individuals to their Roblox counterparts.",
+        extras={"category": "Utility"},
+        hidden=True,
+        with_app_command=False,
+    )
+    @commands.has_role(988055417907200010)
+    async def staff_sync(self, ctx: commands.Context, discord_id: int, roblox_id: int):
+        from bson import ObjectId
+        from datamodels.StaffConnections import StaffConnection
+
+        await self.bot.staff_connections.insert_connection(
+            StaffConnection(
+                roblox_id=roblox_id, discord_id=discord_id, document_id=ObjectId()
+            )
+        )
+        roblox_user = await self.bot.roblox.get_user(roblox_id)
+        await ctx.send(
+            embed=discord.Embed(
+                title="Staff Sync",
+                description=f"Successfully synced <@{discord_id}> to {roblox_user.name}",
+                color=BLANK_COLOR,
+            )
+        )
+
     @commands.hybrid_command(
         name="ping",
         description="Shows information of the bot, such as uptime and latency",
@@ -295,67 +300,49 @@ class Utility(commands.Cog):
     )
     async def ping(self, ctx):
         latency = round(self.bot.latency * 1000)
-        data = await self.bot.db.command("ping")
-    
+        embed = discord.Embed(
+            title="Bot Status",
+            color=BLANK_COLOR,
+        )
 
-        # Matplot is blocking so I must run it in an executor
-        loop = asyncio.get_running_loop()
-        func = loop.run_in_executor(None, self.generate_graph)
-        buf = await func
-
-
-        view = discord.ui.Container()
-        section = discord.ui.Section(
-            accessory=discord.ui.Thumbnail(
-                media=(ctx.guild.icon or self.bot.user.display_avatar).with_format("png").url
+        if ctx.guild is not None:
+            embed.set_author(
+                name=ctx.guild.name,
+                icon_url=ctx.guild.icon,
             )
-        )
+        else:
+            embed.set_author(
+                name=ctx.author.name,
+                icon_url=ctx.author.display_avatar.url,
+            )
 
-        values = (
-            "### Bot Status\n"
-        )
+        data = await self.bot.db.command("ping")
+
         status: str | None = None
+
         if list(data.keys())[0] == "ok":
             status = "Connected"
         else:
             status = "Not Connected"
 
-        values += (
-            f"**Information about service**\n"
-            f"> **Latency:** `{latency}ms`\n"
-            f"> **Uptime:** <t:{int(self.bot.start_time)}:R>\n"
-            f"> **Database Connection:** {status}\n"
-            f"> **Shards:** `{self.bot.shard_count-1 if isinstance(self.bot, commands.AutoShardedBot) else 0}`\n"
-        )
-        text = section.add_item(
-            discord.ui.TextDisplay(
-                values
-            )
-        )
-        if latency > 75 and latency < 200:
-            style = discord.ButtonStyle.blurple
-        elif latency >= 200:
-            style = discord.ButtonStyle.danger
-        else:
-            style = discord.ButtonStyle.green
-        buttons = discord.ui.ActionRow(
-            discord.ui.Button(
-                label = f"{latency}ms",
-                style = style,
-                disabled=True
+        embed.add_field(
+            name="Information",
+            value=(
+                f"> **Latency:** `{latency}ms`\n"
+                f"> **Uptime:** <t:{int(self.bot.start_time)}:R>\n"
+                f"> **Database Connection:** {status}\n"
+                f"> **Shards:** `{self.bot.shard_count-1 if isinstance(self.bot, commands.AutoShardedBot) else 0}`\n"
             ),
-            discord.ui.Button(
-                label = f"Shard {ctx.guild.shard_id if ctx.guild and isinstance(self.bot, commands.AutoShardedBot) else 0}/{self.bot.shard_count-1 if isinstance(self.bot, commands.AutoShardedBot) else 0}",
-                disabled=True
-            )
+            inline=False,
         )
-        file = discord.File(buf, filename="graph.png")
-        view.add_item(section).add_item(discord.ui.Separator())
-        view.add_item(discord.ui.MediaGallery(discord.MediaGalleryItem(media=discord.UnfurledMediaItem("attachment://graph.png"))))
-        view.add_item(discord.ui.Separator())
-        view.add_item(buttons)
 
-        await ctx.send(view=discord.ui.LayoutView().add_item(view), files=[file])
+        embed.set_footer(
+            text=f"Shard {ctx.guild.shard_id if ctx.guild and isinstance(self.bot, commands.AutoShardedBot) else 0}/{self.bot.shard_count-1 if isinstance(self.bot, commands.AutoShardedBot) else 0}"
+        )
+        embed.timestamp = datetime.datetime.utcnow()
+        embed.set_thumbnail(url=ctx.guild.icon)
+        await ctx.send(embed=embed)
+
     @commands.hybrid_command(
         name="modpanel",
         aliases=["panel"],
@@ -425,28 +412,24 @@ class Utility(commands.Cog):
     async def about(self, ctx):
         # using an embed
         # [**Support Server**](https://discord.gg/5pMmJEYazQ)
-        embed = discord.Embed(
-            title="About ERM",
-            color=BLANK_COLOR,
-            description="ERM is the all-in-one approach to game moderation logging, shift logging and more.",
+
+        component = ui.Container(
+            ui.TextDisplay(
+                "## About ERM",
+            ),
+            ui.Separator(
+                visible=False,
+            ),
+            ui.TextDisplay(
+                "ERM is the all-in-one approach to game moderation logging, shift logging and more.\n",
+            ),
+            ui.TextDisplay(
+                "**Bot Information**\n> **Website: ** [View Website](<https://ermbot.xyz/>)\n> **Support:** [Join Server](<https://discord.gg/FAC629TzBy>)\n> **Invite:** [Invite Bot](<https://discord.com/oauth2/authorize?client_id=978662093408591912&permissions=8&scope=bot%20applications.commands>)\n> **Documentation:** [View Documentation](<https://docs.ermbot.xyz/>)\n> **Desktop:** [Download ERM Desktop](<https://ermbot.xyz/download>)",
+            ),
         )
 
-        embed.add_field(
-            name=f"Bot Information",
-            value=(
-                "> **Website:** [View Website](https://ermbot.xyz)\n"
-                "> **Support:** [Join Server](https://discord.gg/FAC629TzBy)\n"
-                f"> **Invite:** [Invite Bot](https://discord.com/oauth2/authorize?client_id={self.bot.user.id}&permissions=8&scope=bot%20applications.commands)\n"
-                "> **Documentation:** [View Documentation](https://docs.ermbot.xyz)\n"
-                "> **Desktop:** [Download ERM Desktop](https://ermbot.xyz/download)"
-            ),
-            inline=False,
-        )
-        embed.set_author(
-            name=self.bot.user.name,
-            icon_url=self.bot.user.display_avatar.url,
-        )
-        await ctx.reply(embed=embed)
+
+        await ctx.reply(view=component)
 
     @commands.hybrid_group(name="api")
     async def api(self, ctx):
@@ -461,9 +444,6 @@ class Utility(commands.Cog):
     @is_management()
     @require_settings()
     async def api_generate(self, ctx: commands.Context):
-
-        return await ctx.reply(f"{self.bot.emoji_controller.get_emoji("error")} **{ctx.author.mention}**, this command has been disabled due to it being nonfunctional for a long time. It is unknown when it will return.")
-        """
         view = APIKeyConfirmation(ctx.author.id)
         msg = await ctx.send(
             embed=discord.Embed(
@@ -519,7 +499,7 @@ class Utility(commands.Cog):
                             )
                     else:
                         error_msg = f"API returned non-200 status: {response.status}"
-                        logging.warning(error_msg)
+                        logging.error(error_msg)
                         await ctx.send(
                             embed=discord.Embed(
                                 title="Error",
@@ -530,7 +510,7 @@ class Utility(commands.Cog):
                         )
             except aiohttp.ClientError as e:
                 error_msg = f"API request failed: {str(e)}"
-                logging.warning(error_msg)
+                logging.error(error_msg)
                 await ctx.send(
                     embed=discord.Embed(
                         title="Error",
@@ -539,7 +519,7 @@ class Utility(commands.Cog):
                     ),
                     ephemeral=isinstance(ctx.interaction, discord.Interaction),
                 )
-        """
+
 
 async def setup(bot):
     await bot.add_cog(Utility(bot))
