@@ -9,4 +9,4 @@ class LogTimestamps(Document):
         return doc.get("timestamps", {})
 
     async def save_timestamps(self, guild_id: int, timestamps: dict):
-        await self.upsert({"_id": guild_id, "timestamps": timestamps})
+        return await self.upsert({"_id": guild_id, "timestamps": timestamps})
