@@ -58,6 +58,7 @@ from datamodels.Actions import Actions
 from datamodels.Warnings import Warnings
 from datamodels.ProhibitedUseKeys import ProhibitedUseKeys
 from datamodels.PendingOAuth2 import PendingOAuth2
+from datamodels.LogTimestamps import LogTimestamps
 from datamodels.OAuth2Users import OAuth2Users
 from datamodels.IntegrationCommandStorage import IntegrationCommandStorage
 from datamodels.SavedLogs import SavedLogs
@@ -175,6 +176,7 @@ class Bot(commands.AutoShardedBot):
                 {}
             )  # Guild ID => [ { Username: Count } ]
 
+            self.log_timestamps = LogTimestamps(self.db, "log_timestamps")
             self.shift_management = ShiftManagement(self.db, "shift_management")
             self.errors = Errors(self.db, "errors")
             self.loas = ActivityNotices(self.db, "leave_of_absences")
