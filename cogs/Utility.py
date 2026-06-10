@@ -442,7 +442,7 @@ class Utility(commands.Cog):
     ),
 )
 
-        await ctx.reply(view=component)
+        await ctx.reply(view=ui.LayoutView().add_item(component))
 
     @commands.hybrid_group(name="api")
     async def api(self, ctx):
