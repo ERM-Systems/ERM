@@ -8,6 +8,7 @@ import discord
 from discord import app_commands
 from discord.app_commands import AppCommandGroup
 from discord.ext import commands
+from discord import ui
 import pytz
 
 from menus import LinkView, CustomSelectMenu, MultiPaginatorMenu, APIKeyConfirmation
@@ -411,28 +412,24 @@ class Utility(commands.Cog):
     async def about(self, ctx):
         # using an embed
         # [**Support Server**](https://discord.gg/5pMmJEYazQ)
-        embed = discord.Embed(
-            title="About ERM",
-            color=BLANK_COLOR,
-            description="ERM is the all-in-one approach to game moderation logging, shift logging and more.",
+
+        component = ui.Container(
+            ui.TextDisplay(
+                "## About ERM",
+            ),
+            ui.Separator(
+                visible=False,
+            ),
+            ui.TextDisplay(
+                "ERM is the all-in-one approach to game moderation logging, shift logging and more.\n",
+            ),
+            ui.TextDisplay(
+                "**Bot Information**\n> **Website: ** [View Website](<https://ermbot.xyz/>)\n> **Support:** [Join Server](<https://discord.gg/FAC629TzBy>)\n> **Invite:** [Invite Bot](<https://discord.com/oauth2/authorize?client_id=978662093408591912&permissions=8&scope=bot%20applications.commands>)\n> **Documentation:** [View Documentation](<https://docs.ermbot.xyz/>)\n> **Desktop:** [Download ERM Desktop](<https://ermbot.xyz/download>)",
+            ),
         )
 
-        embed.add_field(
-            name=f"Bot Information",
-            value=(
-                "> **Website:** [View Website](https://ermbot.xyz)\n"
-                "> **Support:** [Join Server](https://discord.gg/FAC629TzBy)\n"
-                f"> **Invite:** [Invite Bot](https://discord.com/oauth2/authorize?client_id={self.bot.user.id}&permissions=8&scope=bot%20applications.commands)\n"
-                "> **Documentation:** [View Documentation](https://docs.ermbot.xyz)\n"
-                "> **Desktop:** [Download ERM Desktop](https://ermbot.xyz/download)"
-            ),
-            inline=False,
-        )
-        embed.set_author(
-            name=self.bot.user.name,
-            icon_url=self.bot.user.display_avatar.url,
-        )
-        await ctx.reply(embed=embed)
+
+        await ctx.reply(view=component)
 
     @commands.hybrid_group(name="api")
     async def api(self, ctx):
