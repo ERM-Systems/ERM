@@ -413,22 +413,21 @@ class Utility(commands.Cog):
         # using an embed
         # [**Support Server**](https://discord.gg/5pMmJEYazQ)
 
+
         component = ui.Container(
-            ui.TextDisplay(
-                "## About ERM",
-            ),
-            ui.Separator(
-                visible=False,
-            ),
-            ui.TextDisplay(
-                "ERM is the all-in-one approach to game moderation logging, shift logging and more.\n",
-            ),
-            ui.TextDisplay(
-                "**Bot Information**\n> **Website: ** [View Website](<https://ermbot.xyz/>)\n> **Support:** [Join Server](<https://discord.gg/FAC629TzBy>)\n> **Invite:** [Invite Bot](<https://discord.com/oauth2/authorize?client_id=978662093408591912&permissions=8&scope=bot%20applications.commands>)\n> **Documentation:** [View Documentation](<https://docs.ermbot.xyz/>)\n> **Desktop:** [Download ERM Desktop](<https://ermbot.xyz/download>)",
-            ),
-        )
-
-
+    ui.TextDisplay(
+        "## About ERM",
+    ),
+    ui.Separator(
+        visible=False,
+    ),
+    ui.TextDisplay(
+        "ERM is the all-in-one approach to game moderation logging, shift logging and more.\n",
+    ),
+    ui.TextDisplay(
+        "**Bot Information**\n> **Website: ** [View Website](<https://ermbot.xyz/>)\n> **Support:** [Join Server](<https://discord.gg/FAC629TzBy>)\n> **Invite:** [Invite Bot](<https://discord.com/oauth2/authorize?client_id=978662093408591912&permissions=8&scope=bot%20applications.commands>)\n> **Documentation:** [View Documentation](<https://docs.ermbot.xyz/>)\n> **Desktop:** [Download ERM Desktop](<https://ermbot.xyz/download>)",
+    ),
+)  
         await ctx.reply(view=component)
 
     @commands.hybrid_group(name="api")
