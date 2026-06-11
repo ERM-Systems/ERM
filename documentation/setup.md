@@ -39,11 +39,19 @@ cp .env.template .env
 ### Required
 
 - `MONGO_URL` — MongoDB connection string (e.g. `mongodb://localhost:27017/erm`)  
-- `ENVIRONMENT` — `PRODUCTION` or `DEVELOPMENT`. Do not use `CUSTOM`.  
+- `ENVIRONMENT` — `PRODUCTION`, `DEVELOPMENT`, `ALPHA`, or `CUSTOM`.  
 - `PRODUCTION_BOT_TOKEN` — Bot token for the production environment  
-- `DEVELOPMENT_BOT_TOKEN` — Bot token for the development environment
-- `CUSTOM_GUILD_ID`Must be set to `0` regardless of usage.
 
+### Required by Environment
+
+- `DEVELOPMENT_BOT_TOKEN` — Required when `ENVIRONMENT=DEVELOPMENT`  
+- `ALPHA_BOT_TOKEN` — Required when `ENVIRONMENT=ALPHA`  
+- `CUSTOM_BOT_TOKEN` — Required when `ENVIRONMENT=CUSTOM`  
+- `CUSTOM_GUILD_ID` — Must be set to `0` regardless of usage. Do not change.
+
+### Optional — Monitoring
+
+- `SENTRY_URL` — Sentry DSN for error tracking (recommended)
 
 ### Optional — Bot Features
 
@@ -53,7 +61,23 @@ cp .env.template .env
 - `REMINDERS_ENABLED` — `TRUE` or `FALSE`. Controls the Reminders cog  
 - `ACTIONS_ENABLED` — `TRUE` or `FALSE`. Controls the Actions cog and  
   the `iterate_conditions` background task
-  
+
+### Optional — ERM API / Panel
+
+- `API_PRIVATE_KEY` — Private key for the internal ERM API  
+- `API_STATIC_TOKEN` — Static token for API authentication  
+- `BASE_API_URL` — Base URL for the ERM API  
+- `PANEL_API_URL` — URL for the ERM management panel  
+- `IPC_SECRET_KEY` — Secret key for inter-process communication  
+
+### Optional — OAuth2 (website)
+
+Required only if running the ERM website/panel:
+
+- `DEVELOPMENT_CLIENT_ID` / `PRODUCTION_CLIENT_ID` — Discord OAuth2 client IDs  
+- `DEVELOPMENT_CLIENT_SECRET` / `PRODUCTION_CLIENT_SECRET` — Discord OAuth2 secrets  
+- `DEVELOPMENT_REDIRECT_URI` / `PRODUCTION_REDIRECT_URI` — OAuth2 redirect URIs  
+
 ### Optional — Google Sheets
 
 Required only for Activity Report and Duty Leaderboard spreadsheet exports:
@@ -65,7 +89,12 @@ Required only for Activity Report and Duty Leaderboard spreadsheet exports:
 
 ### Optional — MC API
 
-- `MC_API_URL` / `MC_API_KEY` — Used by the MapleCounty integration  
+- `MC_API_URL` / `MC_API_KEY` — Used by the MapleCounty integration
+
+### Optional — Reserved
+
+- `GITHUB_TOKEN` — Reserved for future use, not currently used by the bot  
+- `DB_NAME` — Override the default database name (`erm`). Commented out by default.
 
 ---
 

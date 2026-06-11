@@ -69,21 +69,29 @@ on the bot at startup.
 
 Notable events:
 
+- `on_ready` — Performs post-startup initialisation  
 - `on_message` — Handles custom command dispatch and message-based triggers  
+- `on_guild_join` — Initialises guild settings on first join  
+- `on_member_remove` — Cleans up shift state when a member leaves  
+- `on_member_update` — Tracks role changes for staff management  
 - `on_shift_start` / `on_shift_end` / `on_shift_edit` / `on_shift_void` — Custom  
   events dispatched internally when shift state changes  
+- `on_break_start` / `on_break_end` — Custom events for shift break lifecycle  
 - `on_punishment` / `on_punishment_delete` — Custom events for punishment lifecycle  
 - `on_infraction_create` / `on_infraction_revoke` — Custom events for infraction lifecycle  
 - `on_loa_accept` / `on_loa_deny` — Custom events for LOA request resolution  
-- `on_member_remove` — Cleans up shift state when a member leaves  
+- `on_command_error` / `on_error` — Global error handling and Sentry reporting  
+- `on_staff_request_send` — Custom event for staff request dispatch  
 
 ---
 
 ## Tasks
 
 Background tasks live in `tasks/` and use `discord.ext.tasks.loop`.  
-They are registered in `utils/task_loader.py` and started with a  
-staggered 30-second delay between each to avoid startup load spikes.
+They are started in `Bot.start_tasks()` in `erm.py` with a  
+staggered 30-second delay between each to avoid startup load spikes.  
+`utils/task_loader.py` provides an auto-discovery alternative but is  
+not currently used at startup.
 
 | Task | Interval | Purpose |
 |------|----------|---------|
