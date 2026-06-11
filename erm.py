@@ -310,9 +310,6 @@ class Bot(commands.AutoShardedBot):
 
 
 
-if config("ENVIRONMENT") == "CUSTOM":
-    Bot.__bases__ = (commands.Bot,)
-
 bot = Bot(
     command_prefix=get_prefix,
     case_insensitive=True,
