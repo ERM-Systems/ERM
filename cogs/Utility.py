@@ -30,7 +30,7 @@ class Utility(commands.Cog):
 
     @commands.hybrid_group(
         name="import",
-        description="Internal Use Command - import data from the recent outage.",
+        description="Import data that may not be present in your server's database.",
         extras={"category": "Utility"},
     )
     @is_staff()
@@ -274,6 +274,10 @@ class Utility(commands.Cog):
         )
 
     def generate_graph(self):
+        """
+        Generates ping graph.
+        Very blocking so run in an executor
+        """
         self.ax.clear()
         self.ax.plot(self.bot.saved_latencies["shards"], label="Discord (avg.)")
         self.ax.plot(self.bot.saved_latencies["db"], label="DB")
@@ -283,11 +287,12 @@ class Utility(commands.Cog):
         self.ax.legend(loc='upper center', ncol=8, frameon=True)
         self.ax.margins(x=0)
         self.fig.tight_layout()
-        buf = io.BytesIO()
 
+        buf = io.BytesIO()
         self.fig.savefig(buf, format="png", bbox_inches="tight", dpi=100, facecolor="black")
         buf.seek(0)
         return buf
+    
     @commands.hybrid_command(
         name="ping",
         description="Shows information of the bot, such as uptime and latency",
@@ -327,7 +332,7 @@ class Utility(commands.Cog):
             f"> **Database Connection:** {status}\n"
             f"> **Shards:** `{self.bot.shard_count-1 if isinstance(self.bot, commands.AutoShardedBot) else 0}`\n"
         )
-        text = section.add_item(
+        section.add_item(
             discord.ui.TextDisplay(
                 values
             )
