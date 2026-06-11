@@ -120,8 +120,7 @@ async def process_reminder(bot, guild, item, guild_obj):
 
 async def iterate_reminder(bot, guild_obj):
     """Iterate through all reminders for a guild and process any that are due."""
-    if await has_whitelabel(bot, guild_obj["_id"]):
-        return
+
 
     guild = bot.get_guild(int(guild_obj["_id"]))
     if not guild:

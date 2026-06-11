@@ -83,16 +83,6 @@ async def fetch_weather(session: aiohttp.ClientSession, lat: float, lon: float, 
 
 @tasks.loop(minutes=2, reconnect=True)
 async def sync_weather(bot):
-    chosen_filter = {
-        "_": {
-            "_id": {
-                "$nin": [
-                    int(item["GuildID"] or 0)
-                    async for item in bot.whitelabel.db.find({})
-                ]
-            }
-        },
-    }
 
     try:
         logging.info("Starting weather sync task...")
@@ -106,7 +96,6 @@ async def sync_weather(bot):
                         {"ERLC.weather.sync_weather": True},
                     ],
                     "ERLC.weather.location": {"$exists": True, "$ne": ""},
-                    **chosen_filter,
                 }
             },
             {
