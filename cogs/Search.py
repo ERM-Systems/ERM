@@ -8,8 +8,8 @@ from discord import app_commands
 from discord.ext import commands
 from reactionmenu import ViewButton, ViewMenu, Page
 from reactionmenu.abc import _PageController
-from roblox import client as roblox
 import roblox as rbx_api
+from erm import Bot
 
 from datamodels.StaffConnections import StaffConnection
 from datamodels.Warnings import WarningItem
@@ -25,12 +25,9 @@ from utils.utils import (
 )
 from utils.paginators import SelectPagination, CustomPage
 
-client = roblox.Client()
-
-
 class Search(commands.Cog):
     def __init__(self, bot):
-        self.bot = bot
+        self.bot: Bot = bot
 
     @commands.guild_only()
     @commands.hybrid_command(
@@ -67,8 +64,7 @@ class Search(commands.Cog):
             )
         roblox_user = roblox_user["robloxID"]
 
-        client = roblox.Client()
-        roblox_player = await client.get_user(roblox_user)
+        roblox_player = await self.bot.roblox.get_user(roblox_user)
 
         warnings: list[WarningItem] = (
             await bot.punishments.get_warnings(roblox_player.id, guild_id) or []
@@ -232,7 +228,7 @@ class Search(commands.Cog):
                 embed_list.append(new_embed)
                 add_warning_field(warning)
 
-        thumbnails = await client.thumbnails.get_user_avatar_thumbnails(
+        thumbnails = await self.bot.roblox.thumbnails.get_user_avatar_thumbnails(
             [roblox_player], type=rbx_api.thumbnails.AvatarThumbnailType.headshot
         )
         thumbnail_url = thumbnails[0].image_url
@@ -309,8 +305,7 @@ class Search(commands.Cog):
                 )
             )
 
-        client = roblox.Client()
-        roblox_player = await client.get_user_by_username(roblox_user["name"])
+        roblox_player = await self.bot.roblox.get_user_by_username(roblox_user["name"])
 
         warnings: list[WarningItem] = (
             await bot.punishments.get_warnings(roblox_player.id, ctx.guild.id) or []
@@ -455,7 +450,7 @@ class Search(commands.Cog):
                 embed_list.append(new_embed)
                 add_warning_field(warning)
 
-        thumbnails = await client.thumbnails.get_user_avatar_thumbnails(
+        thumbnails = await self.bot.roblox.thumbnails.get_user_avatar_thumbnails(
             [roblox_player], type=rbx_api.thumbnails.AvatarThumbnailType.headshot
         )
         thumbnail_url = thumbnails[0].image_url
@@ -512,10 +507,8 @@ class Search(commands.Cog):
                     color=BLANK_COLOR,
                 )
             )
-
-        client = roblox.Client()
-        roblox_player = await client.get_user_by_username(roblox_user["name"])
-        thumbnails = await client.thumbnails.get_user_avatar_thumbnails(
+        roblox_player = await self.bot.roblox.get_user_by_username(roblox_user["name"])
+        thumbnails = await self.bot.roblox.thumbnails.get_user_avatar_thumbnails(
             [roblox_player], type=rbx_api.thumbnails.AvatarThumbnailType.headshot
         )
         thumbnail = thumbnails[0].image_url
