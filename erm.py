@@ -94,7 +94,7 @@ async def rate_limited_fetch(coro, endpoint_type="default"):
             raise
 
 setup = False
-accepted_envs = ["PRODUCTION", "DEVELOPMENT", "ALPHA", "CUSTOM"]
+accepted_envs = ["PRODUCTION", "DEVELOPMENT", "ALPHA"]
 
 
 sentry_url = config("SENTRY_URL", "")
@@ -339,38 +339,7 @@ def running():
 
 @bot.before_invoke
 async def AutoDefer(ctx: commands.Context):
-    if (
-        environment == "CUSTOM"
-        and config("CUSTOM_GUILD_ID", default="0") != "0"
-        and not getattr(ctx.bot, "whitelist_disabled", False)
-    ):
-        if ctx.guild.id != int(config("CUSTOM_GUILD_ID")):
-            if ctx.interaction:
-                await ctx.interaction.response.send_message(
-                    embed=discord.Embed(
-                        title="Not Permitted",
-                        description="This bot is not permitted to be used in this server. You can change this in the **Whitelabel Bot Dashboard**.",
-                        color=BLANK_COLOR,
-                    ),
-                    ephemeral=True,
-                )
-                raise Exception(f"Guild not permitted to use this bot: {ctx.guild.id}")
-
     guild_id = ctx.guild.id
-    if (environment != "CUSTOM" or int(config("CUSTOM_GUILD_ID", default="0")) != guild_id) and await has_whitelabel(bot, guild_id):
-        if "jishaku" in ctx.command.qualified_name:
-            return
-        if ctx.interaction:
-            await ctx.interaction.response.send_message(
-                embed=discord.Embed(
-                    title="Not Permitted",
-                    description="There is a whitelabel bot already in this server.",
-                    color=BLANK_COLOR,
-                ),
-                ephemeral=True,
-            )
-        raise Exception("Whitelabel bot already in use")
-
     bot.internal_command_storage[ctx.message.id] = datetime.datetime.now(tz=pytz.UTC).timestamp()
     if ctx.command:
         if ctx.command.extras.get("ephemeral") is True:
@@ -404,41 +373,6 @@ async def loggingCommandExecution(ctx: commands.Context):
         logging.info(
             "Command could not be found in internal context storage. Please report."
         )
-
-
-@bot.event
-async def on_message(
-    message,
-):  # DO NOT COG
-
-    if not message.guild:
-        return await bot.process_commands(message)
-
-    if (
-        environment == "CUSTOM"
-        and config("CUSTOM_GUILD_ID", default=None) != 0
-        and not getattr(bot, "whitelist_disabled", False)
-    ):
-        if message.guild.id != int(config("CUSTOM_GUILD_ID")):
-            ctx = await bot.get_context(message)
-            if ctx.command is not None:
-                await message.reply(
-                    embed=discord.Embed(
-                        title="Not Permitted",
-                        description="This bot is not permitted to be used in this server. You can change this in the **Whitelabel Bot Dashboard**.",
-                        color=BLANK_COLOR,
-                    )
-                )
-                return
-
-    if environment == "PRODUCTION" and await bot.whitelabel.db.find_one({"GuildID": str(message.guild.id)}) is not None:
-        return
-
-    await bot.process_commands(message)
-
-
-client = roblox.Client()
-
 
 async def staff_check(bot_obj, guild, member):
     guild_settings = await bot_obj.settings.find_by_id(guild.id)
