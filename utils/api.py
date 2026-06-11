@@ -2144,8 +2144,7 @@ class MyMiddleware:
     async def __call__(self, request: Request, call_next):
         guild_id = ""
         try:
-            if config("ENVIRONMENT") == "CUSTOM":
-                raise Exception("We're already redirected.")
+
 
             request_json = await request.json()
             guild_id = int(

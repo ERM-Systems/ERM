@@ -141,9 +141,6 @@ class Bot(commands.AutoShardedBot):
         # Else fall back to the original
         if user.id == 1394817794427846737:
             return True
-
-        if environment != "CUSTOM": # let's not allow custom bot owners to use jishaku lol
-            return await super().is_owner(user)
         else:
             return False
 
@@ -207,13 +204,6 @@ class Bot(commands.AutoShardedBot):
             self.oauth2_users = OAuth2Users(self.db, "oauth2")
 
             self.accounts = Accounts(self)
-
-            if environment == "CUSTOM":
-                doc = await self.whitelabel.db.find_one({"GuildID": config("CUSTOM_GUILD_ID", default="0")})
-                if not doc:
-                    raise Exception(
-                        "Custom guild ID not found in the database. This means the whitelabel subscription is overdue."
-                    )
 
             self.roblox = roblox.Client()
             self.prc_api = PRCApiClient(
@@ -279,11 +269,7 @@ class Bot(commands.AutoShardedBot):
             if environment == "DEVELOPMENT":
                 pass
                 # await bot.tree.sync(guild=discord.Object(id=987798554972143728))
-            elif environment == "CUSTOM":
-                await self.tree.sync()
-                # Prevent auto syncing
-                # await bot.tree.sync()
-                # guild specific: leave blank if global (global registration can take 1-24 hours)
+
             bot.is_synced = True
             self.saved_latencies = {
                 "shards": [],

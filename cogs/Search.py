@@ -101,7 +101,7 @@ class Search(commands.Cog):
             roblox_id=roblox_player.id
         )
 
-        if member and bot.environment != "CUSTOM":
+        if member:
             try:
                 discord_member = await guild.fetch_member(member.discord_id)
             except discord.NotFound:
@@ -113,8 +113,7 @@ class Search(commands.Cog):
                     for role in discord_member.roles
                     if role.id in magic_flags_reverse
                 )
-        elif member and bot.environment == "CUSTOM":
-            applied_flags.update(["ERM Staff"])
+
 
         applied_flags = list(applied_flags)
         if (
@@ -356,7 +355,7 @@ class Search(commands.Cog):
             roblox_id=roblox_player.id
         )
 
-        if member and bot.environment != "CUSTOM":
+        if member:
             try:
                 discord_member = await guild.fetch_member(member.discord_id)
             except discord.NotFound:
@@ -368,8 +367,7 @@ class Search(commands.Cog):
                     for role in discord_member.roles
                     if role.id in magic_flags_reverse
                 )
-        elif member and bot.environment == "CUSTOM":
-            applied_flags.update(["ERM Staff"])
+
 
         applied_flags = list(applied_flags)
         if (
