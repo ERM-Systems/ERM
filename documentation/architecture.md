@@ -88,10 +88,10 @@ Notable events:
 ## Tasks
 
 Background tasks live in `tasks/` and use `discord.ext.tasks.loop`.  
-They are started in `Bot.start_tasks()` in `erm.py` with a  
-staggered 30-second delay between each to avoid startup load spikes.  
-`utils/task_loader.py` provides an auto-discovery alternative but is  
-not currently used at startup.
+Tasks are loaded automatically at startup — `task_loader.start_tasks()`  
+auto-discovers all loops and starts them, and `Bot.start_tasks()`  
+additionally initiates them with a staggered 30-second delay between  
+each to avoid startup load spikes.
 
 | Task | Interval | Purpose |
 |------|----------|---------|

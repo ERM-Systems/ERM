@@ -40,6 +40,7 @@ cp .env.template .env
 
 - `MONGO_URL` — MongoDB connection string (e.g. `mongodb://localhost:27017/erm`)  
 - `ENVIRONMENT` — `PRODUCTION`, `DEVELOPMENT`, `ALPHA`, or `CUSTOM`.  
+  Do not use `CUSTOM` unless you are self-hosting a whitelabel instance.  
 - `PRODUCTION_BOT_TOKEN` — Bot token for the production environment  
 
 ### Required by Environment
