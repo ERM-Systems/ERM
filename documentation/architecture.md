@@ -88,10 +88,11 @@ Notable events:
 ## Tasks
 
 Background tasks live in `tasks/` and use `discord.ext.tasks.loop`.  
-Tasks are loaded automatically at startup — `task_loader.start_tasks()`  
-auto-discovers all loops and starts them, and `Bot.start_tasks()`  
-additionally initiates them with a staggered 30-second delay between  
-each to avoid startup load spikes.
+All background tasks are auto-discovered and started by  
+`utils/task_loader.start_tasks()` in the `setup_hook`. The loader  
+iterates all modules in `tasks/`, finds each `discord.ext.tasks.Loop`  
+instance, and starts them with a 2-second delay between each to  
+avoid startup load spikes.
 
 | Task | Interval | Purpose |
 |------|----------|---------|
