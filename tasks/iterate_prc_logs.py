@@ -45,8 +45,8 @@ global_aggregate = [
 
 count_aggregate = global_aggregate + [{"$count": "total"}]
 
-
-async def iterate_prc_logs_global(bot):
+@tasks.loop(minutes=7, reconnect=True)
+async def iterate_prc_logs(bot):
     try:
         server_count_list = await (await bot.settings.db.aggregate(count_aggregate)).to_list(length=None)
         server_count = server_count_list[0]["total"] if server_count_list else 0
@@ -78,16 +78,7 @@ async def iterate_prc_logs_global(bot):
 
 
 
-async def iterate_prc_logs_custom(bot):
-    guild_id = config("CUSTOM_GUILD_ID")
-    if not guild_id:
-        logging.info("No custom guild ID provided for custom environment")
-        return
 
-    try:
-        await unprimitive_guild_process({"_id": int(guild_id)}, bot)
-    except Exception as e:
-        logging.warning(f"error processing guild: {e}")
 
 async def unprimitive_guild_process(items, bot):
     guild = bot.get_guild(items["_id"]) or await bot.fetch_guild(
@@ -98,9 +89,6 @@ async def unprimitive_guild_process(items, bot):
     settings = await bot.settings.find_by_id(guild.id)
     erlc_settings = settings.get("ERLC", {})
 
-    if await has_whitelabel(bot, guild.id) and not config("CUSTOM_GUILD_ID") == str(guild.id):
-        logging.warning("Not handling {} due to whitelabel instance existing")
-        return
 
     channels = {
         "kill_logs": erlc_settings.get("kill_logs"),
@@ -220,15 +208,8 @@ async def process_guild(bot, items, semaphore):
         except Exception as e:
             logging.warning(f"error processing guild: {e}")
 
+    await iterate_prc_logs(bot)
 
-@tasks.loop(minutes=7, reconnect=True)
-async def iterate_prc_logs(bot):
-    if bot.environment == "PRODUCTION":
-        await iterate_prc_logs_global(bot)
-    else:
-        await iterate_prc_logs_custom(
-            bot
-        )
 
 
 async def fetch_logs_with_retry(guild_id, bot, retries=3):

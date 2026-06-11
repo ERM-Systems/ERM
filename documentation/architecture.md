@@ -106,8 +106,6 @@ staggered 30-second delay between each to avoid startup load spikes.
 `REMINDERS_ENABLED` and `ACTIONS_ENABLED` respectively and will not  
 start if those are set to `FALSE`.
 
-`change_status` does not run when `ENVIRONMENT=CUSTOM`.
-
 ---
 
 ## Data Layer
