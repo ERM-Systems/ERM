@@ -197,11 +197,96 @@ Key fields:
 Persistent Discord UI component state, allowing Views to survive  
 bot restarts.
 
+Key fields:
+
+- `_id` — Document ID  
+- `view_type` — View type identifier (e.g. `"LOAMenu"`)  
+- `message_id` — Discord message ID the view is attached to  
+- `args` — Serialized constructor arguments for view reconstruction  
+
 ---
 
 ### `actions`
 
-Configured server automation actions.
+Configured server automation actions. One document per action.
+
+Key fields:
+
+- `_id` — Document ID  
+- `guild_id` — Discord guild ID  
+- `title` — Action name  
+- `condition` — The condition type to evaluate  
+- `condition_value` — Threshold value for the condition  
+- `condition_operator` — Comparison operator (`==`, `!=`, `<`, `<=`, `>`, `>=`)  
+- `action_type` — Action to take (e.g. `"dm"`, `"message"`, `"set_perms"`)  
+- `action_config` — Action-specific configuration (channel, message content, etc.)  
+- `cooldown` — Cooldown between triggers in seconds  
+
+---
+
+### `punishment_types`
+
+Custom punishment type definitions per guild.
+
+Key fields:
+
+- `_id` — Discord guild ID  
+- `types` — List of punishment type objects, each with:  
+  - `name` — Type name  
+  - `type` — Underlying action (`warn`, `kick`, `ban`, `bolo`)  
+  - `effect` — Optional in-game effect  
+  - `revocable` — Whether the punishment can be revoked  
+
+---
+
+### `custom_flags`
+
+Custom moderation flags per guild.
+
+Key fields:
+
+- `_id` — Discord guild ID  
+- `flags` — List of flag name strings  
+
+---
+
+### `link_strings`
+
+Key-value string store for linking-related features (guild ID keyed).
+
+---
+
+### `fivem_links`
+
+FiveM server links associated with Discord guilds.
+
+---
+
+### `logged_command_data` (aliased as `IntegrationCommandStorage`)
+
+Logged integration command execution data for auditing.
+
+Key fields:
+
+- `_id` — Document ID  
+- `guild_id` — Discord guild ID  
+- `user_id` — Discord user ID  
+- `command` — Command name  
+- `args` — Command arguments  
+- `timestamp` — Unix timestamp  
+
+---
+
+### `saved_logs`
+
+Preserved log entries for archival or review.
+
+---
+
+### `staff_connections`
+
+Per-guild staff member connection tracking for activity and  
+cross-reference lookups.
 
 ---
 
@@ -209,17 +294,75 @@ Configured server automation actions.
 
 Per-guild staff conduct review configuration.
 
+Key fields:
+
+- `_id` — Discord guild ID  
+- `channels` — Configured channels for conduct reviews  
+- `roles` — Role-based access configuration  
+- `questions` — Review question templates  
+
 ---
 
 ### `maple_keys`
 
 MapleCounty integration API keys.
 
+Key fields:
+
+- `_id` — Authentication identifier  
+- `Key` — API key string  
+
 ---
 
 ### `prohibited_use_keys`
 
 Keys flagged for prohibited or abusive use.
+
+---
+
+### `errors`
+
+Logged runtime error records for diagnostic review.
+
+Key fields:
+
+- `_id` — Document ID  
+- `timestamp` — Unix timestamp of the error  
+- `error` — Error type/message  
+- `traceback` — Full traceback string  
+- `guild_id` — Guild where the error occurred (if applicable)  
+
+---
+
+### `pending_oauth2`
+
+Temporary OAuth2 state records for in-progress authentication flows.
+
+Key fields:
+
+- `_id` — State token  
+- `user_id` — Discord user ID  
+- `expires_at` — Unix timestamp for state expiry  
+
+---
+
+### `log_timestamps`
+
+Timestamps used for log polling cursors (e.g., last-checked time  
+for PRC log iteration).
+
+---
+
+### `whitelabel`
+
+Whitelabel bot subscription instances (stored in `ERMProcessing`  
+database, not the main `erm` database).
+
+Key fields:
+
+- `_id` — Document ID  
+- `GuildID` — Discord guild ID the whitelabel bot serves  
+- `Status` — Subscription status (active/inactive)  
 
 ---
 
