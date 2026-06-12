@@ -88,14 +88,11 @@ Notable events:
 ## Tasks
 
 Background tasks live in `tasks/` and use `discord.ext.tasks.loop`.  
-All background tasks are auto-discovered and started by  
-`utils/task_loader.start_tasks()` in the `setup_hook`. The loader  
-iterates all modules in `tasks/`, finds each `discord.ext.tasks.Loop`  
-instance, and starts them with a 2-second delay between each to  
-avoid startup load spikes.
+They are started in `Bot.start_tasks()` in `erm.py` with a  
+staggered 2-second delay between each to avoid startup load spikes.
 
 | Task | Interval | Purpose |
-|------|----------|---------|
+|------|----------|----------|
 | `check_reminders` | Periodic | Delivers due reminders to users |
 | `check_loa` | Periodic | Expires LOA requests past their end date |
 | `iterate_ics` | Periodic | Processes integration command storage |
@@ -141,7 +138,7 @@ Provides the `Document` base class used by all datamodels. Wraps
 ## Utils
 
 | Module | Purpose |
-|--------|---------|
+|--------|----------|
 | `api.py` | FastAPI application exposing internal HTTP endpoints |
 | `prc_api.py` | Client for the ER:LC PRC API with typed response models |
 | `mc_api.py` | Client for the MapleCounty API |

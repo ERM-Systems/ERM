@@ -39,15 +39,13 @@ cp .env.template .env
 ### Required
 
 - `MONGO_URL` — MongoDB connection string (e.g. `mongodb://localhost:27017/erm`)  
-- `ENVIRONMENT` — `PRODUCTION`, `DEVELOPMENT`, `ALPHA`, or `CUSTOM`.  
-  Do not use `CUSTOM` unless you are self-hosting a whitelabel instance.  
+- `ENVIRONMENT` — `PRODUCTION`, `DEVELOPMENT`, or `ALPHA`. Do not use `CUSTOM`.  
 - `PRODUCTION_BOT_TOKEN` — Bot token for the production environment  
 
 ### Required by Environment
 
 - `DEVELOPMENT_BOT_TOKEN` — Required when `ENVIRONMENT=DEVELOPMENT`  
 - `ALPHA_BOT_TOKEN` — Required when `ENVIRONMENT=ALPHA`  
-- `CUSTOM_BOT_TOKEN` — Required when `ENVIRONMENT=CUSTOM`  
 - `CUSTOM_GUILD_ID` — Must be set to `0` regardless of usage. Do not change.
 
 ### Optional — Monitoring
