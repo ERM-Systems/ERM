@@ -28,7 +28,7 @@ async def geocode_location(session: aiohttp.ClientSession, location: str) -> tup
     try:
         async with session.get(
             config("WEATHER_SEARCH_URL"),
-            params={"name": location, "count": 1, "language": "en", "format": "json"},
+            params={"location": location, "count": 1, "language": "en"},
         ) as resp:
             if resp.status != 200:
                 return None
