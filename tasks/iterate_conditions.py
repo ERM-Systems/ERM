@@ -185,7 +185,7 @@ async def iterate_conditions(bot):
                                 state=random.choice(channels)._state,
                                 channel=random.choice(channels),
                                 data={
-                                    "author": {"id": guild.owner_id},
+                                    "author": {"id": bot.user.id},
                                     "content": "",
                                     "id": -1000,
                                     "type": 0,
@@ -195,13 +195,6 @@ async def iterate_conditions(bot):
                             view=StringView(f"actions execute {action['ActionName']}"),
                         )
                         ctx.dnr = True
-
-                        owner = (
-                            guild.owner
-                            or guild.get_member(guild.owner_id)
-                            or await guild.fetch_member(guild.owner_id)
-                        )
-                        ctx.message.author = owner
 
                         await ctx.invoke(
                             bot.get_command("actions execute"), action=action["ActionName"]

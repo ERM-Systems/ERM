@@ -167,7 +167,7 @@ class Actions(commands.Cog):
         if dnr:
             chosen_funcs = list(
                 filter(
-                    lambda x: x not in [self.add_role, self.remove_role], chosen_funcs
+                    lambda x: x not in [self.add_role, self.remove_role, self.execute_erm_command], chosen_funcs
                 )
             )
 
