@@ -27,7 +27,7 @@ async def geocode_location(session: aiohttp.ClientSession, location: str) -> tup
     """Convert a location name to lat/lon + timezone using Open-Meteo geocoding API."""
     try:
         async with session.get(
-            "https://geocoding-api.open-meteo.com/v1/search",
+            config("WEATHER_SEARCH_URL"),
             params={"name": location, "count": 1, "language": "en", "format": "json"},
         ) as resp:
             if resp.status != 200:
@@ -47,7 +47,7 @@ async def fetch_weather(session: aiohttp.ClientSession, lat: float, lon: float, 
     """Fetch current weather code and local hour from Open-Meteo."""
     try:
         async with session.get(
-            "https://api.open-meteo.com/v1/forecast",
+            config("WEATHER_FORECAST_URL"),
             params={
                 "latitude": lat,
                 "longitude": lon,
