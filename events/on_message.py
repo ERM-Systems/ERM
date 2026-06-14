@@ -53,6 +53,20 @@ class OnMessage(commands.Cog):
                 return
             
 
+        if message.guild and message.content.strip() in [f"<@{bot.user.id}>", f"<@!{bot.user.id}>"]:
+            guild_count = len(bot.guilds)
+            container = discord.ui.Container()
+            container.add_item(discord.ui.TextDisplay(
+                f"### ERM\n"
+                f"ERM is a staff management bot for ER:LC communities. "
+                f"Use `{prefix}` or `/` to run commands.\n\n"
+                f"**Prefix:** `{prefix}`\n"
+                f"**Servers:** {guild_count:,}\n"
+                f"**Links:** [Website](https://ermbot.xyz) • [Support](https://discord.gg/uAfU26VRa8)"
+            ))
+            await message.reply(view=discord.ui.LayoutView().add_item(container))
+            return
+
         if not message.guild:
             return
 
