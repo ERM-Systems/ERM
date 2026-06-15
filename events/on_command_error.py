@@ -245,6 +245,9 @@ class OnCommandError(commands.Cog):
             return
 
         if isinstance(error, commands.CheckFailure):
+            if ctx.cog and ctx.cog.qualified_name == "Jishaku":
+                return
+
             return (
                 await ctx.send(
                     embed=discord.Embed(
@@ -256,6 +259,7 @@ class OnCommandError(commands.Cog):
                 if not do_not_send
                 else None
             )
+
         if isinstance(error, OverflowError):
             return (
                 await ctx.reply(
