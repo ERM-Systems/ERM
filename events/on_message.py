@@ -65,6 +65,22 @@ class OnMessage(commands.Cog):
         if message.author == bot.user:
             return
 
+        if message.content.strip() in [f"<@{bot.user.id}>", f"<@!{bot.user.id}>"]:
+            container = discord.ui.Container()
+            container.add_item(discord.ui.TextDisplay(
+                f"### ERM\n"
+                f"ERM is a staff management bot for ER:LC communities. "
+                f"Use `{prefix}` or `/` to run commands.\n\n"
+                f"**Prefix:** `{prefix}`\n"
+                f"**Servers:** {len(bot.guilds):,}"
+            ))
+            container.add_item(discord.ui.ActionRow(
+                discord.ui.Button(label="Website", url="https://ermbot.xyz"),
+                discord.ui.Button(label="Support", url="https://discord.gg/uAfU26VRa8"),
+            ))
+            await message.reply(view=discord.ui.LayoutView().add_item(container))
+            return
+
         if not message.guild:
             return
 
