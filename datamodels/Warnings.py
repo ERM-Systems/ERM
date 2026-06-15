@@ -85,16 +85,16 @@ class Warnings(Document):
             return None
         return WarningItem(
             id=i["_id"],
-            snowflake=i["Snowflake"],
-            username=i["Username"],
-            user_id=i["UserID"],
-            warning_type=i["Type"],
-            reason=i["Reason"],
-            moderator_name=i["Moderator"],
-            moderator_id=i["ModeratorID"],
-            guild_id=i["Guild"],
-            time_epoch=i["Epoch"],
-            until_epoch=None if i.get("UntilEpoch") == 0 else i["UntilEpoch"],
+            snowflake=i.get("Snowflake", 0),
+            username=i.get("Username", "Unknown"),
+            user_id=i.get("UserID", 0),
+            warning_type=i.get("Type", "Unknown"),
+            reason=i.get("Reason", ""),
+            moderator_name=i.get("Moderator", "Unknown"),
+            moderator_id=i.get("ModeratorID", 0),
+            guild_id=i.get("Guild", 0),
+            time_epoch=i.get("Epoch", 0),
+            until_epoch=None if i.get("UntilEpoch", 0) == 0 else i.get("UntilEpoch"),
         )
 
     async def get_warning(self, warning_id: str) -> dict:
