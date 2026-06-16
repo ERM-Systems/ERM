@@ -196,6 +196,30 @@ async def iterate_conditions(bot):
                         )
                         ctx.dnr = True
 
+                        settings = await bot.settings.find_by_id(guild.id) or {}
+                        staff_config = settings.get("staff_management", {})
+                        target_role_ids = set(
+                            staff_config.get("admin_role", [])
+                            + staff_config.get("management_role", [])
+                        )
+
+                        author_member = None
+                        if target_role_ids:
+                            for member in guild.members:
+                                if any(r.id in target_role_ids for r in member.roles):
+                                    author_member = member
+                                    break
+
+                        if not author_member:
+                            staff_role_ids = staff_config.get("role", [])
+                            for member in guild.members:
+                                if any(r.id in staff_role_ids for r in member.roles):
+                                    author_member = member
+                                    break
+
+                        if author_member:
+                            ctx.message.author = author_member
+
                         await ctx.invoke(
                             bot.get_command("actions execute"), action=action["ActionName"]
                         )
