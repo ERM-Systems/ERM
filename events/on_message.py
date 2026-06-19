@@ -24,6 +24,7 @@ from utils.utils import get_guild_icon, get_prefix, invis_embed
 class OnMessage(commands.Cog):
     def __init__(self, bot):
         self.bot: Bot = bot
+        self._mention_cooldowns: dict[int, datetime.datetime] = {}
 
     @commands.Cog.listener("on_message")
     async def on_message(self, message: discord.Message):
@@ -66,6 +67,12 @@ class OnMessage(commands.Cog):
             return
 
         if message.content.strip() in [f"<@{bot.user.id}>", f"<@!{bot.user.id}>"]:
+            now = datetime.datetime.utcnow()
+            last = self._mention_cooldowns.get(message.author.id)
+            if last and (now - last).total_seconds() < 5:
+                return
+            self._mention_cooldowns[message.author.id] = now
+            
             container = discord.ui.Container()
             container.add_item(discord.ui.TextDisplay(
                 f"### ERM\n"
