@@ -62,7 +62,9 @@ class SessionsEmbedCreationView(discord.ui.LayoutView):
             style=discord.ButtonStyle.blurple
         )
         self.button.callback = self.submit
-    
+        self.row.add_item(self.button)
+        self.cont.add_item(self.row)
+        self.add_item(self.cont)
     async def submit(self, interaction: discord.Interaction):
         modal = CustomModal(
             "Submit Message",
