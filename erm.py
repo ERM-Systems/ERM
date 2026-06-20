@@ -195,7 +195,8 @@ class Bot(commands.AutoShardedBot):
             self.server_keys = ServerKeys(self.db, "server_keys")
             self.maple_county = self.mongo[f"{f"{dbname}_" if dbname != "erm" else ""}MapleCounty"]
             self.mc_keys = MapleKeys(self.maple_county, "Auth")
-
+            self.sessions = Document(self.db, "sessions")
+            
             self.staff_connections = StaffConnections(self.db, "staff_connections")
             self.ics = IntegrationCommandStorage(self.db, "logged_command_data")
             self.actions = Actions(self.db, "actions")
