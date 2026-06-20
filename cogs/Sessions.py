@@ -192,6 +192,7 @@ class Sessions(commands.Cog):
         )
         j = json.loads(d)
         await self.bot.http.send_message(settings["session"]["channel_id"], params=discord.http.MultipartParameters(payload = j, multipart=None, files=None))
+        await self.bot.sessions.delete(session["_id"])
         return await ctx.reply("The session message has been successfully sent!")
 async def setup(bot: Bot):
     await bot.add_cog(Sessions(bot))
