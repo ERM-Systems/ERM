@@ -940,7 +940,7 @@ class Punishments(commands.Cog):
             }
         ]
 
-        results = await (await self.bot.punishments.db.aggregate(pipeline)).to_list(length=None)
+        results = [doc async for doc in await self.bot.punishments.db.aggregate(pipeline)]
         sorted_results = sorted(
             results, key=lambda x: x["ModerationCount"], reverse=True
         )
