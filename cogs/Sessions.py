@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-from erm import Bot, is_admin, require_settings
+from erm import Bot, is_admin, require_settings, is_management
 from utils.constants import CUSTOM_IDS_FOR_SESSIONS
 import discord.http
 import json
@@ -194,5 +194,6 @@ class Sessions(commands.Cog):
         await self.bot.http.send_message(settings["session"]["channel_id"], params=discord.http.MultipartParameters(payload = j, multipart=None, files=None))
         await self.bot.sessions.delete(session["_id"])
         return await ctx.reply("The session message has been successfully sent!")
+
 async def setup(bot: Bot):
     await bot.add_cog(Sessions(bot))

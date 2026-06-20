@@ -5,6 +5,9 @@ from menus import CustomModal
 from base64 import urlsafe_b64decode, b64encode
 import json
 
+class SessionsConfigurationView(discord.ui.View):
+    
+
 class SessionsEmbedCreationView(discord.ui.LayoutView):
     def __init__(self, bot: commands.Bot, type: typing.Literal['vote', 'start', 'shutdown']):
         super().__init__(timeout=None)
