@@ -103,11 +103,11 @@ class SessionsEmbedCreationView(discord.ui.LayoutView):
                 match self.type:
                     case 'vote':
                         if component["label"] == "{vote_button}":
-                            component["custom_id"] = "vote_button"
+                            component["custom_id"] = f"vote_button:{interaction.guild.id}"
                             self.satisfied_conditions = True
                             continue
                         if component["label"] == "{view_votes_button}":
-                            component["custom_id"] = "view_votes_button"
+                            component["custom_id"] = f"view_votes_button:{interaction.guild.id}"
                             continue
                     case 'start':
                         if component["style"] != 5:

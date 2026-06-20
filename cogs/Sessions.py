@@ -13,6 +13,9 @@ class Sessions(commands.Cog):
         if interaction.type != discord.InteractionType.component or not interaction.message:
             return
         id = interaction.data.get("custom_id")
+        if not id.endswith(f":{interaction.guild.id}"):
+            return
+        id = id.removesuffix(f":{interaction.guild.id}")
         if not id in CUSTOM_IDS_FOR_SESSIONS:
             return
 
