@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-from erm import Bot
+from erm import Bot, is_admin, require_settings
 from utils.constants import CUSTOM_IDS_FOR_SESSIONS
 import discord.http
 import json

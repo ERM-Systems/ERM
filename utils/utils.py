@@ -202,12 +202,12 @@ class GuildCheckFailure(commands.CheckFailure):
     pass
 
 
-def require_settings():
+def require_settings(setting_lists: list[str]=[]):
     async def predicate(ctx: commands.Context):
         if ctx.guild is None:
             return True
         settings = await ctx.bot.settings.find_by_id(ctx.guild.id)
-        if not settings:
+        if not settings or not all(setting in settings for setting in setting_lists):
             raise GuildCheckFailure()
         else:
             return True
