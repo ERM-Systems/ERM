@@ -111,6 +111,7 @@ class Sessions(commands.Cog):
         session_data["vote_message"] = msg["id"]
         await self.bot.sessions.insert(session_data)
         await ctx.reply("Successfully sent session message.")
+    
     @session.command(name = "start", description="Start a session")
     @require_settings(["sessions"])
     @is_admin()
@@ -125,6 +126,7 @@ class Sessions(commands.Cog):
                 description="There is no active session."
             ))
         info = await self.bot.prc_api.get_server_status(ctx.guild.id)
+        if "{erlc.players}" in settings["sessions"]["start"]: session["dynamic"] = True
         d = settings["sessions"]["start"].replace(
             "{user}",
             ctx.author.mention
@@ -138,6 +140,7 @@ class Sessions(commands.Cog):
             "{erlc.players}",
             info.current_players
         )
+        session["user"] = ctx.author.mention
 
         j = json.loads(d)
         channel = await ctx.guild.fetch_channel(settings["session"]["channel_id"])
@@ -156,55 +159,7 @@ class Sessions(commands.Cog):
         item.disabled = True
         await msg.edit(view=view)
         s = await self.bot.http.send_message(settings["session"]["channel_id"], params=discord.http.MultipartParameters(payload = j, multipart=None, files=None))
-        session["started"], session["message"] = True, s["id"]
-        await self.bot.sessions.update(session)
-        return await ctx.reply("The session message has been successfully sent!")
-    @session.command(name = "start", description="Start a session")
-    @require_settings(["sessions"])
-    @is_admin()
-    async def _start(self, ctx: commands.Context):
-        settings = await self.bot.settings.find(ctx.guild.id)
-        if not settings:
-            return
-        session = await self.bot.sessions.find(ctx.guild.id)
-        if not session:
-            return await ctx.reply(embed=discord.Embed(
-                title = "No Session",
-                description="There is no active session."
-            ))
-        info = await self.bot.prc_api.get_server_status(ctx.guild.id)
-        d = settings["sessions"]["start"].replace(
-            "{user}",
-            ctx.author.mention
-        ).replace(
-            "{erlc.name}",
-            info.name
-        ).replace(
-            "{erlc.code}",
-            info.join_key
-        ).replace(
-            "{erlc.players}",
-            info.current_players
-        )
-
-        j = json.loads(d)
-        channel = await ctx.guild.fetch_channel(settings["session"]["channel_id"])
-        msg = await channel.fetch_message(session["vote_message"])
-        view = discord.ui.View.from_message(msg)
-        item = None
-        while not item:
-            children = view.children
-            for c in children:
-                if isinstance(c, discord.ui.Container):
-                    children = c.children
-                if isinstance(c, discord.ui.ActionRow):
-                    children = c.children
-                if isinstance(c, discord.ui.Button) and c.custom_id == "vote_button":
-                    item = c
-        item.disabled = True
-        await msg.edit(view=view)
-        s = await self.bot.http.send_message(settings["session"]["channel_id"], params=discord.http.MultipartParameters(payload = j, multipart=None, files=None))
-        session["message"] = s["id"]
+        session["message"], session["channel"] = s["id"]
         await self.bot.sessions.update(session)
         return await ctx.reply("The session message has been successfully sent!")
     @session.command(name = "end", description="End a session")
