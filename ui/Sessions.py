@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 import typing
 from menus import CustomModal
-from base64 import urlsafe_b64decode
+from base64 import urlsafe_b64decode, b64encode
 import json
 
 class SessionsEmbedCreationView(discord.ui.LayoutView):
@@ -24,9 +24,6 @@ class SessionsEmbedCreationView(discord.ui.LayoutView):
                         "- {user}: The user initiating the session vote\n"
                         "- {vote_button_name}: The name of the vote button. If you select the dynamic button option (where the button's name changes on the amount of votes), this will say 'vote' by default.\n"
                         "- {required_members}: How many members are needed to start the vote\n"
-                        "- {erlc}: A variable with references to your linked ERLC server\n"
-                        "  - {erlc.name}: The name of your ER:LC server\n"
-                        "  - {erlc.code}: The code to your ER:LC server\n"
                     )
                 )
             case 'start':
@@ -124,7 +121,7 @@ class SessionsEmbedCreationView(discord.ui.LayoutView):
         settings = await self.bot.settings.find(interaction.guild.id)
         if not settings.get('sessions'):
             settings["sessions"] = {
-                "data": message
+                "d": json.dumps(message)
             }
         await self.bot.settings.update(settings)
         return await interaction.followup.send("Successfully saved embed.")
