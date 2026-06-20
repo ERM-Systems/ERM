@@ -121,7 +121,9 @@ class SessionsEmbedCreationView(discord.ui.LayoutView):
         settings = await self.bot.settings.find(interaction.guild.id)
         if not settings.get('sessions'):
             settings["sessions"] = {
-                "d": json.dumps(message)
+                self.type: json.dumps(message)
             }
+        else:
+            settings["sessions"][self.type] = json.dumps(message)
         await self.bot.settings.update(settings)
         return await interaction.followup.send("Successfully saved embed.")
