@@ -1260,8 +1260,8 @@ class ShiftLogging(commands.Cog):
         for list_item in data:
             for item in list_item:
                 combined.append(item)
-        if buffer == "":
-            buffer += "No data to display."
+        if not buffer:
+            buffer = "No data to display."
 
         bbytes = buffer.encode("utf-8", "ignore")
 
