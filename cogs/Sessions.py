@@ -93,7 +93,7 @@ class Sessions(commands.Cog):
             "required_votes": required_votes or settings["sessions"]["required_votes_default"] or 5
         }
 
-        d = settings["sessions"]["d"].replace(
+        d = settings["sessions"]["vote"].replace(
             "{user}",
             ctx.author.mention
         ).replace(
@@ -107,9 +107,136 @@ class Sessions(commands.Cog):
         if settings["sessions"].get("dynamic_button"):
             j["components"][0]["label"] = f"0/{session_data["required_votes"]}"
 
-        await self.bot.http.send_message(settings["session"]["channel_id"], params=discord.http.MultipartParameters(payload = j, multipart=None, files=None))
+        msg = await self.bot.http.send_message(settings["session"]["channel_id"], params=discord.http.MultipartParameters(payload = j, multipart=None, files=None))
+        session_data["vote_message"] = msg["id"]
         await self.bot.sessions.insert(session_data)
         await ctx.reply("Successfully sent session message.")
+    @session.command(name = "start", description="Start a session")
+    @require_settings(["sessions"])
+    @is_admin()
+    async def _start(self, ctx: commands.Context):
+        settings = await self.bot.settings.find(ctx.guild.id)
+        if not settings:
+            return
+        session = await self.bot.sessions.find(ctx.guild.id)
+        if not session:
+            return await ctx.reply(embed=discord.Embed(
+                title = "No Session",
+                description="There is no active session."
+            ))
+        info = await self.bot.prc_api.get_server_status(ctx.guild.id)
+        d = settings["sessions"]["start"].replace(
+            "{user}",
+            ctx.author.mention
+        ).replace(
+            "{erlc.name}",
+            info.name
+        ).replace(
+            "{erlc.code}",
+            info.join_key
+        ).replace(
+            "{erlc.players}",
+            info.current_players
+        )
 
+        j = json.loads(d)
+        channel = await ctx.guild.fetch_channel(settings["session"]["channel_id"])
+        msg = await channel.fetch_message(session["vote_message"])
+        view = discord.ui.View.from_message(msg)
+        item = None
+        while not item:
+            children = view.children
+            for c in children:
+                if isinstance(c, discord.ui.Container):
+                    children = c.children
+                if isinstance(c, discord.ui.ActionRow):
+                    children = c.children
+                if isinstance(c, discord.ui.Button) and c.custom_id == "vote_button":
+                    item = c
+        item.disabled = True
+        await msg.edit(view=view)
+        s = await self.bot.http.send_message(settings["session"]["channel_id"], params=discord.http.MultipartParameters(payload = j, multipart=None, files=None))
+        session["started"], session["message"] = True, s["id"]
+        await self.bot.sessions.update(session)
+        return await ctx.reply("The session message has been successfully sent!")
+    @session.command(name = "start", description="Start a session")
+    @require_settings(["sessions"])
+    @is_admin()
+    async def _start(self, ctx: commands.Context):
+        settings = await self.bot.settings.find(ctx.guild.id)
+        if not settings:
+            return
+        session = await self.bot.sessions.find(ctx.guild.id)
+        if not session:
+            return await ctx.reply(embed=discord.Embed(
+                title = "No Session",
+                description="There is no active session."
+            ))
+        info = await self.bot.prc_api.get_server_status(ctx.guild.id)
+        d = settings["sessions"]["start"].replace(
+            "{user}",
+            ctx.author.mention
+        ).replace(
+            "{erlc.name}",
+            info.name
+        ).replace(
+            "{erlc.code}",
+            info.join_key
+        ).replace(
+            "{erlc.players}",
+            info.current_players
+        )
+
+        j = json.loads(d)
+        channel = await ctx.guild.fetch_channel(settings["session"]["channel_id"])
+        msg = await channel.fetch_message(session["vote_message"])
+        view = discord.ui.View.from_message(msg)
+        item = None
+        while not item:
+            children = view.children
+            for c in children:
+                if isinstance(c, discord.ui.Container):
+                    children = c.children
+                if isinstance(c, discord.ui.ActionRow):
+                    children = c.children
+                if isinstance(c, discord.ui.Button) and c.custom_id == "vote_button":
+                    item = c
+        item.disabled = True
+        await msg.edit(view=view)
+        s = await self.bot.http.send_message(settings["session"]["channel_id"], params=discord.http.MultipartParameters(payload = j, multipart=None, files=None))
+        session["message"] = s["id"]
+        await self.bot.sessions.update(session)
+        return await ctx.reply("The session message has been successfully sent!")
+    @session.command(name = "end", description="End a session")
+    @require_settings(["sessions"])
+    @is_admin()
+    async def _end(self, ctx: commands.Context):
+        settings = await self.bot.settings.find(ctx.guild.id)
+        if not settings:
+            return
+        session = await self.bot.sessions.find(ctx.guild.id)
+        if not session:
+            return await ctx.reply(embed=discord.Embed(
+                title = "No Session",
+                description="There is no active session."
+            ))
+
+        info = await self.bot.prc_api.get_server_status(ctx.guild.id)
+        d = settings["sessions"]["end"].replace(
+            "{user}",
+            ctx.author.mention
+        ).replace(
+            "{erlc.name}",
+            info.name
+        ).replace(
+            "{erlc.code}",
+            info.join_key
+        ).replace(
+            "{erlc.max_players}",
+            session.get("analytics", {}).get("max_players", 0)
+        )
+        j = json.loads(d)
+        await self.bot.http.send_message(settings["session"]["channel_id"], params=discord.http.MultipartParameters(payload = j, multipart=None, files=None))
+        return await ctx.reply("The session message has been successfully sent!")
 async def setup(bot: Bot):
     await bot.add_cog(Sessions(bot))
