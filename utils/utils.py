@@ -217,7 +217,7 @@ def require_settings(setting_lists: list[str]=[]):
 
 async def update_ics(bot, ctx, channel, return_val: dict, ics_id: int):
     try:
-        status: ServerStatus = await bot.prc_api.get_server_status(ctx.guild.id)
+        status: ServerStatus|None = await bot.prc_api.get_server_status(ctx.guild.id)
     except prc_api.ResponseFailure:
         status = None
     if not isinstance(status, ServerStatus):
