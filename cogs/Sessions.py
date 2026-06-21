@@ -170,11 +170,14 @@ class Sessions(commands.Cog):
             "{user}",
             ctx.author.mention
         ).replace(
+            "{user_mentions}",
+            f"{" | ".join([f"<@{user}>" for user in session["voted_users"]])}"
+        ).replace(
             "{erlc.name}",
             info.name if info else "{erlc.name}"
         ).replace(
             "{erlc.code}",
-            f"`{info.join_key}`" if info else "{erlc.code}"
+            f"{info.join_key}" if info else "{erlc.code}"
         ).replace(
             "{erlc.players}",
             str(info.current_players if info else "{erlc.players}")
@@ -257,7 +260,7 @@ class Sessions(commands.Cog):
     @is_erlc_server_linked()
     async def _info(self, ctx: commands.Context):
         session = await self.bot.sessions.find(ctx.guild.id)
-        if not session or not session["message"]:
+        if not session or not session.get("message"):
             return await ctx.reply(embed=discord.Embed(
                 title = "No Session",
                 description="There is no active session."
