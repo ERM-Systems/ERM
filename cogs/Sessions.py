@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use("Agg")
 import io, asyncio
+import datetime
 
 def is_erlc_server_linked():
     async def predicate(ctx: commands.Context):
@@ -145,7 +146,7 @@ class Sessions(commands.Cog):
         msg = await self.bot.http.send_message(settings["sessions"]["channel_id"], params=discord.http.MultipartParameters(payload = j, multipart=None, files=None))
         session_data["vote_message"] = msg["id"]
         await self.bot.sessions.insert(session_data)
-        return await (ctx.reply if not ctx.interaction else ctx.interaction.response.send_message)(embed=discord.Embed(title = f"{self.bot.emoji_controller.get_emoji("success")} Successfully posted session vote message", description=f"You can find it at <#{settings["sessions"]["channel_id"]}>", colour=discord.Colour.green()), ephemeral=True)
+        return await (ctx.reply if not ctx.interaction else ctx.interaction.followup.send)(embed=discord.Embed(title = f"{self.bot.emoji_controller.get_emoji("success")} Successfully posted session vote message", description=f"You can find it at <#{settings["sessions"]["channel_id"]}>", colour=discord.Colour.green()), ephemeral=True)
     
     @session.command(name = "start", description="Start a session")
     @require_settings(["sessions"])
@@ -198,7 +199,7 @@ class Sessions(commands.Cog):
         s = await self.bot.http.send_message(settings["sessions"]["channel_id"], params=discord.http.MultipartParameters(payload = j, multipart=None, files=None))
         session["message"], session["channel"] = s["id"], settings["sessions"]["channel_id"]
         await self.bot.sessions.update(session)
-        return await (ctx.reply if not ctx.interaction else ctx.interaction.response.send_message)(embed=discord.Embed(title = f"{self.bot.emoji_controller.get_emoji("success")} Successfully posted session start message", description=f"You can find it at <#{settings["sessions"]["channel_id"]}>", colour=discord.Colour.green()), ephemeral=True)
+        return await (ctx.reply if not ctx.interaction else ctx.interaction.followup.send)(embed=discord.Embed(title = f"{self.bot.emoji_controller.get_emoji("success")} Successfully posted session start message", description=f"You can find it at <#{settings["sessions"]["channel_id"]}>", colour=discord.Colour.green()), ephemeral=True)
     
     @session.command(name = "end", description="End a session")
     @require_settings(["sessions"])
@@ -232,7 +233,7 @@ class Sessions(commands.Cog):
         j = json.loads(d)
         await self.bot.http.send_message(settings["sessions"]["channel_id"], params=discord.http.MultipartParameters(payload = j, multipart=None, files=None))
         await self.bot.sessions.delete(session["_id"])
-        return await (ctx.reply if not ctx.interaction else ctx.interaction.response.send_message)(embed=discord.Embed(title = f"{self.bot.emoji_controller.get_emoji("success")} Successfully posted session end message", description=f"You can find it at <#{settings["sessions"]["channel_id"]}>", colour=discord.Colour.green()), ephemeral=True)
+        return await (ctx.reply if not ctx.interaction else ctx.interaction.followup.send)(embed=discord.Embed(title = f"{self.bot.emoji_controller.get_emoji("success")} Successfully posted session end message", description=f"You can find it at <#{settings["sessions"]["channel_id"]}>", colour=discord.Colour.green()), ephemeral=True)
     def generate_graph(self, session):
         """
         Generates player graph.
