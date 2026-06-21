@@ -868,7 +868,7 @@ class ERLC(commands.Cog):
             queue: int = await self.bot.prc_api.get_server_queue(
                 guild_id, minimal=True
             )  # this only returns the count
-            client = roblox.Client()
+            client = self.bot.roblox
 
             embed1 = discord.Embed(title=f"{status.name}", color=BLANK_COLOR)
             embed1.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon)
@@ -881,10 +881,14 @@ class ERLC(commands.Cog):
                 ),
                 inline=False,
             )
+            try:
+                owner_name = (await client.get_user(status.owner_id)).name
+            except:
+                owner_name = "Unknown"
             embed1.add_field(
                 name="Server Ownership",
                 value=(
-                    f"> **Owner:** [{(await client.get_user(status.owner_id)).name}](https://roblox.com/users/{status.owner_id}/profile)\n"
+                    f"> **Owner:** [{owner_name}](https://roblox.com/users/{status.owner_id}/profile)\n"
                     f"> **Co-Owners:** {f', '.join([f'[{user.name}](https://roblox.com/users/{user.id}/profile)' for user in await client.get_users(status.co_owner_ids, expand=False)])}"
                 ),
                 inline=False,
