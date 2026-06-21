@@ -93,7 +93,11 @@ class Sessions(commands.Cog):
             "voted_users": [],
             "started": False,
             "votes": 0,
-            "required_votes": required_votes or settings["sessions"]["required_votes_default"] or 5
+            "required_votes": required_votes or settings["sessions"]["required_votes_default"] or 5,
+            "analytics": {
+                "max_players": 0,
+                "player_counts": []
+            }
         }
 
         d = settings["sessions"]["vote"].replace(
