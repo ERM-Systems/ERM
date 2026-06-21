@@ -209,7 +209,6 @@ async def process_guild(bot, items, semaphore):
         except Exception as e:
             logging.warning(f"error processing guild: {e}")
 
-    await iterate_prc_logs(bot)
 
 
 
