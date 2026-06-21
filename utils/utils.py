@@ -203,12 +203,12 @@ class GuildCheckFailure(commands.CheckFailure):
     pass
 
 
-def require_settings(setting_lists: list[str]=[]):
+def require_settings():
     async def predicate(ctx: commands.Context):
         if ctx.guild is None:
             return True
         settings = await ctx.bot.settings.find_by_id(ctx.guild.id)
-        if not settings or not all(setting in settings for setting in setting_lists):
+        if not settings:
             raise GuildCheckFailure()
         else:
             return True
@@ -218,7 +218,7 @@ def require_settings(setting_lists: list[str]=[]):
 
 async def update_ics(bot, ctx, channel, return_val: dict, ics_id: int):
     try:
-        status: ServerStatus|None = await bot.prc_api.get_server_status(ctx.guild.id)
+        status: ServerStatus = await bot.prc_api.get_server_status(ctx.guild.id)
     except prc_api.ResponseFailure:
         status = None
     if not isinstance(status, ServerStatus):

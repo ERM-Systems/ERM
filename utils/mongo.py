@@ -21,7 +21,7 @@ class Document:
         self.logger = logging.getLogger(__name__)
 
     # <-- Pointer Methods -->
-    async def update(self, dict) -> None:
+    async def update(self, dict):
         """
         For simpler calls, points to self.update_by_id
         """
@@ -46,7 +46,7 @@ class Document:
         await self.delete_by_id(id)
 
     # <-- Actual Methods -->
-    async def find_by_id(self, id) -> dict | None:
+    async def find_by_id(self, id):
         """
         Returns the data found under `id`
         Params:
@@ -149,7 +149,7 @@ class Document:
         """
         await self.db.update_one({"_id": id}, {"$inc": {field: amount}})
 
-    async def get_all(self) -> list[dict]:
+    async def get_all(self):
         """
         Returns a list of all data in the document
         """

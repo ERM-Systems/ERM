@@ -183,6 +183,3 @@ base_infraction_type = {
     "remove_ingame_perms": False,
     "end_shift": False
 }
-
-CUSTOM_IDS_FOR_SESSIONS = ["vote_button", "view_votes_button"]
-SESSION_VIEW_TYPES = ["vote", "start", "shutdown"]

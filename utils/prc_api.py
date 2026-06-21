@@ -203,7 +203,7 @@ class PRCApiClient:
             )
         )
 
-    async def get_server_players(self, guild_id: int) -> list[Player]:
+    async def get_server_players(self, guild_id: int) -> list:
         status_code, response_json = await self._send_api_request(
             "GET", "/server/players", guild_id
         )
