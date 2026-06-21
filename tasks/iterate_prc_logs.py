@@ -45,10 +45,10 @@ global_aggregate = [
 
 count_aggregate = global_aggregate + [{"$count": "total"}]
 
-@tasks.loop(minutes=7, reconnect=True)
+@tasks.loop(minutes=5, reconnect=True)
 async def iterate_prc_logs(bot):
     try:
-        server_count_list = await (await bot.settings.db.aggregate(count_aggregate)).to_list(length=None)
+        server_count_list = [i async for i in await bot.settings.db.aggregate(count_aggregate)]
         server_count = server_count_list[0]["total"] if server_count_list else 0
 
         logging.warning(f"[ITERATE] Starting iteration for {server_count} servers")
