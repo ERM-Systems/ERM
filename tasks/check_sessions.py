@@ -25,7 +25,7 @@ async def check_sessions(bot: Bot):
                 info.name if info else "{erlc.name}"
             ).replace(
                 "{erlc.code}",
-                f"`{info.join_key}`" if info else "{erlc.code}"
+                f"{info.join_key}" if info else "{erlc.code}"
             ).replace(
                 "{erlc.players}",
                 str(info.current_players) if info else "{erlc.players}"
