@@ -5,11 +5,9 @@ from menus import CustomModal
 from base64 import urlsafe_b64decode, b64encode
 import json
 
-class SessionsConfigurationView(discord.ui.View):
-    
 
 class SessionsEmbedCreationView(discord.ui.LayoutView):
-    def __init__(self, bot: commands.Bot, type: typing.Literal['vote', 'start', 'shutdown']):
+    def __init__(self, bot: commands.Bot, type: typing.Literal['vote', 'start', 'shutdown'],):
         super().__init__(timeout=None)
         self.cont = discord.ui.Container()
         self.type = type
@@ -66,67 +64,85 @@ class SessionsEmbedCreationView(discord.ui.LayoutView):
         self.cont.add_item(self.row)
         self.add_item(self.cont)
     async def submit(self, interaction: discord.Interaction):
-        modal = CustomModal(
-            "Submit Message",
-            [
-                (
-                    "url",
-                    discord.ui.Label(
-                        text="URL",
-                        description="Please send your URL into this textbox.",
-                        component=discord.ui.TextInput(max_length=3999)
-                    )
-                )
-            ]
-        )
-        await interaction.response.send_modal(modal)
-        await modal.wait()
-        val: str = modal.url.component.value
-        if not val.startswith("https://discohook.app"):
-            return await interaction.followup.send("This is not a valid discohook.app URL.", ephemeral=True)
-        data_encoded = val.replace("?data=", "")
-        if not val.startswith("ey"): # ey is { in base64
-            return await interaction.followup.send("This discohook.app url does not have a message attached.")
-        
-        data = urlsafe_b64decode(data_encoded).decode()
         try:
-            data = json.loads(data)
-        except:
-            return await interaction.followup.send("The data is not valid. Please try again.")
-        
-        message = data["messages"][0]["data"]
-        self.satisfied_conditions = False # Checks for buttons being correct.
-        for component_block in message["components"]:
-            for component in component_block:
-                if not component["type"] == 2: # button
-                    return await interaction.followup.send("Your data has components that are not permitted.")
-                match self.type:
-                    case 'vote':
-                        if component["label"] == "{vote_button}":
-                            component["custom_id"] = f"vote_button:{interaction.guild.id}"
-                            self.satisfied_conditions = True
-                            continue
-                        if component["label"] == "{view_votes_button}":
-                            component["custom_id"] = f"view_votes_button:{interaction.guild.id}"
-                            continue
-                    case 'start':
-                        if component["style"] != 5:
-                            self.satisfied_conditions = False
-                            break
-                    case 'shutdown':
-                        if component["style"] != 5:
-                            self.satisfied_conditions = False
-                            break
+            settings = await self.bot.settings.find(interaction.guild.id)
+            if not settings.get('sessions'):
+                return
+            modal = CustomModal(
+                "Submit Message",
+                [
+                    (
+                        "url",
+                        discord.ui.Label(
+                            text="URL",
+                            description="Please send your URL into this textbox.",
+                            component=discord.ui.TextInput(max_length=3999)
+                        )
+                    )
+                ]
+            )
+            await interaction.response.send_modal(modal)
+            await modal.wait()
+            val: str = modal.url.component.value
+            if not val.startswith("https://discohook.app"):
+                return await interaction.followup.send("This is not a valid discohook.app URL.", ephemeral=True)
+            try:
+                data_encoded = val.split("?data=")[1]
+            except:
+                return await interaction.followup.send("This discohook.app url does not have a message attached.")
+            print(data_encoded)
 
-        if not self.satisfied_conditions:
-            return await interaction.followup.send("Your components are invalid for the specific type of embed you are making. This may be because you have regular buttons in the start and end styling (which only allow links) or you may have missing buttons in the vote area.")
-        
-        settings = await self.bot.settings.find(interaction.guild.id)
-        if not settings.get('sessions'):
-            settings["sessions"] = {
-                self.type: json.dumps(message)
-            }
-        else:
+            data = urlsafe_b64decode(data_encoded + "==").decode()
+            try:
+                data = json.loads(data)
+            except:
+                return await interaction.followup.send("The data is not valid. Please try again.")
+            
+            message = data["messages"][0]["data"]
+            self.satisfied_conditions = False # Checks for buttons being correct.
+            if not message["components"] and self.type != "vote":
+                print(message["components"])
+                self.satisfied_conditions = True
+            else:
+                for component in message["components"][0]["components"]: # 
+                    print(component)
+                    if not component["type"] == 2: # button
+                        return await interaction.followup.send("Your data has components that are not permitted.")
+                    match self.type:
+                        case 'vote':
+                            if component["label"] == "{vote_button}":
+                                if not settings["sessions"].get("dynamic_button", True):
+                                    component["label"] = settings["sessions"]["vote_button_label"]
+                                if component["style"] == 5: continue 
+                                component["custom_id"] = f"vote_button:{interaction.guild.id}"
+                                self.satisfied_conditions = True
+                                continue
+                            if component["label"] == "{view_votes_button}":
+                                if component["style"] == 5: continue 
+                                component["label"] = "View Votes"
+                                component["custom_id"] = f"view_votes_button:{interaction.guild.id}"
+                                continue
+                            if component["style"] == 5:
+                                if component["custom_id"]:
+                                    del component["custom_id"]
+                        case 'start':
+                            if component["style"] == 5:
+                                if component["custom_id"]:
+                                    del component["custom_id"]
+                                self.satisfied_conditions = True
+                                break
+                            
+                        case 'shutdown':
+                            if component["style"] == 5:
+                                self.satisfied_conditions = True
+                                break
+
+            if not self.satisfied_conditions:
+                return await interaction.followup.send("Your components are invalid for the specific type of embed you are making. This may be because you have regular buttons in the start and end styling (which only allow links) or you may have missing buttons in the vote area.")
+
             settings["sessions"][self.type] = json.dumps(message)
-        await self.bot.settings.update(settings)
-        return await interaction.followup.send("Successfully saved embed.")
+            print(settings["sessions"])
+            await self.bot.settings.update(settings)
+            self.stop()
+        except Exception as e:
+            print(str(e.with_traceback(None)))
