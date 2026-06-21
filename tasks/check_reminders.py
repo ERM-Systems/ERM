@@ -120,8 +120,7 @@ async def process_reminder(bot, guild, item, guild_obj):
 
 async def iterate_reminder(bot, guild_obj):
     """Iterate through all reminders for a guild and process any that are due."""
-    if await has_whitelabel(bot, guild_obj["_id"]):
-        return
+
 
     guild = bot.get_guild(int(guild_obj["_id"]))
     if not guild:
@@ -145,13 +144,6 @@ async def iterate_reminder(bot, guild_obj):
 @tasks.loop(minutes=1)
 async def check_reminders(bot):
     query = {}
-    if bot.environment != "PRODUCTION":
-        try:
-            query = {"_id": int(config("CUSTOM_GUILD_ID"))}
-        except Exception as e:
-            logging.warning(f"Reminder task failed: {e}")
-            return
-
     try:
         for guild_obj in await bot.reminders.db.find(query).to_list(None):
             try:
