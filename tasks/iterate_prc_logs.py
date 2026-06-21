@@ -45,10 +45,10 @@ global_aggregate = [
 
 count_aggregate = global_aggregate + [{"$count": "total"}]
 
-@tasks.loop(minutes=7, reconnect=True)
+@tasks.loop(minutes=5, reconnect=True)
 async def iterate_prc_logs(bot):
     try:
-        server_count_list = await (await bot.settings.db.aggregate(count_aggregate)).to_list(length=None)
+        server_count_list = [i async for i in await bot.settings.db.aggregate(count_aggregate)]
         server_count = server_count_list[0]["total"] if server_count_list else 0
 
         logging.warning(f"[ITERATE] Starting iteration for {server_count} servers")
@@ -197,6 +197,7 @@ async def unprimitive_guild_process(items, bot):
         await asyncio.gather(*subtasks, return_exceptions=True)
 
     await bot.log_tracker.save_guild(guild.id)
+    await flush_pending_unbans(bot, guild.id)
 
 async def process_guild(bot, items, semaphore):
     async with semaphore:
@@ -208,7 +209,6 @@ async def process_guild(bot, items, semaphore):
         except Exception as e:
             logging.warning(f"error processing guild: {e}")
 
-    await iterate_prc_logs(bot)
 
 
 
@@ -514,6 +514,25 @@ async def process_player_logs(bot, settings, guild_id, player_logs, last_timesta
                 logging.warning(f"Error in avatar check: {e}")
 
     return embeds, latest_timestamp
+
+
+async def flush_pending_unbans(bot, guild_id: int):
+    now = int(datetime.datetime.now(tz=pytz.UTC).timestamp())
+    pending = bot.punishments.db.find({
+        "Guild": guild_id,
+        "CheckExecuted": {"$exists": False},
+        "UntilEpoch": {"$lt": now},
+        "Type": "Temporary Ban",
+        "Epoch": {"$gt": 1709164800},
+    })
+    async for item in pending:
+        try:
+            await bot.prc_api.unban_user(guild_id, item["UserID"])
+            item["CheckExecuted"] = True
+            await bot.punishments.update_by_id(item)
+            await asyncio.sleep(1)
+        except Exception:
+            break
 
 
 async def is_username_found(username: str, members: list[discord.Member]) -> bool:
