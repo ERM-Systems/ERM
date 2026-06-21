@@ -81,7 +81,8 @@ async def generalised_interaction_check_failure(
 
 
 async def has_whitelabel(bot, guild_id: int) -> bool:
-    if (item := await bot.whitelabel.db.find_one({"GuildID": str(guild_id)})) is not None and config("ENVIRONMENT") not in ["ALPHA", "DEVELOPMENT"]:
+    item = await bot.whitelabel.db.find_one({"GuildID": str(guild_id)})
+    if item:
         guild = bot.get_guild(guild_id)
         token = item.get("Token")
         b64_userid = token.split(".")[0]
