@@ -57,8 +57,6 @@ class OnMessage(commands.Cog):
         if not message.guild:
             return
 
-        if await has_whitelabel(bot, message.guild.id) and (bot.environment != "CUSTOM" or int(config("CUSTOM_GUILD_ID", default="0")) != message.guild.id):
-            return
        
         if not hasattr(bot, "settings"):
             return

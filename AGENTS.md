@@ -78,7 +78,6 @@ Per [documentation/coding-assistants.md](documentation/coding-assistants.md):
 
 ## Gotchas
 
-- `CUSTOM_GUILD_ID` must remain `0` — do not change
 - `DB_NAME` defaults to `erm`; uncomment in `.env` only if needed
 - `GITHUB_TOKEN` is reserved for future use, not used by the bot
 - Database schema reference: [documentation/database-schema.md](documentation/database-schema.md)
