@@ -9,9 +9,37 @@ from menus import CustomDropdown
 from ui.CustomModals import CustomModalButton
 from ui.Sessions import SessionsEmbedCreationView
 from ui.Selects import SimpleTextChannelSelect
+import utils.prc_api as prc_api
+import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use("Agg")
+import io, asyncio
+
+def is_erlc_server_linked():
+    async def predicate(ctx: commands.Context):
+        if ctx.guild is None:
+            return False
+        guild_id = ctx.guild.id
+
+        try:
+            await ctx.bot.prc_api.get_server_status(guild_id)
+        except prc_api.ResponseFailure as exc:
+            error = prc_api.ServerLinkNotFound(platform="erlc")
+            try:
+                error.code = exc.json_data.get("code") or exc.status_code
+            except json.JSONDecodeError:
+                pass
+            raise error
+
+        return True
+
+    return commands.check(predicate)
+
 class Sessions(commands.Cog):
     def __init__(self, bot: Bot):
         self.bot = bot
+        plt.style.use("dark_background")
+        self.fig, self.ax = plt.subplots(figsize=(8, 6))
 
     @commands.Cog.listener()
     async def on_interaction(self, interaction: discord.Interaction):
@@ -205,6 +233,55 @@ class Sessions(commands.Cog):
         await self.bot.http.send_message(settings["sessions"]["channel_id"], params=discord.http.MultipartParameters(payload = j, multipart=None, files=None))
         await self.bot.sessions.delete(session["_id"])
         return await (ctx.reply if not ctx.interaction else ctx.interaction.response.send_message)(embed=discord.Embed(title = f"{self.bot.emoji_controller.get_emoji("success")} Successfully posted session end message", description=f"You can find it at <#{settings["sessions"]["channel_id"]}>", colour=discord.Colour.green()), ephemeral=True)
+    def generate_graph(self, session):
+        """
+        Generates player graph.
+        Very blocking so run in an executor
+        """
+        self.ax.clear()
+        self.ax.plot(session["analytics"]["player_counts"], label="Current Players")
+        self.ax.set_xticks([])
+        self.ax.set_title("Player Graph")
+        self.ax.set_ylabel("Player Count")
+        self.ax.legend(loc='upper center', ncol=8, frameon=True)
+        self.ax.margins(x=0)
+        self.fig.tight_layout()
+
+        buf = io.BytesIO()
+        self.fig.savefig(buf, format="png", bbox_inches="tight", dpi=100, facecolor="black")
+        buf.seek(0)
+        return buf
+    @session.command(name = "info", description="View analytics about your session")
+    @require_settings(["sessions"])
+    @is_erlc_server_linked()
+    async def _info(self, ctx: commands.Context):
+        session = await self.bot.sessions.find(ctx.guild.id)
+        if not session or not session["message"]:
+            return await ctx.reply(embed=discord.Embed(
+                title = "No Session",
+                description="There is no active session."
+            ))
+        info = await self.bot.prc_api.get_server_status(ctx.guild.id)
+        cont = discord.ui.Container(discord.ui.TextDisplay(
+            "### Session Status\n"
+            "Below are some analytics regarding your current session. ERM collects data such as your player counts and max player counts and these are deleted when the session is over."
+        ))
+        graph = await asyncio.get_event_loop().run_in_executor(None, self.generate_graph, session)
+        cont.add_item(discord.ui.Separator())
+        cont.add_item(discord.ui.TextDisplay(
+            "### Player Analytics\n"
+            f"> **Current Amount of Players**: {info.current_players}\n"
+            f"> **Current Amount of Modcalls**: {len(await self.bot.prc_api.get_mod_calls(ctx.guild.id))}\n"
+            f"> **Highest Player Count**: {session["analytics"]["max_players"]}"
+        ))
+        cont.add_item(discord.ui.Separator())
+        file = discord.File(graph, filename="graph.png")
+        cont.add_item(discord.ui.MediaGallery(discord.MediaGalleryItem(discord.UnfurledMediaItem("attachment://graph.png"))))
+        cont.add_item(discord.ui.Separator())
+        cont.add_item(discord.ui.ActionRow(discord.ui.Button(url=f"https://erlc.gg/join/{info.join_key}", label="Join Server")))
+        return await ctx.reply(view=discord.ui.LayoutView().add_item(cont), files=[file])
+
+    
     @session.command(name = "config", description = "Manage the session config")
     @is_management()
     @require_settings()
