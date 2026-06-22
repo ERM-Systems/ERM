@@ -24,6 +24,9 @@ async def check_sessions(bot: Bot):
                 "{erlc.name}",
                 info.name if info else "{erlc.name}"
             ).replace(
+                "{user_mentions}",
+                f"{" | ".join([f"<@{user}>" for user in session["voted_users"]])}"
+            ).replace(
                 "{erlc.code}",
                 f"{info.join_key}" if info else "{erlc.code}"
             ).replace(
