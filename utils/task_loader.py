@@ -12,4 +12,4 @@ async def start_tasks(bot):
             if isinstance(attr, tasks.Loop):
                 logging.info(f"Task {module.name} started")
                 attr.start(bot)
-        await asyncio.sleep(2)
+        await asyncio.sleep(30)
