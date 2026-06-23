@@ -58,16 +58,21 @@ async def iterate_prc_logs(bot):
         pipeline = global_aggregate
 
         semaphore = asyncio.Semaphore(10)
-        tasks = []
 
-
+        batch = []
         async for items in await bot.settings.db.aggregate(pipeline):
-            tasks.append(process_guild(bot, items, semaphore))
+            batch.append(process_guild(bot, items, semaphore))
             processed += 1
             if processed % 10 == 0:
                 logging.warning(f"[ITERATE] Queued {processed}/{server_count} servers")
+            if len(batch) == 100:
+                await asyncio.gather(*batch, return_exceptions=True)
+                logging.warning(f"[ITERATE] Executed {processed}/{server_count} servers")
+                batch.clear()
+        
+        if batch:
+            await asyncio.gather(*batch, return_exceptions=True)
 
-        await asyncio.gather(*tasks, return_exceptions=True)
         end_time = time.time()
         logging.warning(
             f"[ITERATE] Completed task! Processed {processed} servers in {end_time - start_time:.2f} seconds"
@@ -75,9 +80,6 @@ async def iterate_prc_logs(bot):
 
     except Exception as e:
         logging.warning(f"[ITERATE] Error in iteration: {str(e)}", exc_info=True)
-
-
-
 
 
 async def unprimitive_guild_process(items, bot):
@@ -200,16 +202,12 @@ async def unprimitive_guild_process(items, bot):
     await flush_pending_unbans(bot, guild.id)
 
 async def process_guild(bot, items, semaphore):
+    await asyncio.sleep(0.25)
     async with semaphore:
-        await asyncio.sleep(
-            0.25
-        )  # we need to slow things down a bit for discord
         try:
             await unprimitive_guild_process(items, bot)
         except Exception as e:
             logging.warning(f"error processing guild: {e}")
-
-
 
 
 async def fetch_logs_with_retry(guild_id, bot, retries=3):
@@ -741,10 +739,10 @@ async def check_team_restrictions(bot, settings, guild_id, players):
     if not enabled:
         return
 
-    guild = bot.get_guild(guild_id) or await bot.fetch_guild(guild_id)
+    guild: discord.Guild = bot.get_guild(guild_id) or await bot.fetch_guild(guild_id)
     if not guild:
         return
-    all_roles = await guild.fetch_roles()
+    all_roles = guild.roles or await guild.fetch_roles()
     for team_name, plrs in teams.items():
         if team_restrictions.get(team_name) is not None:
             restriction = team_restrictions.get(team_name)
