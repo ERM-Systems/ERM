@@ -15,15 +15,15 @@ from utils.mongo import Document
 class WarningItem:
     id: str
     username: str
-    user_id: int
+    user_id: typing.Optional[int]
     warning_type: str
     reason: str
     moderator_name: str
-    moderator_id: int
-    guild_id: int
+    moderator_id: typing.Optional[int]
+    guild_id: typing.Optional[int]
     time_epoch: int
     until_epoch: typing.Optional[int]
-    snowflake: int
+    snowflake: typing.Optional[int]
 
     def __init__(self, **kwargs):
         for key, value in kwargs.items():
@@ -85,16 +85,16 @@ class Warnings(Document):
             return None
         return WarningItem(
             id=i["_id"],
-            snowflake=i.get("Snowflake", 0),
+            snowflake=i.get("Snowflake"),
             username=i.get("Username", "Unknown"),
-            user_id=i.get("UserID", 0),
+            user_id=i.get("UserID"),
             warning_type=i.get("Type", "Unknown"),
             reason=i.get("Reason", ""),
             moderator_name=i.get("Moderator", "Unknown"),
-            moderator_id=i.get("ModeratorID", 0),
-            guild_id=i.get("Guild", 0),
+            moderator_id=i.get("ModeratorID"),
+            guild_id=i.get("Guild"),
             time_epoch=i.get("Epoch", 0),
-            until_epoch=None if i.get("UntilEpoch", 0) == 0 else i.get("UntilEpoch"),
+            until_epoch=i.get("UntilEpoch") or None,
         )
 
     async def get_warning(self, warning_id: str) -> dict:
