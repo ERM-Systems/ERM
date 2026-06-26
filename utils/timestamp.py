@@ -21,7 +21,7 @@ def td_format(td_object):
                 period_value, new_seconds = divmod(new_seconds, period_seconds)
                 has_s = "s" if period_value > 1 else ""
                 strings.append("%s %s%s" % (period_value, period_name, has_s))
-        if strings is not []:
+        if strings:
             stri = ", ".join(strings)
             stri = "-" + stri
             return stri
@@ -43,7 +43,7 @@ def td_format(td_object):
             period_value, seconds = divmod(seconds, period_seconds)
             has_s = "s" if period_value > 1 else ""
             strings.append("%s %s%s" % (period_value, period_name, has_s))
-    if strings is not []:
+    if strings:
         return ", ".join(strings)
     else:
         raise ValueError("Time delta is too small")

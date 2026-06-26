@@ -1,3 +1,4 @@
+import datetime
 import unittest
 from typing import Union
 from unittest.mock import MagicMock
@@ -6,6 +7,7 @@ from discord import DMChannel
 from discord.ext.commands import CheckFailure, Context, NoPrivateMessage, has_any_role
 
 from helpers import MockContext, MockRole
+from utils.timestamp import td_format
 
 
 async def has_any_role_check(ctx: Context, *roles: Union[str, int]) -> bool:
@@ -60,3 +62,34 @@ class ChecksTests(unittest.IsolatedAsyncioTestCase):
         self.ctx.channel = MagicMock(DMChannel)
         self.ctx.guild = None
         self.assertFalse(await has_no_roles_check(self.ctx))
+
+
+class TdFormatTests(unittest.TestCase):
+    """Tests for `utils.timestamp.td_format`."""
+
+    def test_zero_duration(self):
+        """A zero timedelta is rendered as `0 seconds`."""
+        self.assertEqual(td_format(datetime.timedelta(seconds=0)), "0 seconds")
+
+    def test_singular_unit_has_no_trailing_s(self):
+        """A value of one is rendered without a trailing `s`."""
+        self.assertEqual(td_format(datetime.timedelta(seconds=1)), "1 second")
+        self.assertEqual(td_format(datetime.timedelta(hours=1)), "1 hour")
+
+    def test_plural_unit_has_trailing_s(self):
+        """Values greater than one are pluralised."""
+        self.assertEqual(td_format(datetime.timedelta(days=2)), "2 days")
+
+    def test_multiple_units_are_joined_largest_first(self):
+        """Multiple non-zero periods are joined with commas, largest first."""
+        self.assertEqual(
+            td_format(datetime.timedelta(minutes=1, seconds=30)),
+            "1 minute, 30 seconds",
+        )
+
+    def test_negative_duration_is_prefixed_with_minus(self):
+        """A negative timedelta is prefixed with `-`."""
+        self.assertEqual(
+            td_format(datetime.timedelta(seconds=-3661)),
+            "-1 hour, 1 minute, 1 second",
+        )
