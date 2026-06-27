@@ -5210,7 +5210,10 @@ class AssociationConfigurationView(discord.ui.View):
             i.disabled = True
         if not hasattr(self, "message") or not self.message:
             return
-        await self.message.edit(view=self)
+        try:
+            await self.message.edit(view=self)
+        except discord.HTTPException:
+            pass
 
     async def interaction_check(self, interaction: discord.Interaction, /) -> bool:
         if interaction.user.id == self.user_id:
@@ -10039,16 +10042,25 @@ class ReloadView(discord.ui.View):
     async def on_timeout(self) -> None:
         for item in self.children:
             item.disabled = True
-        await self.message.edit(view=self)
+        try:
+            await self.message.edit(view=self)
+        except discord.HTTPException:
+            pass
 
     async def _temp_disable(self, timer: int):
         for item in self.children:
             item.disabled = True
-        await self.message.edit(view=self)
+        try:
+            await self.message.edit(view=self)
+        except discord.HTTPException:
+            return
         await asyncio.sleep(timer)
         for item in self.children:
             item.disabled = False
-        await self.message.edit(view=self)
+        try:
+            await self.message.edit(view=self)
+        except discord.HTTPException:
+            pass
 
     async def interaction_check(self, interaction: discord.Interaction, /) -> bool:
         if interaction.user.id == self.user_id:
