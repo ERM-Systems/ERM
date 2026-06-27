@@ -72,16 +72,25 @@ class OnMessage(commands.Cog):
             self._mention_cooldowns[message.author.id] = now
             
             container = discord.ui.Container()
-            container.add_item(discord.ui.TextDisplay(
+            section = discord.ui.Section(
+                accessory=discord.ui.Thumbnail(
+                    media=bot.user.display_avatar.with_format("png").url
+                )
+            )
+            section.add_item(discord.ui.TextDisplay(
                 f"### ERM\n"
-                f"ERM is a staff management bot for ER:LC communities. "
-                f"Use `{prefix}` or `/` to run commands.\n\n"
-                f"**Prefix:** `{prefix}`\n"
-                f"**Servers:** {len(bot.guilds):,}"
+                f"The all-in-one staff management bot for ER:LC communities.\n\n"
+                f"**Prefix** — `{prefix}` or `/`\n"
+                f"**Commands** — `{prefix}help`\n"
+                f"**Servers** — {len(bot.guilds):,}\n"
+                f"**Uptime** — <t:{int(bot.start_time)}:R>"
             ))
+            container.add_item(section)
+            container.add_item(discord.ui.Separator())
             container.add_item(discord.ui.ActionRow(
                 discord.ui.Button(label="Website", url="https://ermbot.xyz"),
                 discord.ui.Button(label="Support", url="https://discord.gg/uAfU26VRa8"),
+                discord.ui.Button(label="Documentation", url="https://docs.ermbot.xyz"),
             ))
             await message.reply(view=discord.ui.LayoutView().add_item(container))
             return
