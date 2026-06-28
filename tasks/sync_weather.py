@@ -165,14 +165,16 @@ async def sync_weather(bot):
                             await bot.prc_api.run_command(guild_id, f":weather {weather_data['weatherType']}")
                             logging.info(f"Set weather to {weather_data['weatherType']} for guild {guild_id}")
                         except ResponseFailure as e:
-                            logging.warning(f"Failed to sync weather for guild {guild_id}: {str(e)}")
+                            if e.status_code != 422:
+                                logging.warning(f"Failed to sync weather for guild {guild_id}: {str(e)}")
 
                     if weather_settings.get("sync_time"):
                         try:
                             await bot.prc_api.run_command(guild_id, f":time {weather_data['time']}")
                             logging.info(f"Set time to {weather_data['time']} for guild {guild_id}")
                         except ResponseFailure as e:
-                            logging.warning(f"Failed to sync time for guild {guild_id}: {str(e)}")
+                            if e.status_code != 422:
+                                logging.warning(f"Failed to sync time for guild {guild_id}: {str(e)}")
 
                 except Exception as e:
                     logging.warning(f"Error syncing weather for guild {guild_id}: {str(e)}", exc_info=True)
