@@ -11,16 +11,7 @@ from utils.prc_api import ResponseFailure
 from utils.constants import WMO_TO_ERLC
 # Open-Meteo hour (0-23) -> ERLC :time command value
 def hour_to_erlc_time(hour: int) -> str:
-    if 5 <= hour < 7:
-        return "Morning"
-    elif 7 <= hour < 12:
-        return "Noon"
-    elif 12 <= hour < 17:
-        return "Afternoon"
-    elif 17 <= hour < 20:
-        return "Evening"
-    else:
-        return "Night"
+    return hour
 
 
 async def geocode_location(session: aiohttp.ClientSession, location: str) -> tuple[float, float, str] | None:
