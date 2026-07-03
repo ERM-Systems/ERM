@@ -210,7 +210,7 @@ class Bot(commands.AutoShardedBot):
             self.prc_api = PRCApiClient(
                 self,
                 base_url=config(
-                    "PRC_API_URL", default="https://api.policeroleplay.community/v1"
+                    "PRC_API_URL", default="https://api.erlc.gg/v1"
                 ),
                 api_key=config("PRC_API_KEY", default=None),
             )
