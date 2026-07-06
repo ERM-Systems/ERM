@@ -1313,8 +1313,11 @@ class ERLC(commands.Cog):
                 description="> There are no active vehicles in your server.",
                 color=BLANK_COLOR,
             )
-            emb.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon.url)
-            return ctx.send(embed=emb)
+            emb.set_author(
+                name=ctx.guild.name,
+                icon_url=ctx.guild.icon.url if ctx.guild.icon else None,
+            )
+            return await ctx.send(embed=emb)
 
         matched = {}
         for item in vehicles:
@@ -1348,7 +1351,10 @@ class ERLC(commands.Cog):
                 color=BLANK_COLOR,
                 description=description,
             )
-            embed.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon.url)
+            embed.set_author(
+                name=ctx.guild.name,
+                icon_url=ctx.guild.icon.url if ctx.guild.icon else None,
+            )
 
             page = CustomPage(embeds=[embed], identifier=embed.title, view=None)
             pages.append(page)
