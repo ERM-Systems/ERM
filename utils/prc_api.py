@@ -217,7 +217,7 @@ class PRCApiClient:
             result["players"] = [
                 Player(
                     username=item["Player"].split(":")[0],
-                    id=item["Player"].split(":")[1],
+                    id=int(item["Player"].split(":")[1]),
                     permission=item["Permission"],
                     callsign=item.get("Callsign"),
                     team=item["Team"],
@@ -242,10 +242,10 @@ class PRCApiClient:
             result["kill_logs"] = [
                 KillLog(
                     killer_username=log_item["Killer"].split(":")[0],
-                    killer_user_id=log_item["Killer"].split(":")[1],
+                    killer_user_id=int(log_item["Killer"].split(":")[1]),
                     timestamp=log_item["Timestamp"],
                     killed_username=log_item["Killed"].split(":")[0],
-                    killed_user_id=log_item["Killed"].split(":")[1],
+                    killed_user_id=int(log_item["Killed"].split(":")[1]),
                 )
                 for log_item in response_json.get("KillLogs", [])
             ]
@@ -259,7 +259,7 @@ class PRCApiClient:
                         else log_item["Player"]
                     ),
                     user_id=(
-                        log_item["Player"].split(":")[1]
+                        int(log_item["Player"].split(":")[1])
                         if ":" in log_item["Player"]
                         else 0
                     ),
@@ -274,7 +274,7 @@ class PRCApiClient:
             result["player_logs"] = [
                 JoinLeaveLog(
                     username=log_item["Player"].split(":")[0],
-                    user_id=log_item["Player"].split(":")[1],
+                    user_id=int(log_item["Player"].split(":")[1]),
                     timestamp=log_item["Timestamp"],
                     type="join" if log_item["Join"] is True else "leave",
                 )
@@ -285,9 +285,9 @@ class PRCApiClient:
             result["mod_calls"] = [
                 ModCall(
                     caller_username=call["Caller"].split(":")[0],
-                    caller_id=call["Caller"].split(":")[1],
+                    caller_id=int(call["Caller"].split(":")[1]),
                     moderator_username=call.get("Moderator").split(":")[0] if call.get("Moderator") else None,
-                    moderator_id=call.get("Moderator").split(":")[1] if call.get("Moderator") else None,
+                    moderator_id=int(call.get("Moderator").split(":")[1]) if call.get("Moderator") else None,
                     timestamp=call["Timestamp"],
                 )
                 for call in response_json.get("ModCalls", [])
@@ -366,7 +366,7 @@ class PRCApiClient:
                 new_list.append(
                     Player(
                         username=item["Player"].split(":")[0],
-                        id=item["Player"].split(":")[1],
+                        id=int(item["Player"].split(":")[1]),
                         permission=item["Permission"],
                         callsign=item.get("Callsign"),
                         team=item["Team"],
@@ -382,9 +382,9 @@ class PRCApiClient:
             return [
                 ModCall(
                     caller_username=call["Caller"].split(":")[0],
-                    caller_id=call["Caller"].split(":")[1],
+                    caller_id=int(call["Caller"].split(":")[1]),
                     moderator_username=call.get("Moderator").split(":")[0] if call.get("Moderator") else None,
-                    moderator_id=call.get("Moderator").split(":")[1] if call.get("Moderator") else None,
+                    moderator_id=int(call.get("Moderator").split(":")[1]) if call.get("Moderator") else None,
                     timestamp=call["Timestamp"],
                 )
                 for call in response_json["ModCalls"]
@@ -458,7 +458,7 @@ class PRCApiClient:
                         else log_item["Player"]
                     ),
                     user_id=(
-                        log_item["Player"].split(":")[1]
+                        int(log_item["Player"].split(":")[1])
                         if ":" in log_item["Player"]
                         else 0
                     ),
@@ -477,10 +477,10 @@ class PRCApiClient:
             return [
                 KillLog(
                     killer_username=log_item["Killer"].split(":")[0],
-                    killer_user_id=log_item["Killer"].split(":")[1],
+                    killer_user_id=int(log_item["Killer"].split(":")[1]),
                     timestamp=log_item["Timestamp"],
                     killed_username=log_item["Killed"].split(":")[0],
-                    killed_user_id=log_item["Killed"].split(":")[1],
+                    killed_user_id=int(log_item["Killed"].split(":")[1]),
                 )
                 for log_item in response_json["KillLogs"]
             ]
@@ -512,7 +512,7 @@ class PRCApiClient:
             return [
                 JoinLeaveLog(
                     username=log_item["Player"].split(":")[0],
-                    user_id=log_item["Player"].split(":")[1],
+                    user_id=int(log_item["Player"].split(":")[1]),
                     timestamp=log_item["Timestamp"],
                     type="join" if log_item["Join"] is True else "leave",
                 )
