@@ -11652,12 +11652,10 @@ class ShiftLoggingManagement(discord.ui.View):
             {"Guild": interaction.guild.id, "EndEpoch": 0}
         ):
             user_id = shift["UserID"]
-            member = interaction.guild.get_member(user_id)
-            if not member:
-                try:
-                    member = await interaction.guild.fetch_member(user_id)
-                except discord.NotFound:
-                    continue
+            try:
+                member = interaction.guild.get_member(user_id) or await interaction.guild.fetch_member(user_id)
+            except discord.NotFound:
+                continue
             if member not in active_shift_users:
                 active_shift_users.append(member)
 
