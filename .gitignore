@@ -13,3 +13,8 @@ package_lock.json
 venv/
 .venv/
 .vscode
+lib64/
+lib/
+pyvenv.cfg
+bin/
+lib64
