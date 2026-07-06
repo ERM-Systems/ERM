@@ -192,7 +192,10 @@ class PRCApiClient:
     }
 
     async def get_server_info(self, guild_id: int, *resources: str) -> dict:
-        flags = [self._flag_map[resource] for resource in resources]
+        try:
+            flags = [self._flag_map[resource] for resource in resources]
+        except KeyError as e:
+            raise ValueError(f"Unknown PRC resource flag: {e}")
         status_code, response_json = await self._get_server_info(guild_id, *flags)
         if status_code != 200:
             raise ResponseFailure(status_code=status_code, json_data=response_json)
