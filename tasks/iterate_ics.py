@@ -1,3 +1,5 @@
+import logging
+
 import discord
 from decouple import config
 from discord.ext import commands, tasks
@@ -32,8 +34,9 @@ async def iterate_ics(bot):
 
         try:
             info = await bot.prc_api.get_server_info(guild.id, "players", "queue")
-        except prc_api.ResponseFailure:
-            continue  # fuck knows why
+        except prc_api.ResponseFailure as e:
+            logging.warning(f"PRC ResponseFailure for guild {guild.id} in iterate_ics: {e}")
+            continue
 
         status: ServerStatus = info["status"]
         queue: int = len(info["queue"])
