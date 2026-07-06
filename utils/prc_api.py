@@ -222,11 +222,11 @@ class PRCApiClient:
                     callsign=item.get("Callsign"),
                     team=item["Team"],
                 )
-                for item in response_json["Players"]
+                for item in response_json.get("Players", [])
             ]
 
         if "queue" in resources:
-            result["queue"] = response_json["Queue"]
+            result["queue"] = response_json.get("Queue", [])
 
         if "vehicles" in resources:
             result["vehicles"] = [
@@ -235,7 +235,7 @@ class PRCApiClient:
                     username=i["Owner"],
                     vehicle=i["Name"],
                 )
-                for i in response_json["Vehicles"]
+                for i in response_json.get("Vehicles", [])
             ]
 
         if "kill_logs" in resources:
@@ -247,7 +247,7 @@ class PRCApiClient:
                     killed_username=log_item["Killed"].split(":")[0],
                     killed_user_id=log_item["Killed"].split(":")[1],
                 )
-                for log_item in response_json["KillLogs"]
+                for log_item in response_json.get("KillLogs", [])
             ]
 
         if "command_logs" in resources:
@@ -267,7 +267,7 @@ class PRCApiClient:
                     is_automated=log_item["Player"] == "Remote Server",
                     command=log_item["Command"],
                 )
-                for log_item in response_json["CommandLogs"]
+                for log_item in response_json.get("CommandLogs", [])
             ]
 
         if "player_logs" in resources:
@@ -278,7 +278,7 @@ class PRCApiClient:
                     timestamp=log_item["Timestamp"],
                     type="join" if log_item["Join"] is True else "leave",
                 )
-                for log_item in response_json["JoinLogs"]
+                for log_item in response_json.get("JoinLogs", [])
             ]
 
         if "mod_calls" in resources:
@@ -290,7 +290,7 @@ class PRCApiClient:
                     moderator_id=call.get("Moderator").split(":")[1] if call.get("Moderator") else None,
                     timestamp=call["Timestamp"],
                 )
-                for call in response_json["ModCalls"]
+                for call in response_json.get("ModCalls", [])
             ]
 
         if "staff" in resources:
@@ -298,7 +298,7 @@ class PRCApiClient:
             co_owner_users = await self.bot.roblox.get_users(co_owners, expand=False)
             co_owner_names = [user.name for user in co_owner_users]
             co_owners = dict(zip(co_owners, co_owner_names))
-            staff = response_json["Staff"]
+            staff = response_json.get("Staff") or {}
             try:
                 players = [Player(username=v, id=k, permission="Server Co-Owner") for k,v in co_owners.items()]
             except AttributeError:
