@@ -309,7 +309,7 @@ class PRCApiClient:
                 players += [Player(
                     username=v, id=k, permission="Server Moderator"
                 ) for k,v in staff.get("Mods", {}).items()]
-            except:
+            except AttributeError:
                 players += []
             result["staff"] = players
 
@@ -411,7 +411,7 @@ class PRCApiClient:
                 players += [Player(
                     username=v, id=k, permission="Server Moderator"
                 ) for k,v in staff.get("Mods", {}).items()]
-            except:
+            except AttributeError:
                 players += []
             return players
         else:
