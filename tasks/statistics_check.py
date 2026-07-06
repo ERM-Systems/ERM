@@ -111,9 +111,10 @@ async def statistics_check(bot):
                 statistics = settings["ERLC"]["statistics"]
                 
                 try:
-                    players: list[Player] = await bot.prc_api.get_server_players(guild_id)
-                    status: ServerStatus = await bot.prc_api.get_server_status(guild_id)
-                    queue: int = await bot.prc_api.get_server_queue(guild_id, minimal=True)
+                    info = await bot.prc_api.get_server_info(guild_id, "players", "queue")
+                    players: list[Player] = info["players"]
+                    status: ServerStatus = info["status"]
+                    queue: int = len(info["queue"])
                 except prc_api.ResponseFailure as e:
                     logging.warning(f"PRC ResponseFailure for guild {guild_id}: {e}")
                     return
