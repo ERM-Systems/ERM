@@ -951,11 +951,12 @@ class ERLC(commands.Cog):
                 else:
                     key_maps[item.permission].append(item)
 
-        new_maps = ["Server Owners", "Server Administrator", "Server Moderator"]
+        new_maps = ["Server Owners", "Server Administrator", "Server Moderator", "Server Helper"]
         new_vals = [
             key_maps.get("Server Owner", []) + key_maps.get("Server Co-Owner", []),
             key_maps.get("Server Administrator", []),
             key_maps.get("Server Moderator", []),
+            key_maps.get("Server Helper", []),
         ]
         new_keymap = dict(zip(new_maps, new_vals))
         embed2.title = f"Online Staff Members [{sum([len(i) for i in new_vals])}]"
