@@ -150,7 +150,7 @@ async def unprimitive_guild_process(items, bot):
             bot,
             settings,
             guild.id,
-            info["players"],
+            info.get("players", []),
         )
 
     if has_automatic_shifts:
