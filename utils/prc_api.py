@@ -55,6 +55,7 @@ class Player(BaseDataClass):
         typing.Literal[
             "Server Administrator",
             "Server Moderator",
+            "Server Helper",
             "Normal",
             "Server Owner",
             "Server Co-Owner",
@@ -315,6 +316,12 @@ class PRCApiClient:
                 ) for k,v in staff.get("Mods", {}).items()]
             except AttributeError:
                 players += []
+            try:
+                players += [Player(
+                    username=v, id=k, permission="Server Helper"
+                ) for k,v in staff.get("Helpers", {}).items()]
+            except AttributeError:
+                players += []
             result["staff"] = players
 
         return result
@@ -414,6 +421,12 @@ class PRCApiClient:
                 players += [Player(
                     username=v, id=k, permission="Server Moderator"
                 ) for k,v in staff.get("Mods", {}).items()]
+            except AttributeError:
+                players += []
+            try:
+                players += [Player(
+                    username=v, id=k, permission="Server Helper"
+                ) for k,v in staff.get("Helpers", {}).items()]
             except AttributeError:
                 players += []
             return players
