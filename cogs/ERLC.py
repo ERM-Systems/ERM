@@ -224,7 +224,7 @@ class ERLC(commands.Cog):
                 discord.ui.TextDisplay(
                     "\n".join(
                         [
-                            f"> Caller: {call.caller} • Moderator: {call.moderator} • <t:{call.timestamp}:F>"
+                            f"> Caller: [{call.caller_username}](https://roblox.com/users/{call.caller_id}/profile) • Moderator: {'[{}](https://roblox.com/users/{}/profile)'.format(call.moderator_username, call.moderator_id) if call.moderator_id else 'n/a'} • <t:{call.timestamp}:F>"
                             for call in matching_modcalls
                         ]
                     )
