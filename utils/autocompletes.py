@@ -14,8 +14,6 @@ async def shift_type_autocomplete(
     interaction: discord.Interaction, _: str
 ) -> typing.List[app_commands.Choice[str]]:
     bot = interaction.client
-    if not interaction.guild:
-        return [app_commands.Choice(name="Use this command in a server", value="none")]
 
     data = await bot.settings.find_by_id(interaction.guild.id)
     if not data:
@@ -96,9 +94,6 @@ async def all_shift_type_autocomplete(
     interaction: discord.Interaction, _: str
 ) -> typing.List[app_commands.Choice[str]]:
     bot = (await Context.from_interaction(interaction)).bot
-    if not interaction.guild:
-        return [app_commands.Choice(name="Use this command in a server", value="none")]
-
     data = await bot.settings.find_by_id(interaction.guild.id)
     if not data:
         return [app_commands.Choice(name="Default", value="Default")]
