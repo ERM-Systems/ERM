@@ -31,18 +31,13 @@ async def iterate_ics(bot):
             continue
 
         try:
-            status: ServerStatus = await bot.prc_api.get_server_status(guild.id)
-        except prc_api.ResponseFailure:
-            status = None
-
-        if not isinstance(status, ServerStatus):
-            continue  # Invalid key
-
-        try:
-            queue: int = await bot.prc_api.get_server_queue(guild.id, minimal=True)
-            players: list[Player] = await bot.prc_api.get_server_players(guild.id)
+            info = await bot.prc_api.get_server_info(guild.id, "players", "queue")
         except prc_api.ResponseFailure:
             continue  # fuck knows why
+
+        status: ServerStatus = info["status"]
+        queue: int = len(info["queue"])
+        players: list[Player] = info["players"]
 
         mods: int = len(
             list(filter(lambda x: x.permission == "Server Moderator", players))

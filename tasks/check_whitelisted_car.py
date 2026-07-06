@@ -95,16 +95,8 @@ async def check_whitelisted_car(bot):
                     return
 
                 try:
-                    players, vehicles = await asyncio.gather(
-                        bot.prc_api.get_server_players(guild_id),
-                        bot.prc_api.get_server_vehicles(guild_id),
-                        return_exceptions=True,
-                    )
-
-                    if isinstance(players, Exception) or isinstance(vehicles, Exception):
-                        logging.warning(f"Failed to fetch server data for guild {guild_id}")
-                        return
-
+                    info = await bot.prc_api.get_server_info(guild_id, "players", "vehicles")
+                    players, vehicles = info["players"], info["vehicles"]
                 except Exception as e:
                     logging.warning(f"Failed to fetch server data for guild {guild_id}: {e}")
                     return

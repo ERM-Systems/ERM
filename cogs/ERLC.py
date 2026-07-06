@@ -98,15 +98,26 @@ class ERLC(commands.Cog):
             [roblox_player], type=AvatarThumbnailType.full_body, size="720x720"
         )
 
-        server_staff = await self.bot.prc_api.get_server_staff(ctx.guild.id)
+        info = await self.bot.prc_api.get_server_info(
+            ctx.guild.id,
+            "staff",
+            "players",
+            "player_logs",
+            "vehicles",
+            "kill_logs",
+            "mod_calls",
+            "command_logs",
+        )
+
+        server_staff = info["staff"]
         player_item = list(filter(lambda x: x.username.lower() == roblox_player.name.lower(), server_staff))
         player_permission = ""
         if len(player_item) == 0:
             player_permission = "Normal"
         else:
             player_permission = player_item[0].permission
-        
-        server_players = await self.bot.prc_api.get_server_players(ctx.guild.id)
+
+        server_players = info["players"]
         matched_players = list(filter(lambda x: x.username.lower() == roblox_player.name.lower(), server_players))
         disable_online_buttons = False
         erlc_player = None
@@ -115,9 +126,9 @@ class ERLC(commands.Cog):
         else:
             erlc_player = matched_players[0]
 
-        server_join_logs = await self.bot.prc_api.fetch_player_logs(ctx.guild.id)
+        server_join_logs = info["player_logs"]
         matching_player_logs = list(filter(lambda x: x.username.lower() == roblox_player.name.lower(), server_join_logs))
-        vehicle_information = await self.bot.prc_api.get_server_vehicles(ctx.guild.id)
+        vehicle_information = info["vehicles"]
         if len(vehicle_information) > 0:
             vehicle_information = list(
                 filter(lambda x: x.username.lower() == roblox_player.name.lower(), vehicle_information)
@@ -125,19 +136,19 @@ class ERLC(commands.Cog):
         else:
             vehicle_information = []
 
-        kill_logs = await self.bot.prc_api.fetch_kill_logs(ctx.guild.id)
+        kill_logs = info["kill_logs"]
         matching_kill_logs = list(
             filter(lambda x: x.killer_username.lower() == roblox_player.name.lower() or x.killed_username.lower() == roblox_player.name.lower(), kill_logs)
         )
-        
-        modcalls = await self.bot.prc_api.get_mod_calls(ctx.guild.id)
+
+        modcalls = info["mod_calls"]
         matching_modcalls = list(
             filter(
                 lambda x: x.caller_username.lower() == roblox_player.name.lower() or (x.moderator_username and x.moderator_username.lower() == roblox_player.name.lower()), modcalls
             )
         )
 
-        command_logs = await self.bot.prc_api.fetch_server_logs(ctx.guild.id)
+        command_logs = info["command_logs"]
         matching_command_logs = list(
             filter(lambda x: x.username.lower() == roblox_player.name.lower(), command_logs)
         )
@@ -863,11 +874,10 @@ class ERLC(commands.Cog):
             msg: discord.Message | None, guild_id: str
         ):
             guild_id = int(guild_id)
-            status: ServerStatus = await self.bot.prc_api.get_server_status(guild_id)
-            players: list[Player] = await self.bot.prc_api.get_server_players(guild_id)
-            queue: int = await self.bot.prc_api.get_server_queue(
-                guild_id, minimal=True
-            )  # this only returns the count
+            info = await self.bot.prc_api.get_server_info(guild_id, "players", "queue")
+            status: ServerStatus = info["status"]
+            players: list[Player] = info["players"]
+            queue: int = len(info["queue"])
             client = self.bot.roblox
 
             embed1 = discord.Embed(title=f"{status.name}", color=BLANK_COLOR)
@@ -927,7 +937,6 @@ class ERLC(commands.Cog):
     @is_erlc_server_linked()
     async def server_staff(self, ctx: commands.Context):
         guild_id = int(ctx.guild.id)
-        status: ServerStatus = await self.bot.prc_api.get_server_status(guild_id)
         players: list[Player] = await self.bot.prc_api.get_server_players(guild_id)
         embed2 = discord.Embed(color=BLANK_COLOR)
         embed2.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon)
@@ -1171,9 +1180,12 @@ class ERLC(commands.Cog):
         self, ctx: commands.Context, filter: typing.Optional[str] = None
     ):
         guild_id = int(ctx.guild.id)
-        # status: ServerStatus = await self.bot.prc_api.get_server_status(guild_id)
-        players: list[Player] = await self.bot.prc_api.get_server_players(guild_id)
-        queue: list[Player] = await self.bot.prc_api.get_server_queue(guild_id)
+        info = await self.bot.prc_api.get_server_info(guild_id, "players", "queue")
+        players: list[Player] = info["players"]
+        queue: list[Player] = [
+            Player(username=user.name, id=user.id)
+            for user in await self.bot.roblox.get_users(info["queue"], expand=False)
+        ]
         embed2 = discord.Embed(
             title=f"Server Players [{len(players)}]", color=BLANK_COLOR, description=""
         )
@@ -1302,10 +1314,9 @@ class ERLC(commands.Cog):
     @is_erlc_server_linked()
     async def server_vehicles(self, ctx: commands.Context):
         guild_id = int(ctx.guild.id)
-        players: list[Player] = await self.bot.prc_api.get_server_players(guild_id)
-        vehicles: list[prc_api.ActiveVehicle] = (
-            await self.bot.prc_api.get_server_vehicles(guild_id)
-        )
+        info = await self.bot.prc_api.get_server_info(guild_id, "players", "vehicles")
+        players: list[Player] = info["players"]
+        vehicles: list[prc_api.ActiveVehicle] = info["vehicles"]
 
         if len(vehicles) <= 0:
             emb = discord.Embed(
