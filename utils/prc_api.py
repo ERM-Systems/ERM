@@ -290,8 +290,7 @@ class PRCApiClient:
 
         if "staff" in resources:
             co_owners = response_json.get("CoOwnerIds", [])
-            roblox_client = roblox.Client()
-            co_owner_users = await roblox_client.get_users(co_owners, expand=False)
+            co_owner_users = await self.bot.roblox.get_users(co_owners, expand=False)
             co_owner_names = [user.name for user in co_owner_users]
             co_owners = dict(zip(co_owners, co_owner_names))
             staff = response_json["Staff"]
@@ -392,8 +391,7 @@ class PRCApiClient:
         status_code, response_json = await self._get_server_info(guild_id, "Staff")
         if status_code == 200:
             co_owners = response_json.get("CoOwnerIds", [])
-            roblox_client = roblox.Client()
-            co_owner_users = await roblox_client.get_users(co_owners, expand=False)
+            co_owner_users = await self.bot.roblox.get_users(co_owners, expand=False)
             co_owner_names = [user.name for user in co_owner_users]
             co_owners = dict(zip(co_owners, co_owner_names))
             staff = response_json["Staff"]
