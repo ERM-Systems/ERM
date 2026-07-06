@@ -1,4 +1,4 @@
-from discord.ext import tasks
+from discord.ext import commands, tasks
 import discord
 import logging
 
@@ -10,7 +10,7 @@ async def change_status(bot):
     status = "⚡ /about | ermbot.xyz"
     activity = discord.CustomActivity(name=status)
 
-    if not isinstance(bot, discord.AutoShardedBot):
+    if not isinstance(bot, commands.AutoShardedBot):
         try:
             await bot.change_presence(activity=activity)
         except Exception as e:
