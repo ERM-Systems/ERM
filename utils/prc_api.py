@@ -169,14 +169,151 @@ class PRCApiClient:
                 await response.json() if response.content_type != "text/html" else {}
             )
 
-    async def _get_server_info(self, guild_id: int, flag: str):
-        if flag == "Bans":
+    async def _get_server_info(self, guild_id: int, *flags: str):
+        if flags == ("Bans",):
             return await self._send_api_request(
                 "GET", "https://api.erlc.gg/v1/server/bans", guild_id
             )
         return await self._send_api_request(
-            "GET", "/server", guild_id, params={flag: "true"}
+            "GET", "/server", guild_id, params={flag: "true" for flag in flags}
         )
+
+    _flag_map = {
+        "players": "Players",
+        "staff": "Staff",
+        "queue": "Queue",
+        "vehicles": "Vehicles",
+        "kill_logs": "KillLogs",
+        "command_logs": "CommandLogs",
+        "player_logs": "JoinLogs",
+        "mod_calls": "ModCalls",
+    }
+
+    async def get_server_info(self, guild_id: int, *resources: str) -> dict:
+        flags = [self._flag_map[resource] for resource in resources]
+        status_code, response_json = await self._get_server_info(guild_id, *flags)
+        if status_code != 200:
+            raise ResponseFailure(status_code=status_code, json_data=response_json)
+
+        result = {
+            "status": ServerStatus(
+                name=response_json["Name"],
+                owner_id=response_json["OwnerId"],
+                co_owner_ids=response_json["CoOwnerIds"],
+                current_players=response_json["CurrentPlayers"],
+                max_players=response_json["MaxPlayers"],
+                join_key=response_json["JoinKey"],
+                account_verified_request=response_json["AccVerifiedReq"] == "Enabled",
+                team_balance=response_json["TeamBalance"],
+            )
+        }
+
+        if "players" in resources:
+            result["players"] = [
+                Player(
+                    username=item["Player"].split(":")[0],
+                    id=item["Player"].split(":")[1],
+                    permission=item["Permission"],
+                    callsign=item.get("Callsign"),
+                    team=item["Team"],
+                )
+                for item in response_json["Players"]
+            ]
+
+        if "queue" in resources:
+            result["queue"] = response_json["Queue"]
+
+        if "vehicles" in resources:
+            result["vehicles"] = [
+                ActiveVehicle(
+                    texture=i.get("Texture", "Default"),
+                    username=i["Owner"],
+                    vehicle=i["Name"],
+                )
+                for i in response_json["Vehicles"]
+            ]
+
+        if "kill_logs" in resources:
+            result["kill_logs"] = [
+                KillLog(
+                    killer_username=log_item["Killer"].split(":")[0],
+                    killer_user_id=log_item["Killer"].split(":")[1],
+                    timestamp=log_item["Timestamp"],
+                    killed_username=log_item["Killed"].split(":")[0],
+                    killed_user_id=log_item["Killed"].split(":")[1],
+                )
+                for log_item in response_json["KillLogs"]
+            ]
+
+        if "command_logs" in resources:
+            result["command_logs"] = [
+                CommandLog(
+                    username=(
+                        log_item["Player"].split(":")[0]
+                        if ":" in log_item["Player"]
+                        else log_item["Player"]
+                    ),
+                    user_id=(
+                        log_item["Player"].split(":")[1]
+                        if ":" in log_item["Player"]
+                        else 0
+                    ),
+                    timestamp=log_item["Timestamp"],
+                    is_automated=log_item["Player"] == "Remote Server",
+                    command=log_item["Command"],
+                )
+                for log_item in response_json["CommandLogs"]
+            ]
+
+        if "player_logs" in resources:
+            result["player_logs"] = [
+                JoinLeaveLog(
+                    username=log_item["Player"].split(":")[0],
+                    user_id=log_item["Player"].split(":")[1],
+                    timestamp=log_item["Timestamp"],
+                    type="join" if log_item["Join"] is True else "leave",
+                )
+                for log_item in response_json["JoinLogs"]
+            ]
+
+        if "mod_calls" in resources:
+            result["mod_calls"] = [
+                ModCall(
+                    caller_username=call["Caller"].split(":")[0],
+                    caller_id=call["Caller"].split(":")[1],
+                    moderator_username=call.get("Moderator").split(":")[0] if call.get("Moderator") else None,
+                    moderator_id=call.get("Moderator").split(":")[1] if call.get("Moderator") else None,
+                    timestamp=call["Timestamp"],
+                )
+                for call in response_json["ModCalls"]
+            ]
+
+        if "staff" in resources:
+            co_owners = response_json.get("CoOwnerIds", [])
+            roblox_client = roblox.Client()
+            co_owner_users = await roblox_client.get_users(co_owners, expand=False)
+            co_owner_names = [user.name for user in co_owner_users]
+            co_owners = dict(zip(co_owners, co_owner_names))
+            staff = response_json["Staff"]
+            try:
+                players = [Player(username=v, id=k, permission="Server Co-Owner") for k,v in co_owners.items()]
+            except AttributeError:
+                players = []
+            try:
+                players += [Player(
+                    username=v, id=k, permission="Server Administrator"
+                ) for k,v in staff.get("Admins", {}).items()]
+            except AttributeError:
+                players += []
+            try:
+                players += [Player(
+                    username=v, id=k, permission="Server Moderator"
+                ) for k,v in staff.get("Mods", {}).items()]
+            except:
+                players += []
+            result["staff"] = players
+
+        return result
 
     async def get_server_status(self, guild_id: int):
         status_code, response_json = await self._send_api_request(
