@@ -265,7 +265,8 @@ class Sessions(commands.Cog):
                 title = "No Session",
                 description="There is no active session."
             ))
-        info = await self.bot.prc_api.get_server_status(ctx.guild.id)
+        combined = await self.bot.prc_api.get_server_info(ctx.guild.id, "mod_calls")
+        info = combined["status"]
         cont = discord.ui.Container(discord.ui.TextDisplay(
             "### Session Status\n"
             "Below are some analytics regarding your current session. ERM collects data such as your player counts and max player counts and these are deleted when the session is over."
@@ -275,7 +276,7 @@ class Sessions(commands.Cog):
         cont.add_item(discord.ui.TextDisplay(
             "### Player Analytics\n"
             f"> **Current Amount of Players**: {info.current_players}\n"
-            f"> **Current Amount of Modcalls**: {len(await self.bot.prc_api.get_mod_calls(ctx.guild.id))}\n"
+            f"> **Current Amount of Modcalls**: {len(combined["mod_calls"])}\n"
             f"> **Highest Player Count**: {session["analytics"]["max_players"]}"
         ))
         cont.add_item(discord.ui.Separator())
