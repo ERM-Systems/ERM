@@ -205,26 +205,26 @@ class OnCommandError(commands.Cog):
                             color=BLANK_COLOR,
                         ).set_footer(text=f"{error.code} | {error_id}")
                     )
-            with push_scope() as scope:
-                scope.set_tag("error_id", error_id)
-                scope.set_tag("guild_id", ctx.guild.id)
-                scope.set_tag("user_id", ctx.author.id)
-                if isinstance(ctx.bot, commands.AutoShardedBot):
-                    scope.set_tag("shard_id", ctx.guild.shard_id)
-                scope.set_level("error")
-                await bot.errors.insert(
-                    {
-                        "_id": error_id,
-                        "error": str(error),
-                        "time": datetime.datetime.now(tz=pytz.UTC).strftime(
-                            "%m/%d/%Y, %H:%M:%S"
-                        ),
-                        "channel": ctx.channel.id,
-                        "guild": ctx.guild.id,
-                    }
-                )
+                with push_scope() as scope:
+                    scope.set_tag("error_id", error_id)
+                    scope.set_tag("guild_id", ctx.guild.id)
+                    scope.set_tag("user_id", ctx.author.id)
+                    if isinstance(ctx.bot, commands.AutoShardedBot):
+                        scope.set_tag("shard_id", ctx.guild.shard_id)
+                    scope.set_level("error")
+                    await bot.errors.insert(
+                        {
+                            "_id": error_id,
+                            "error": str(error),
+                            "time": datetime.datetime.now(tz=pytz.UTC).strftime(
+                                "%m/%d/%Y, %H:%M:%S"
+                            ),
+                            "channel": ctx.channel.id,
+                            "guild": ctx.guild.id,
+                        }
+                    )
 
-                capture_exception(error)
+                    capture_exception(error)
             return
 
         if isinstance(error, commands.CheckFailure):
