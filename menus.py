@@ -5210,7 +5210,10 @@ class AssociationConfigurationView(discord.ui.View):
             i.disabled = True
         if not hasattr(self, "message") or not self.message:
             return
-        await self.message.edit(view=self)
+        try:
+            await self.message.edit(view=self)
+        except discord.HTTPException:
+            pass
 
     async def interaction_check(self, interaction: discord.Interaction, /) -> bool:
         if interaction.user.id == self.user_id:
@@ -10039,16 +10042,25 @@ class ReloadView(discord.ui.View):
     async def on_timeout(self) -> None:
         for item in self.children:
             item.disabled = True
-        await self.message.edit(view=self)
+        try:
+            await self.message.edit(view=self)
+        except discord.HTTPException:
+            pass
 
     async def _temp_disable(self, timer: int):
         for item in self.children:
             item.disabled = True
-        await self.message.edit(view=self)
+        try:
+            await self.message.edit(view=self)
+        except discord.HTTPException:
+            return
         await asyncio.sleep(timer)
         for item in self.children:
             item.disabled = False
-        await self.message.edit(view=self)
+        try:
+            await self.message.edit(view=self)
+        except discord.HTTPException:
+            pass
 
     async def interaction_check(self, interaction: discord.Interaction, /) -> bool:
         if interaction.user.id == self.user_id:
@@ -11640,8 +11652,11 @@ class ShiftLoggingManagement(discord.ui.View):
             {"Guild": interaction.guild.id, "EndEpoch": 0}
         ):
             user_id = shift["UserID"]
-            member = interaction.guild.get_member(user_id) or await interaction.guild.fetch_member(user_id)
-            if member and member not in active_shift_users:
+            try:
+                member = interaction.guild.get_member(user_id) or await interaction.guild.fetch_member(user_id)
+            except discord.NotFound:
+                continue
+            if member not in active_shift_users:
                 active_shift_users.append(member)
 
         async for item in self.bot.shift_management.shifts.db.find(
