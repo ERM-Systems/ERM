@@ -55,6 +55,7 @@ class Player(BaseDataClass):
         typing.Literal[
             "Server Administrator",
             "Server Moderator",
+            "Server Helper",
             "Normal",
             "Server Owner",
             "Server Co-Owner",
@@ -65,8 +66,10 @@ class Player(BaseDataClass):
 
 
 class ModCall(BaseDataClass):
-    caller: str
-    moderator: str | None = None
+    caller_username: str
+    caller_id: int
+    moderator_username: str | None = None
+    moderator_id: int | None = None
     timestamp: int
 
 
@@ -110,6 +113,7 @@ class PRCApiClient:
         endpoint: str,
         guild_id: int,
         data: dict | None = None,
+        params: dict | None = None,
         key: str | None = None,
         max_retries: int = 2,
     ):
@@ -133,11 +137,12 @@ class PRCApiClient:
             if use_global_key
             else {"Server-Key": internal_server_key}
         )
-
+        b_url = endpoint if endpoint.startswith("http") else f"{self.base_url}{endpoint}"
         async with self.session.request(
             method,
-            url=f"{self.base_url}{endpoint}",
+            url=b_url,
             headers=headers,
+            params=params,
             json=data or {},
         ) as response:
             # if response.status == 403:
@@ -159,12 +164,167 @@ class PRCApiClient:
                     endpoint=endpoint,
                     guild_id=guild_id,
                     data=data,
+                    params=params,
                     key=key,
                     max_retries=max_retries - 1,
                 )
             return response.status, (
                 await response.json() if response.content_type != "text/html" else {}
             )
+
+    async def _get_server_info(self, guild_id: int, *flags: str):
+        if flags == ("Bans",):
+            return await self._send_api_request(
+                "GET", "https://api.erlc.gg/v1/server/bans", guild_id
+            )
+        return await self._send_api_request(
+            "GET", "/server", guild_id, params={flag: "true" for flag in flags}
+        )
+
+    _flag_map = {
+        "players": "Players",
+        "staff": "Staff",
+        "queue": "Queue",
+        "vehicles": "Vehicles",
+        "kill_logs": "KillLogs",
+        "command_logs": "CommandLogs",
+        "player_logs": "JoinLogs",
+        "mod_calls": "ModCalls",
+    }
+
+    async def get_server_info(self, guild_id: int, *resources: str) -> dict:
+        try:
+            flags = [self._flag_map[resource] for resource in resources]
+        except KeyError as e:
+            raise ValueError(f"Unknown PRC resource flag: {e}")
+        status_code, response_json = await self._get_server_info(guild_id, *flags)
+        if status_code != 200:
+            raise ResponseFailure(status_code=status_code, json_data=response_json)
+
+        result = {
+            "status": ServerStatus(
+                name=response_json["Name"],
+                owner_id=response_json["OwnerId"],
+                co_owner_ids=response_json["CoOwnerIds"],
+                current_players=response_json["CurrentPlayers"],
+                max_players=response_json["MaxPlayers"],
+                join_key=response_json["JoinKey"],
+                account_verified_request=response_json["AccVerifiedReq"] == "Enabled",
+                team_balance=response_json["TeamBalance"],
+            )
+        }
+
+        if "players" in resources:
+            result["players"] = [
+                Player(
+                    username=item["Player"].split(":")[0],
+                    id=int(item["Player"].split(":")[1]),
+                    permission=item["Permission"],
+                    callsign=item.get("Callsign"),
+                    team=item["Team"],
+                )
+                for item in response_json.get("Players", [])
+            ]
+
+        if "queue" in resources:
+            result["queue"] = response_json.get("Queue", [])
+
+        if "vehicles" in resources:
+            result["vehicles"] = [
+                ActiveVehicle(
+                    texture=i.get("Texture", "Default"),
+                    username=i["Owner"],
+                    vehicle=i["Name"],
+                )
+                for i in response_json.get("Vehicles", [])
+            ]
+
+        if "kill_logs" in resources:
+            result["kill_logs"] = [
+                KillLog(
+                    killer_username=log_item["Killer"].split(":")[0],
+                    killer_user_id=int(log_item["Killer"].split(":")[1]),
+                    timestamp=log_item["Timestamp"],
+                    killed_username=log_item["Killed"].split(":")[0],
+                    killed_user_id=int(log_item["Killed"].split(":")[1]),
+                )
+                for log_item in response_json.get("KillLogs", [])
+            ]
+
+        if "command_logs" in resources:
+            result["command_logs"] = [
+                CommandLog(
+                    username=(
+                        log_item["Player"].split(":")[0]
+                        if ":" in log_item["Player"]
+                        else log_item["Player"]
+                    ),
+                    user_id=(
+                        int(log_item["Player"].split(":")[1])
+                        if ":" in log_item["Player"]
+                        else 0
+                    ),
+                    timestamp=log_item["Timestamp"],
+                    is_automated=log_item["Player"] == "Remote Server",
+                    command=log_item["Command"],
+                )
+                for log_item in response_json.get("CommandLogs", [])
+            ]
+
+        if "player_logs" in resources:
+            result["player_logs"] = [
+                JoinLeaveLog(
+                    username=log_item["Player"].split(":")[0],
+                    user_id=int(log_item["Player"].split(":")[1]),
+                    timestamp=log_item["Timestamp"],
+                    type="join" if log_item["Join"] is True else "leave",
+                )
+                for log_item in response_json.get("JoinLogs", [])
+            ]
+
+        if "mod_calls" in resources:
+            result["mod_calls"] = [
+                ModCall(
+                    caller_username=call["Caller"].split(":")[0],
+                    caller_id=int(call["Caller"].split(":")[1]),
+                    moderator_username=call.get("Moderator").split(":")[0] if call.get("Moderator") else None,
+                    moderator_id=int(call.get("Moderator").split(":")[1]) if call.get("Moderator") else None,
+                    timestamp=call["Timestamp"],
+                )
+                for call in response_json.get("ModCalls", [])
+            ]
+
+        if "staff" in resources:
+            co_owners = response_json.get("CoOwnerIds", [])
+            co_owner_users = await self.bot.roblox.get_users(co_owners, expand=False)
+            co_owner_names = [user.name for user in co_owner_users]
+            co_owners = dict(zip(co_owners, co_owner_names))
+            staff = response_json.get("Staff") or {}
+            try:
+                players = [Player(username=v, id=k, permission="Server Co-Owner") for k,v in co_owners.items()]
+            except AttributeError:
+                players = []
+            try:
+                players += [Player(
+                    username=v, id=k, permission="Server Administrator"
+                ) for k,v in staff.get("Admins", {}).items()]
+            except AttributeError:
+                players += []
+            try:
+                players += [Player(
+                    username=v, id=k, permission="Server Moderator"
+                ) for k,v in staff.get("Mods", {}).items()]
+            except AttributeError:
+                players += []
+            try:
+                players += [Player(
+                    username=v, id=k, permission="Server Helper"
+                ) for k,v in staff.get("Helpers", {}).items()]
+            except AttributeError:
+                players += []
+            result["staff"] = players
+
+        return result
 
     async def get_server_status(self, guild_id: int):
         status_code, response_json = await self._send_api_request(
@@ -186,7 +346,7 @@ class PRCApiClient:
 
     async def send_test_request(self, server_key: str) -> int | ServerStatus:
         code, response_json = await self._send_api_request(
-            "GET", "/server", 0, None, server_key
+            "GET", "/server", 0, key=server_key
         )
         return (
             code
@@ -204,16 +364,16 @@ class PRCApiClient:
         )
 
     async def get_server_players(self, guild_id: int) -> list[Player]:
-        status_code, response_json = await self._send_api_request(
-            "GET", "/server/players", guild_id
+        status_code, response_json = await self._get_server_info(
+            guild_id, "Players"
         )
         if status_code == 200:
             new_list = []
-            for item in response_json:
+            for item in response_json["Players"]:
                 new_list.append(
                     Player(
                         username=item["Player"].split(":")[0],
-                        id=item["Player"].split(":")[1],
+                        id=int(item["Player"].split(":")[1]),
                         permission=item["Permission"],
                         callsign=item.get("Callsign"),
                         team=item["Team"],
@@ -224,33 +384,29 @@ class PRCApiClient:
             raise ResponseFailure(status_code=status_code, json_data=response_json)
 
     async def get_mod_calls(self, guild_id: int) -> list:
-        status_code, response_json = await self._send_api_request(
-            "GET", "/server/modcalls", guild_id
-        )
+        status_code, response_json = await self._get_server_info(guild_id, "ModCalls")
         if status_code == 200:
             return [
                 ModCall(
                     caller_username=call["Caller"].split(":")[0],
-                    caller_id=call["Caller"].split(":")[1],
+                    caller_id=int(call["Caller"].split(":")[1]),
                     moderator_username=call.get("Moderator").split(":")[0] if call.get("Moderator") else None,
-                    moderator_id=call.get("Moderator").split(":")[1] if call.get("Moderator") else None,
+                    moderator_id=int(call.get("Moderator").split(":")[1]) if call.get("Moderator") else None,
                     timestamp=call["Timestamp"],
                 )
-                for call in response_json
+                for call in response_json["ModCalls"]
             ]
         else:
             raise ResponseFailure(status_code=status_code, json_data=response_json)
 
     async def get_server_staff(self, guild_id: int) -> list:
-        status_code, response_json = await self._send_api_request(
-            "GET", "/server/staff", guild_id
-        )
+        status_code, response_json = await self._get_server_info(guild_id, "Staff")
         if status_code == 200:
-            co_owners = response_json.get("CoOwners", [])
-            roblox_client = roblox.Client()
-            co_owner_users = await roblox_client.get_users(co_owners, expand=False)
+            co_owners = response_json.get("CoOwnerIds", [])
+            co_owner_users = await self.bot.roblox.get_users(co_owners, expand=False)
             co_owner_names = [user.name for user in co_owner_users]
             co_owners = dict(zip(co_owners, co_owner_names))
+            staff = response_json["Staff"]
             try:
                 players = [Player(username=v, id=k, permission="Server Co-Owner") for k,v in co_owners.items()]
             except AttributeError:
@@ -258,23 +414,27 @@ class PRCApiClient:
             try:
                 players += [Player(
                     username=v, id=k, permission="Server Administrator"
-                ) for k,v in response_json.get("Admins", {}).items()]
+                ) for k,v in staff.get("Admins", {}).items()]
             except AttributeError:
                 players += []
             try:
                 players += [Player(
                     username=v, id=k, permission="Server Moderator"
-                ) for k,v in response_json.get("Mods", {}).items()]
-            except:
+                ) for k,v in staff.get("Mods", {}).items()]
+            except AttributeError:
+                players += []
+            try:
+                players += [Player(
+                    username=v, id=k, permission="Server Helper"
+                ) for k,v in staff.get("Helpers", {}).items()]
+            except AttributeError:
                 players += []
             return players
         else:
             raise ResponseFailure(status_code=status_code, json_data=response_json)
 
     async def get_server_vehicles(self, guild_id: int) -> list:
-        status_code, response_json = await self._send_api_request(
-            "GET", "/server/vehicles", guild_id
-        )
+        status_code, response_json = await self._get_server_info(guild_id, "Vehicles")
         if status_code == 200:
             return [
                 ActiveVehicle(
@@ -282,29 +442,26 @@ class PRCApiClient:
                     username=i["Owner"],
                     vehicle=i["Name"],
                 )
-                for i in response_json
+                for i in response_json["Vehicles"]
             ]
         else:
             raise ResponseFailure(status_code=status_code, json_data=response_json)
 
     async def get_server_queue(self, guild_id: int, minimal: bool = False) -> list:
-        status_code, response_json = await self._send_api_request(
-            "GET", "/server/queue", guild_id
-        )
+        status_code, response_json = await self._get_server_info(guild_id, "Queue")
         if status_code == 200:
+            queue = response_json["Queue"]
             if minimal:
-                return len(response_json)
+                return len(queue)
             new_list = []
-            for user in await self.bot.roblox.get_users(response_json, expand=False):
+            for user in await self.bot.roblox.get_users(queue, expand=False):
                 new_list.append(Player(username=user.name, id=user.id))
             return new_list
         else:
             raise ResponseFailure(status_code=status_code, json_data=response_json)
 
     async def fetch_server_logs(self, guild_id: int):
-        status_code, response_json = await self._send_api_request(
-            "GET", "/server/commandlogs", guild_id
-        )
+        status_code, response_json = await self._get_server_info(guild_id, "CommandLogs")
         if status_code == 200:
             return [
                 CommandLog(
@@ -314,7 +471,7 @@ class PRCApiClient:
                         else log_item["Player"]
                     ),
                     user_id=(
-                        log_item["Player"].split(":")[1]
+                        int(log_item["Player"].split(":")[1])
                         if ":" in log_item["Player"]
                         else 0
                     ),
@@ -322,25 +479,23 @@ class PRCApiClient:
                     is_automated=log_item["Player"] == "Remote Server",
                     command=log_item["Command"],
                 )
-                for log_item in response_json
+                for log_item in response_json["CommandLogs"]
             ]
         else:
             raise ResponseFailure(status_code=status_code, json_data=response_json)
 
     async def fetch_kill_logs(self, guild_id: int):
-        status_code, response_json = await self._send_api_request(
-            "GET", "/server/killlogs", guild_id
-        )
+        status_code, response_json = await self._get_server_info(guild_id, "KillLogs")
         if status_code == 200:
             return [
                 KillLog(
                     killer_username=log_item["Killer"].split(":")[0],
-                    killer_user_id=log_item["Killer"].split(":")[1],
+                    killer_user_id=int(log_item["Killer"].split(":")[1]),
                     timestamp=log_item["Timestamp"],
                     killed_username=log_item["Killed"].split(":")[0],
-                    killed_user_id=log_item["Killed"].split(":")[1],
+                    killed_user_id=int(log_item["Killed"].split(":")[1]),
                 )
-                for log_item in response_json
+                for log_item in response_json["KillLogs"]
             ]
         elif status_code == 429:
             retry_after = int(response_json.get("retry_after", 5))
@@ -350,9 +505,7 @@ class PRCApiClient:
             raise ResponseFailure(status_code=status_code, json_data=response_json)
 
     async def fetch_bans(self, guild_id: int):
-        status_code, response_json = await self._send_api_request(
-            "GET", "/server/bans", guild_id
-        )
+        status_code, response_json = await self._get_server_info(guild_id, "Bans")
 
         if status_code == 200:
             if response_json == []:
@@ -367,18 +520,16 @@ class PRCApiClient:
             raise ResponseFailure(status_code=status_code, json_data=response_json)
 
     async def fetch_player_logs(self, guild_id: int):
-        status_code, response_json = await self._send_api_request(
-            "GET", "/server/joinlogs", guild_id
-        )
+        status_code, response_json = await self._get_server_info(guild_id, "JoinLogs")
         if status_code == 200:
             return [
                 JoinLeaveLog(
                     username=log_item["Player"].split(":")[0],
-                    user_id=log_item["Player"].split(":")[1],
+                    user_id=int(log_item["Player"].split(":")[1]),
                     timestamp=log_item["Timestamp"],
                     type="join" if log_item["Join"] is True else "leave",
                 )
-                for log_item in response_json
+                for log_item in response_json["JoinLogs"]
             ]
         elif status_code == 429:
             retry_after = int(response_json.get("retry_after", 5))

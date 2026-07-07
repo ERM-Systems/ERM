@@ -118,8 +118,12 @@ async def unprimitive_guild_process(items, bot):
     ):
         return
 
-    kill_logs, player_logs, command_logs = await fetch_logs_with_retry(
-        guild.id, bot
+    kill_logs, player_logs, command_logs, info = await fetch_logs_with_retry(
+        guild.id,
+        bot,
+        extra_resources=(
+            ("players",) if has_team_restrictions or has_automatic_shifts else ()
+        ),
     )
     current_time = int(time.time())
 
@@ -146,7 +150,7 @@ async def unprimitive_guild_process(items, bot):
             bot,
             settings,
             guild.id,
-            await bot.prc_api.get_server_players(guild.id),
+            info.get("players", []),
         )
 
     if has_automatic_shifts:
@@ -154,7 +158,7 @@ async def unprimitive_guild_process(items, bot):
             guild.id, "automatic_shifts"
         )
         latest_timestamp = await check_automatic_shifts(
-            bot, settings, guild.id, player_logs, last_timestamp
+            bot, settings, guild.id, player_logs, last_timestamp, players=info.get("players")
         )
         bot.log_tracker.update_timestamp(
             guild.id, "automatic_shifts", latest_timestamp
@@ -210,21 +214,21 @@ async def process_guild(bot, items, semaphore):
             logging.warning(f"error processing guild: {e}")
 
 
-async def fetch_logs_with_retry(guild_id, bot, retries=3):
-    """Helper function to fetch logs with retry logic"""
+async def fetch_logs_with_retry(guild_id, bot, retries=3, extra_resources=()):
+    """Helper function to fetch logs (and any extra resources) with retry logic, in a single request"""
     for attempt in range(retries):
         try:
-            kill_logs = await bot.prc_api.fetch_kill_logs(guild_id)
-            player_logs = await bot.prc_api.fetch_player_logs(guild_id)
-            command_logs = await bot.prc_api.fetch_server_logs(guild_id)
-            return kill_logs, player_logs, command_logs
+            info = await bot.prc_api.get_server_info(
+                guild_id, "kill_logs", "player_logs", "command_logs", *extra_resources
+            )
+            return info["kill_logs"], info["player_logs"], info["command_logs"], info
         except prc_api.ResponseFailure as e:
             if e.status_code == 429 and attempt < retries - 1:
                 retry_after = float(e.json_data.get("retry_after", 5))
                 await asyncio.sleep(retry_after)
                 continue
             raise
-    return None, None, None
+    return None, None, None, {}
 
 
 async def save_new_logs(bot, guild_id, command_logs, current_time):
@@ -581,7 +585,7 @@ async def send_welcome_message(
     return sorted(player_logs, key=lambda x: x.timestamp, reverse=True)[0].timestamp
 
 
-async def check_automatic_shifts(bot, settings, guild_id, join_logs, ts: int) -> int:
+async def check_automatic_shifts(bot, settings, guild_id, join_logs, ts: int, players=None) -> int:
     logging.info(f"Checking automatic shifts for server {guild_id}")
     automatic_shifts = settings["ERLC"].get("automatic_shifts", {}) or {}
     try:
@@ -598,11 +602,12 @@ async def check_automatic_shifts(bot, settings, guild_id, join_logs, ts: int) ->
     if automatic_shifts["enabled"] is False:
         return sorted(join_logs, key=lambda x: x.timestamp, reverse=True)[0].timestamp
 
-    try:
-        players = await bot.prc_api.get_server_players(guild_id)
-    except Exception as e:
-        logging.info(f"Skipping {guild_id} (automatic shifts) because of exc: {e}")
-        return sorted(join_logs, key=lambda x: x.timestamp, reverse=True)[0].timestamp
+    if players is None:
+        try:
+            players = await bot.prc_api.get_server_players(guild_id)
+        except Exception as e:
+            logging.info(f"Skipping {guild_id} (automatic shifts) because of exc: {e}")
+            return sorted(join_logs, key=lambda x: x.timestamp, reverse=True)[0].timestamp
 
     new_players: list[Player] = list(
         filter(lambda x: x.permission != "Normal", players)
