@@ -6986,6 +6986,140 @@ class StaffAlertConfiguration(AssociationConfigurationView):
         )
 
 
+class WeeklyDigestConfiguration(AssociationConfigurationView):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    @discord.ui.select(
+        placeholder="Weekly Digest",
+        row=0,
+        options=[
+            discord.SelectOption(
+                label="Enabled",
+                value="enabled",
+                description="Weekly digest is enabled.",
+            ),
+            discord.SelectOption(
+                label="Disabled",
+                value="disabled",
+                description="Weekly digest is disabled.",
+            ),
+        ],
+        max_values=1,
+    )
+    async def enabled_select(
+        self, interaction: discord.Interaction, select: discord.ui.Select
+    ):
+        value = await self.interaction_check(interaction)
+        if not value:
+            return
+
+        await interaction.response.defer()
+        sett = await self.bot.settings.find_by_id(interaction.guild.id)
+        if "weekly_digest" not in sett:
+            sett["weekly_digest"] = {}
+        sett["weekly_digest"]["enabled"] = bool(select.values[0] == "enabled")
+        await self.bot.settings.update_by_id(sett)
+        await config_change_log(
+            self.bot,
+            interaction.guild,
+            interaction.user,
+            f"Weekly Digest {select.values[0]}.",
+        )
+
+    @discord.ui.select(
+        cls=discord.ui.ChannelSelect,
+        placeholder="Digest Channel",
+        row=1,
+        max_values=1,
+        min_values=0,
+        channel_types=[discord.ChannelType.text],
+    )
+    async def digest_channel(
+        self, interaction: discord.Interaction, select: discord.ui.ChannelSelect
+    ):
+        value = await self.interaction_check(interaction)
+        if not value:
+            return
+
+        await interaction.response.defer()
+        sett = await self.bot.settings.find_by_id(interaction.guild.id)
+        if "weekly_digest" not in sett:
+            sett["weekly_digest"] = {}
+        sett["weekly_digest"]["channel"] = int(select.values[0].id) if select.values else None
+        await self.bot.settings.update_by_id(sett)
+        await config_change_log(
+            self.bot,
+            interaction.guild,
+            interaction.user,
+            f"Weekly Digest Channel Set: <#{select.values[0].id}>",
+        )
+
+    @discord.ui.select(
+        placeholder="Day of Week",
+        row=2,
+        options=[
+            discord.SelectOption(label="Monday", value="0"),
+            discord.SelectOption(label="Tuesday", value="1"),
+            discord.SelectOption(label="Wednesday", value="2"),
+            discord.SelectOption(label="Thursday", value="3"),
+            discord.SelectOption(label="Friday", value="4"),
+            discord.SelectOption(label="Saturday", value="5"),
+            discord.SelectOption(label="Sunday", value="6"),
+        ],
+        max_values=1,
+    )
+    async def day_select(
+        self, interaction: discord.Interaction, select: discord.ui.Select
+    ):
+        value = await self.interaction_check(interaction)
+        if not value:
+            return
+
+        await interaction.response.defer()
+        sett = await self.bot.settings.find_by_id(interaction.guild.id)
+        if "weekly_digest" not in sett:
+            sett["weekly_digest"] = {}
+        sett["weekly_digest"]["day"] = int(select.values[0])
+        await self.bot.settings.update_by_id(sett)
+        days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        await config_change_log(
+            self.bot,
+            interaction.guild,
+            interaction.user,
+            f"Weekly Digest Day Set: {days[int(select.values[0])]}",
+        )
+
+    @discord.ui.select(
+        placeholder="Hour (UTC)",
+        row=3,
+        options=[
+            discord.SelectOption(label=f"{h:02d}:00 UTC", value=str(h))
+            for h in range(0, 24, 2)
+        ],
+        max_values=1,
+    )
+    async def hour_select(
+        self, interaction: discord.Interaction, select: discord.ui.Select
+    ):
+        value = await self.interaction_check(interaction)
+        if not value:
+            return
+
+        await interaction.response.defer()
+        sett = await self.bot.settings.find_by_id(interaction.guild.id)
+        if "weekly_digest" not in sett:
+            sett["weekly_digest"] = {}
+        sett["weekly_digest"]["hour"] = int(select.values[0])
+        await self.bot.settings.update_by_id(sett)
+        await config_change_log(
+            self.bot,
+            interaction.guild,
+            interaction.user,
+            f"Weekly Digest Hour Set: {int(select.values[0]):02d}:00 UTC",
+        )
+
+
 class defaultPunishments(discord.ui.View):
     def __init__(self, bot, sett, user_id):
         super().__init__()

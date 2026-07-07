@@ -29,6 +29,7 @@ from menus import (
     ERMCommandLog,
     WhitelistVehiclesManagement,
     PriorityRequestConfiguration,
+    WeeklyDigestConfiguration,
 )
 from ui.MapleCounty import MapleCountyConfiguration
 from utils.paginators import CustomPage, SelectPagination
@@ -991,6 +992,50 @@ class Configuration(commands.Cog):
             settings.get("MC", {})
         )
 
+        digest_settings = settings.get("weekly_digest", {})
+        days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        weekly_digest_view = WeeklyDigestConfiguration(
+            bot,
+            ctx.author.id,
+            [
+                (
+                    "Weekly Digest",
+                    [
+                        ["CUSTOM_CONF", {"_FIND_BY_LABEL": True}],
+                        (
+                            "Enabled"
+                            if digest_settings.get("enabled") is True
+                            else "Disabled"
+                        ),
+                    ],
+                ),
+                (
+                    "Digest Channel",
+                    [
+                        (
+                            discord.utils.get(ctx.guild.channels, id=channel)
+                            if (channel := digest_settings.get("channel"))
+                            else 0
+                        )
+                    ],
+                ),
+                (
+                    "Day of Week",
+                    [
+                        ["CUSTOM_CONF", {"_FIND_BY_LABEL": True}],
+                        days[digest_settings.get("day", 0)],
+                    ],
+                ),
+                (
+                    "Hour (UTC)",
+                    [
+                        ["CUSTOM_CONF", {"_FIND_BY_LABEL": True}],
+                        f"{digest_settings.get('hour', 12):02d}:00 UTC",
+                    ],
+                ),
+            ],
+        )
+
         pages = []
 
         for index, view in enumerate(
@@ -1007,6 +1052,7 @@ class Configuration(commands.Cog):
                 erm_command_log_view,
                 priority_requests,
                 maple_county_configuration,
+                weekly_digest_view,
             ]
         ):
             corresponding_embeds = [
@@ -1127,7 +1173,18 @@ class Configuration(commands.Cog):
                     description=(
                         "**What is the Maple County Integration?**\nThe Maple County Integration allows for ERM to communicate with the Maple County APIs, and your Maple County server. In particular, these configurations allow for configuration of various Maple County-specific supported features and settings.\n\n"
                     )
-                )
+                ),
+                discord.Embed(
+                    title="Weekly Digest",
+                    color=blank_color,
+                    description=(
+                        "**What is the Weekly Digest?** The Weekly Digest sends an automatic weekly summary to a channel of your choice. It includes punishment counts, shift hours, top moderators, and top shifters.\n\n"
+                        "**Enabled:** This setting toggles the Weekly Digest. When enabled, ERM will send a summary at the configured day and time.\n\n"
+                        "**Digest Channel:** This is the channel where the weekly summary will be posted.\n\n"
+                        "**Day of Week:** The day the digest will be posted.\n\n"
+                        "**Hour (UTC):** The hour in UTC when the digest will be posted."
+                    ),
+                ),
             ]
             embed = corresponding_embeds[index]
             page = CustomPage()
