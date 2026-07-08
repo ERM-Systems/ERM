@@ -369,7 +369,7 @@ class PRCApiClient:
         )
         if status_code == 200:
             new_list = []
-            for item in response_json["Players"]:
+            for item in response_json.get("Players", []):
                 new_list.append(
                     Player(
                         username=item["Player"].split(":")[0],
@@ -394,7 +394,7 @@ class PRCApiClient:
                     moderator_id=int(call.get("Moderator").split(":")[1]) if call.get("Moderator") else None,
                     timestamp=call["Timestamp"],
                 )
-                for call in response_json["ModCalls"]
+                for call in response_json.get("ModCalls", [])
             ]
         else:
             raise ResponseFailure(status_code=status_code, json_data=response_json)
@@ -406,7 +406,7 @@ class PRCApiClient:
             co_owner_users = await self.bot.roblox.get_users(co_owners, expand=False)
             co_owner_names = [user.name for user in co_owner_users]
             co_owners = dict(zip(co_owners, co_owner_names))
-            staff = response_json["Staff"]
+            staff = response_json.get("Staff", {})
             try:
                 players = [Player(username=v, id=k, permission="Server Co-Owner") for k,v in co_owners.items()]
             except AttributeError:
@@ -442,7 +442,7 @@ class PRCApiClient:
                     username=i["Owner"],
                     vehicle=i["Name"],
                 )
-                for i in response_json["Vehicles"]
+                for i in response_json.get("Vehicles", [])
             ]
         else:
             raise ResponseFailure(status_code=status_code, json_data=response_json)
@@ -450,7 +450,7 @@ class PRCApiClient:
     async def get_server_queue(self, guild_id: int, minimal: bool = False) -> list:
         status_code, response_json = await self._get_server_info(guild_id, "Queue")
         if status_code == 200:
-            queue = response_json["Queue"]
+            queue = response_json.get("Queue", [])
             if minimal:
                 return len(queue)
             new_list = []
@@ -479,7 +479,7 @@ class PRCApiClient:
                     is_automated=log_item["Player"] == "Remote Server",
                     command=log_item["Command"],
                 )
-                for log_item in response_json["CommandLogs"]
+                for log_item in response_json.get("CommandLogs", [])
             ]
         else:
             raise ResponseFailure(status_code=status_code, json_data=response_json)
@@ -495,7 +495,7 @@ class PRCApiClient:
                     killed_username=log_item["Killed"].split(":")[0],
                     killed_user_id=int(log_item["Killed"].split(":")[1]),
                 )
-                for log_item in response_json["KillLogs"]
+                for log_item in response_json.get("KillLogs", [])
             ]
         elif status_code == 429:
             retry_after = int(response_json.get("retry_after", 5))
@@ -529,7 +529,7 @@ class PRCApiClient:
                     timestamp=log_item["Timestamp"],
                     type="join" if log_item["Join"] is True else "leave",
                 )
-                for log_item in response_json["JoinLogs"]
+                for log_item in response_json.get("JoinLogs", [])
             ]
         elif status_code == 429:
             retry_after = int(response_json.get("retry_after", 5))
