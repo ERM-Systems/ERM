@@ -162,6 +162,51 @@ class OnPunishment(commands.Cog):
             await channel.send(embed=embed)
             logging.info(f"Sent punishment embed to channel {channel.id}")
 
+        staff_alert_channel_id = guild_settings.get("punishments", {}).get("staff_alert_channel")
+        if staff_alert_channel_id:
+            try:
+                warned_discord_id = await get_discord_id_by_roblox_id(self, warning.user_id)
+                if warned_discord_id:
+                    member = guild.get_member(warned_discord_id)
+                    if member:
+                        staff_roles = set(guild_settings.get("staff_management", {}).get("role") or [])
+                        member_role_ids = {r.id for r in member.roles}
+                        if staff_roles & member_role_ids:
+                            alert_channel = await guild.fetch_channel(staff_alert_channel_id)
+                            alert_roles = guild_settings.get("punishments", {}).get("staff_alert_roles") or []
+                            pings = " ".join(f"<@&{r}>" for r in alert_roles)
+                            alert_embed = (
+                                discord.Embed(
+                                    title="Staff Member Punished",
+                                    color=BLANK_COLOR,
+                                )
+                                .add_field(
+                                    name="Staff Member",
+                                    value=(
+                                        f"> **Discord:** {member.mention}\n"
+                                        f"> **Username:** {warning.username}\n"
+                                    ),
+                                    inline=False,
+                                )
+                                .add_field(
+                                    name="Punishment Details",
+                                    value=(
+                                        f"> **Type:** {warning.warning_type}\n"
+                                        f"> **Reason:** {warning.reason}\n"
+                                        f"> **Moderator:** {moderator.mention}\n"
+                                        f"> **Warning ID:** `{warning.snowflake}`\n"
+                                    ),
+                                    inline=False,
+                                )
+                                .set_author(
+                                    name=guild.name, icon_url=guild.icon.url if guild.icon else ""
+                                )
+                                .set_thumbnail(url=thumbnail)
+                            )
+                            await alert_channel.send(content=pings or None, embed=alert_embed)
+            except Exception as e:
+                logging.warning(f"Failed to send staff punishment alert: {e}")
+
 
 async def setup(bot):
     await bot.add_cog(OnPunishment(bot))

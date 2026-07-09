@@ -6898,6 +6898,94 @@ class PunishmentsConfiguration(AssociationConfigurationView):
         view = defaultPunishments(self.bot, sett, interaction.user.id)
         await interaction.response.send_message(view=view, ephemeral=True)
 
+    @discord.ui.button(label="Staff Alerts", row=2)
+    async def staff_alerts(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+        val = await self.interaction_check(interaction)
+        if val is False:
+            return
+        sett = await self.bot.settings.find_by_id(interaction.guild.id)
+        new_view = StaffAlertConfiguration(
+            self.bot,
+            interaction.user.id,
+            [
+                (
+                    "Staff Alert Channel",
+                    [
+                        discord.utils.get(
+                            interaction.guild.channels,
+                            id=sett.get("punishments", {}).get("staff_alert_channel", 0),
+                        )
+                    ],
+                ),
+                (
+                    "Staff Alert Ping Roles",
+                    [
+                        discord.utils.get(interaction.guild.roles, id=role)
+                        for role in (sett.get("punishments", {}).get("staff_alert_roles") or [0])
+                    ],
+                ),
+            ],
+        )
+        await interaction.response.send_message(view=new_view, ephemeral=True)
+
+class StaffAlertConfiguration(AssociationConfigurationView):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    @discord.ui.select(
+        cls=discord.ui.ChannelSelect,
+        placeholder="Staff Alert Channel",
+        row=0,
+        max_values=1,
+        min_values=0,
+        channel_types=[discord.ChannelType.text],
+    )
+    async def staff_alert_channel(
+        self, interaction: discord.Interaction, select: discord.ui.ChannelSelect
+    ):
+        value = await self.interaction_check(interaction)
+        if not value:
+            return
+
+        await interaction.response.defer()
+        sett = await self.bot.settings.find_by_id(interaction.guild.id)
+        sett["punishments"]["staff_alert_channel"] = int(select.values[0].id) if select.values else None
+        await self.bot.settings.update_by_id(sett)
+        await config_change_log(
+            self.bot,
+            interaction.guild,
+            interaction.user,
+            f"Staff Alert Channel Set: <#{select.values[0].id}>",
+        )
+
+    @discord.ui.select(
+        cls=discord.ui.RoleSelect,
+        placeholder="Staff Alert Ping Roles",
+        row=1,
+        max_values=5,
+        min_values=0,
+    )
+    async def staff_alert_roles(
+        self, interaction: discord.Interaction, select: discord.ui.RoleSelect
+    ):
+        value = await self.interaction_check(interaction)
+        if not value:
+            return
+
+        await interaction.response.defer()
+        sett = await self.bot.settings.find_by_id(interaction.guild.id)
+        sett["punishments"]["staff_alert_roles"] = [role.id for role in select.values]
+        await self.bot.settings.update_by_id(sett)
+        await config_change_log(
+            self.bot,
+            interaction.guild,
+            interaction.user,
+            f"Staff Alert Roles Set: {', '.join(role.mention for role in select.values)}",
+        )
+
+
 class defaultPunishments(discord.ui.View):
     def __init__(self, bot, sett, user_id):
         super().__init__()
