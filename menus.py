@@ -3334,9 +3334,8 @@ class GoogleSpreadsheetModification(discord.ui.View):
         def run_gspread_transfer():
             client = gspread.service_account_from_dict(self.config)
             sheet = client.open_by_url(self.url)
-            client.insert_permission(sheet.id, value=email, perm_type="user", role="writer")
-            permission_id = (sheet.list_permissions())[0]["id"]
-            sheet.transfer_ownership(permission_id)
+            permission = client.insert_permission(sheet.id, value=email, perm_type="user", role="writer").json()
+            sheet.transfer_ownership(permission["id"])
             
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, run_gspread_transfer)
