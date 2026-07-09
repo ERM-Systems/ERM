@@ -170,7 +170,41 @@ async def admin_check(bot_obj, guild, member):
         return True
     return False
 
-    
+
+async def sync_ingame_permission(bot_obj, guild, member, guild_settings, grant: bool):
+    permission_sync = guild_settings.get("ERLC", {}).get("permission_sync", {})
+    if not permission_sync.get("enabled", False):
+        return
+
+    member_role_ids = [r.id for r in member.roles]
+    is_admin = any(role_id in permission_sync.get("administrator_roles", []) for role_id in member_role_ids)
+    is_mod = any(role_id in permission_sync.get("moderator_roles", []) for role_id in member_role_ids)
+
+    if not is_admin and not is_mod:
+        return
+
+    linked_account = await bot_obj.oauth2_users.db.find_one({"discord_id": member.id})
+    if linked_account:
+        roblox_id = linked_account["roblox_id"]
+    else:
+        bloxlink_user = await bot_obj.bloxlink.find_roblox(member.id)
+        roblox_id = bloxlink_user.get("robloxID") if bloxlink_user else None
+        if not roblox_id:
+            logging.warning(f"Could not resolve Roblox account for {member.id} in {guild.id}, skipping permission sync")
+            return
+
+    if is_admin:
+        command = f":admin {roblox_id}" if grant else f":unadmin {roblox_id}"
+    else:
+        command = f":mod {roblox_id}" if grant else f":unmod {roblox_id}"
+
+    try:
+        status_code, response = await bot_obj.prc_api.run_command(guild.id, command)
+        if status_code != 200:
+            logging.warning(f"Permission sync command '{command}' failed for {member.id} in {guild.id}: {status_code} {response}")
+    except Exception as e:
+        logging.warning(f"Failed to sync in-game permission for {member.id} in {guild.id}: {e}")
+
 
 def time_converter(parameter: str) -> int:
     conversions = {
