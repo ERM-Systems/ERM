@@ -12915,7 +12915,11 @@ class ERLCPermissionSync(discord.ui.View):
         if "permission_sync" not in sett["ERLC"]:
             sett["ERLC"]["permission_sync"] = {"enabled": False, "moderator_roles": [], "administrator_roles": []}
         sett["ERLC"]["permission_sync"]["moderator_roles"] = mod_roles
-        
+
+        await self._update_settings_and_log(
+            interaction, sett,
+            "Server Moderator Roles have been updated."
+        )
 
     async def admin_roles_select_callback(self, interaction: discord.Interaction):
         if not await self._check_permissions(interaction):
@@ -12931,4 +12935,9 @@ class ERLCPermissionSync(discord.ui.View):
         if "permission_sync" not in sett["ERLC"]:
             sett["ERLC"]["permission_sync"] = {"enabled": False, "moderator_roles": [], "administrator_roles": []}
         sett["ERLC"]["permission_sync"]["administrator_roles"] = administrator_roles
+
+        await self._update_settings_and_log(
+            interaction, sett,
+            "Server Administrator Roles have been updated."
+        )
 

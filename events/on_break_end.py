@@ -3,6 +3,7 @@ from bson import ObjectId
 from discord.ext import commands
 from datamodels.ShiftManagement import ShiftItem
 from utils.constants import BLANK_COLOR
+from utils.utils import sync_ingame_permission
 
 
 class OnBreakEnd(commands.Cog):
@@ -67,6 +68,9 @@ class OnBreakEnd(commands.Cog):
 
         if not staff_member:
             return
+
+        await sync_ingame_permission(self.bot, guild, staff_member, guild_settings, grant=True)
+
         for role in assigned_roles or []:
             discord_role: discord.Role = guild.get_role(role)
             if discord_role is None:
