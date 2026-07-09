@@ -26,6 +26,8 @@ base_configuration = {
         "kick_channel": None,
         "ban_channel": None,
         "bolo_channel": None,
+        "staff_alert_channel": None,
+        "staff_alert_roles": [],
     },
     "shift_management": {
         "enabled": False,
