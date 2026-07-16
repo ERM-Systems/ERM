@@ -128,7 +128,7 @@ class Sessions(commands.Cog):
                 "player_counts": []
             }
         }
-        if not sessions["settings"].get("vote"):
+        if not settings["sessions"].get("vote"):
             return await ctx.reply(embed=discord.Embed(title = "No Vote Message", description="There has been no vote message configured"))
         d = settings["sessions"]["vote"].replace(
             "{user}",
@@ -166,7 +166,7 @@ class Sessions(commands.Cog):
             info = await self.bot.prc_api.get_server_status(ctx.guild.id)
         except:
             info = None
-        if not sessions["settings"].get("start"):
+        if not settings["sessions"].get("start"):
             return await ctx.reply(embed=discord.Embed(title = "No Start Message", description="There has been no start message configured"))
         if "{erlc.players}" in settings["sessions"]["start"]: session["dynamic"] = True
         d = settings["sessions"]["start"].replace(
@@ -223,7 +223,7 @@ class Sessions(commands.Cog):
         try:
             info = await self.bot.prc_api.get_server_status(ctx.guild.id)
         except: info = None
-        if not sessions["settings"].get("shutdown"):
+        if not settings["sessions"].get("shutdown"):
             return await ctx.reply(embed=discord.Embed(title = "No End Message", description="There has been no end message configured"))
         d = settings["sessions"]["shutdown"].replace(
             "{user}",
