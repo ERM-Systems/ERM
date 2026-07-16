@@ -5,4 +5,4 @@ class SimpleTextChannelSelect(discord.ui.ChannelSelect):
 
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
-        await self.parent.view.stop()
+        self.parent.view.stop()

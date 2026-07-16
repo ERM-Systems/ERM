@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from erm import Bot, is_admin, require_settings, is_management
-from utils.constants import CUSTOM_IDS_FOR_SESSIONS, SESSION_VIEW_TYPES
+from utils.constants import BLANK_COLOR, RED_COLOR, CUSTOM_IDS_FOR_SESSIONS, SESSION_VIEW_TYPES
 import discord.http
 import json
 from menus import CustomDropdown
@@ -287,6 +287,119 @@ class Sessions(commands.Cog):
         return await ctx.reply(view=discord.ui.LayoutView().add_item(cont), files=[file])
 
     
+    @session.command(name="setup", description="Set up sessions for the first time")
+    @is_management()
+    @require_settings()
+    async def _setup(self, ctx: commands.Context):
+        settings = await self.bot.settings.find(ctx.guild.id)
+        if not settings:
+            return
+
+        if settings.get("sessions", {}).get("channel_id"):
+            return await ctx.reply(embed=discord.Embed(
+                title="Already Configured",
+                description="Sessions are already set up. Use `session config` to modify settings.",
+                color=RED_COLOR,
+            ))
+
+        ch = SimpleTextChannelSelect()
+        cont = discord.ui.Container(
+            discord.ui.TextDisplay(
+                "### Session Setup\n"
+                "Welcome to the session setup wizard. First, select the channel where session messages will be sent."
+            ),
+            discord.ui.Separator(),
+            discord.ui.ActionRow(ch),
+        )
+        msg = await ctx.reply(view=(view := discord.ui.LayoutView().add_item(cont)))
+        await view.wait()
+        channel_id = ch.values[0].id
+
+        vote_options = [3, 5, 8, 10, 15, 20]
+        sel = CustomDropdown(
+            ctx.author.id,
+            [discord.SelectOption(label=str(v), value=str(v)) for v in vote_options],
+        )
+        cont = discord.ui.Container(
+            discord.ui.TextDisplay(
+                "### Required Votes\n"
+                "How many votes should be required before a session can start?"
+            ),
+            discord.ui.Separator(),
+            discord.ui.ActionRow(sel),
+        )
+        await msg.edit(view=(view := discord.ui.LayoutView().add_item(cont)))
+        await view.wait()
+        required_votes = int(sel.values[0])
+
+        guild_id = ctx.guild.id
+        vote_json = json.dumps({
+            "content": "",
+            "components": [
+                {
+                    "type": 1,
+                    "components": [
+                        {"type": 2, "label": f"0/{required_votes}", "style": 1, "custom_id": f"vote_button:{guild_id}"},
+                        {"type": 2, "label": "View Votes", "style": 2, "custom_id": f"view_votes_button:{guild_id}"},
+                    ],
+                }
+            ],
+            "embeds": [
+                {
+                    "title": "Session Vote",
+                    "description": "{user} has started a session vote! **{required_members}** votes are required.",
+                    "color": BLANK_COLOR,
+                }
+            ],
+        })
+        start_json = json.dumps({
+            "content": "",
+            "components": [
+                {
+                    "type": 1,
+                    "components": [
+                        {"type": 2, "label": "Join Server", "style": 5, "url": "https://erlc.gg/join/{erlc.code}"},
+                    ],
+                }
+            ],
+            "embeds": [
+                {
+                    "title": "Session Started",
+                    "description": "A session has been started by {user}.\n\n**Players:** {erlc.players}",
+                    "color": BLANK_COLOR,
+                }
+            ],
+        })
+        shutdown_json = json.dumps({
+            "embeds": [
+                {
+                    "title": "Session Ended",
+                    "description": "The session has been ended by {user}.\n\n**Max Players:** {erlc.max_players}",
+                    "color": BLANK_COLOR,
+                }
+            ],
+        })
+
+        settings["sessions"] = {
+            "channel_id": channel_id,
+            "required_votes_default": required_votes,
+            "dynamic_button": True,
+            "vote_button_label": "vote",
+            "vote": vote_json,
+            "start": start_json,
+            "shutdown": shutdown_json,
+        }
+        await self.bot.settings.update(settings)
+
+        cont = discord.ui.Container(
+            discord.ui.TextDisplay(
+                "### Setup Complete\n"
+                f"Sessions will be sent to <#{channel_id}> with **{required_votes}** votes required.\n\n"
+                "Default vote, start, and end messages have been created. Use `session config` to customise them."
+            ),
+        )
+        await msg.edit(view=discord.ui.LayoutView().add_item(cont))
+
     @session.command(name = "config", description = "Manage the session config")
     @is_management()
     @require_settings()
