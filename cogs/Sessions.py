@@ -166,7 +166,7 @@ class Sessions(commands.Cog):
             info = await self.bot.prc_api.get_server_status(ctx.guild.id)
         except:
             info = None
-        if not sessions["settings"].get("vote"):
+        if not sessions["settings"].get("start"):
             return await ctx.reply(embed=discord.Embed(title = "No Start Message", description="There has been no start message configured"))
         if "{erlc.players}" in settings["sessions"]["start"]: session["dynamic"] = True
         d = settings["sessions"]["start"].replace(
