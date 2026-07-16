@@ -319,10 +319,13 @@ class Sessions(commands.Cog):
             )
             
             if not msg:
-                msg = await ctx.reply(view = (view := discord.ui.LayoutView().add_item(cont)))
+                msg = await ctx.reply(view = (view := discord.ui.LayoutView(timeout=None).add_item(cont)))
             else:
-                await msg.edit(view = (view := discord.ui.LayoutView().add_item(cont)))
-            await view.wait()
+                await msg.edit(view = (view := discord.ui.LayoutView(timeout=None).add_item(cont)))
+            w = await view.wait()
+            if not w:
+                continue
+            del w
             match sel.values[0]:
                 case "channel":
                     ch = SimpleTextChannelSelect(default_values=[discord.SelectDefaultValue(id=settings["sessions"].get("channel_id", 0), type=discord.SelectDefaultValueType.channel)])
@@ -334,9 +337,8 @@ class Sessions(commands.Cog):
                         discord.ui.Separator(),
                         discord.ui.ActionRow(ch)
                     )
-                    await msg.edit(view = (view := discord.ui.LayoutView().add_item(cont)))
+                    await msg.edit(view = (view := discord.ui.LayoutView(timeout=None).add_item(cont)))
                     await view.wait()
-                    print("e")
                     settings['sessions']["channel_id"] = ch.values[0].id
                 case "other":
                     modal = CustomModalButton(
@@ -380,7 +382,7 @@ class Sessions(commands.Cog):
                         discord.ui.Separator(),
                         discord.ui.ActionRow(modal)
                     )
-                    await msg.edit(view = (view := discord.ui.LayoutView().add_item(cont)))
+                    await msg.edit(view = (view := discord.ui.LayoutView(timeout=None).add_item(cont)))
                     await view.wait()
                     settings["sessions"]["vote_button_name"] = modal.values[0]
                     settings["sessions"]["required_votes_default"] = modal.values[1]
