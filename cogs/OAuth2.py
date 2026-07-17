@@ -52,7 +52,7 @@ class OAuth2(commands.Cog):
             "view": AccountLinkingMenu(self.bot, ctx.author, ctx.interaction),
         }
 
-        await self.bot.pending_oauth2.db.insert_one({"discord_id": ctx.author.id})
+        await self.bot.pending_oauth2.db.insert_one({"discord_id": ctx.author.id, "created_at": datetime.datetime.utcnow()})
 
         if msg is None:
             msg = await ctx.send(**verification_message)
@@ -73,7 +73,8 @@ class OAuth2(commands.Cog):
                             title=f"{self.bot.emoji_controller.get_emoji('success')} Linked",
                             description="Your Roblox account has been successfully linked to ERM.",
                             color=GREEN_COLOR,
-                        )
+                        ),
+                        view=None,
                     )
                     break
             else:
@@ -90,7 +91,8 @@ class OAuth2(commands.Cog):
                                 title=f"{self.bot.emoji_controller.get_emoji('success')} Linked",
                                 description="Your Roblox account has been successfully linked to ERM.",
                                 color=GREEN_COLOR,
-                            )
+                            ),
+                            view=None
                         )
                         break
                 else:
