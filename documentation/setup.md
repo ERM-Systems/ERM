@@ -14,16 +14,62 @@ or self-hosted use.
 - A Discord application with a bot token  
 - `pip` or `pipenv`
 
+Or, with Docker:
+- Docker and Docker Compose
+
 ---
 
 ## Installation
 
+### Manual
+
 Clone the repository and install dependencies:
 
 ```bash
-git clone https://github.com/mikeywhiston/erm
+git clone https://github.com/ERM-Systems/ERM
 cd erm
 pip install -r requirements.txt
+```
+
+### Docker
+
+Clone the repository:
+
+```bash
+git clone https://github.com/ERM-Systems/ERM
+cd erm
+```
+
+Build and start the bot with MongoDB:
+
+```bash
+docker compose up -d --build
+```
+
+This starts two containers:
+- **bot** — The ERM bot
+- **mongo** — MongoDB 7 with a persistent volume
+
+The bot waits for MongoDB to pass its healthcheck before starting.
+`MONGO_URL` is automatically set to `mongodb://mongo:27017` by the
+compose file — you do not need to set it in `.env`.
+
+View logs:
+
+```bash
+docker compose logs -f bot
+```
+
+Stop and remove containers:
+
+```bash
+docker compose down
+```
+
+Stop and remove containers **and** database data:
+
+```bash
+docker compose down -v
 ```
 
 ---
