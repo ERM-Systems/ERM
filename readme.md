@@ -7,6 +7,25 @@
 
 <p align="center">Emergency Response Management (ERM for short) is a bot designed for servers within the Roblox roleplay community. This repository contains all necessary information and resources for the bot. </p>
 
+## Quick Start
+
+### Manual
+
+```bash
+pip install -r requirements.txt
+cp .env.template .env   # fill in MONGO_URL, bot token, ENVIRONMENT
+python main.py
+```
+
+### Docker
+
+```bash
+cp .env.template .env   # fill in bot token, ENVIRONMENT (MONGO_URL is set automatically)
+docker compose up -d --build
+```
+
+This starts the bot and a MongoDB 7 instance. Data persists in a Docker volume.
+
 ## Essential Links
 - [Bot Invitation](https://discord.com/api/oauth2/authorize?client_id=978662093408591912&permissions=8&scope=applications.commands%20bot)
 - [Support Server](https://discord.gg/FAC629TzBy)
