@@ -141,8 +141,9 @@ class Bot(commands.AutoShardedBot):
         # Else fall back to the original
         if user.id == 1394817794427846737:
             return True
-        else:
-            return False
+
+        return await super().is_owner(user)
+        
 
     async def setup_hook(self) -> None:
         self.external_http_sessions: list[aiohttp.ClientSession] = []
