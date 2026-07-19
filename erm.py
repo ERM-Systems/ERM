@@ -139,7 +139,7 @@ class Bot(commands.AutoShardedBot):
         # IDs are a security vulnerability.
 
         # Else fall back to the original
-        if user.id == 1394817794427846737:
+        if user.id == 803488329307258921:
             return True
         else:
             return False
