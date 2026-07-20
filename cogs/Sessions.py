@@ -138,7 +138,7 @@ class Sessions(commands.Cog):
             settings["sessions"].get("vote_button_label", "vote") if not settings["sessions"].get("dynamic_button") else f"0/{session_data["required_votes"]}"
         ).replace(
             "{required_members}",
-            str(required_votes or settings["sessions"]["required_votes_default"] or 5)
+            str(required_votes or settings["sessions"].get("required_votes_default") or 5)
         )
         j = json.loads(d)
         if settings["sessions"].get("dynamic_button"):
