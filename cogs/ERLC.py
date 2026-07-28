@@ -1414,28 +1414,37 @@ class ERLC(commands.Cog):
         players_not_found = [player for player, member in players_to_members.items() if not member]
         is_staff = {member: await staff_check(self.bot, ctx.guild, member) for member in players_found.values()}
 
-        class CheckContainer(discord.ui.Container):
-            in_discord = discord.ui.TextDisplay(
-                content="### Players in Discord\n"
-                        + "\n".join(
-                            [f"> {member.mention} - [{player.username}](https://roblox.com/users/{player.id}/profile) {'**(Server Booster)**' if 'Server Booster' in [i.name for i in member.roles] else ''} {'**(Staff)**' if is_staff[member] else ''}"
-                            for player, member in players_found.items()]
-                        )
-            )
+        found_lines = [
+            f"> {member.mention} - [{player.username}](https://roblox.com/users/{player.id}/profile) {'**(Server Booster)**' if 'Server Booster' in [i.name for i in member.roles] else ''} {'**(Staff)**' if is_staff[member] else ''}"
+            for player, member in players_found.items()
+        ]
+        not_found_lines = [
+            f"> [{player.username}](https://roblox.com/users/{player.id}/profile)"
+            for player in players_not_found
+        ]
 
-            separator = discord.ui.Separator(
-                spacing=discord.SeparatorSpacing.large
-            )
+        def truncate_lines(header, lines, char_budget):
+            text = header
+            included = 0
+            for line in lines:
+                if len(text) + len(line) + 1 > char_budget:
+                    break
+                text += line + "\n"
+                included += 1
+            remaining = len(lines) - included
+            if remaining > 0:
+                text += f"> *... and {remaining} more*\n"
+            return text
 
-            not_in_discord = discord.ui.TextDisplay(
-                content="### Players Not in Discord\n"
-                        + "\n".join(
-                            [f"> [{player.username}](https://roblox.com/users/{player.id}/profile)"
-                            for player in players_not_found]
-                )
-            )
+        found_text = truncate_lines("### Players in Discord\n", found_lines, 1900)
+        not_found_text = truncate_lines("### Players Not in Discord\n", not_found_lines, 1900)
 
-        view.add_item(CheckContainer())
+        cont = discord.ui.Container(
+            discord.ui.TextDisplay(content=found_text),
+            discord.ui.Separator(spacing=discord.SeparatorSpacing.large),
+            discord.ui.TextDisplay(content=not_found_text),
+        )
+        view.add_item(cont)
         await ctx.send(
             view=view,
             allowed_mentions=discord.AllowedMentions.none()
