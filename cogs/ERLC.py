@@ -1445,6 +1445,7 @@ class ERLC(commands.Cog):
         name="refresh", description="Refresh the author in the ER:LC server."
     )
     @is_erlc_server_linked()
+    @commands.cooldown(2, 30, commands.BucketType.user)
     async def refresh(self, ctx: commands.Context):
         settings = await self.bot.settings.find_by_id(ctx.guild.id) or {}
         erlc_settings = settings.get("ERLC", {})
