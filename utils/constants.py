@@ -51,6 +51,12 @@ base_configuration = {
         "sts": {"enabled": False, "channel": None},
         "priority": {"enabled": False, "channel": None},
     },
+    "weekly_digest": {
+        "enabled": False,
+        "channel": None,
+        "day": 0,
+        "hour": 12,
+    },
     "ERLC": {
         "player_logs": None,
         "kill_logs": None,
