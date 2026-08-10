@@ -23,6 +23,9 @@ The CC BY-NC-SA license requires the following elements:
 - NC: The material can only be used for non-commercial purposes
 - SA: Adaptations must be licensed under the same terms
 
+> [!CAUTION]
+> PRs that are 60% or more AI generated, or entirely AI generated, will be denied due to conflicting with copyright. Both lawsuits say copyrighted material requires human creativity. See *Feist Publications, Inc. v. Rural Telephone Service Co.*, 499 U.S. 340 (1991); *Thaler v. Perlmutter*, 606 U.S. __ (2026).
+
 
 [![Better Stack Badge](https://uptime.betterstack.com/status-badges/v1/monitor/insx.svg)](https://uptime.betterstack.com/?utm_source=status_badge)
 [![CodeFactor](https://www.codefactor.io/repository/github/mikeyusersrec/erm/badge)](https://www.codefactor.io/repository/github/mikeyusersrec/erm)

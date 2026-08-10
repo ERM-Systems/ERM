@@ -16,6 +16,15 @@ This document covers the process for contributing to ERM.
 
 ---
 
+## AI-Generated Content Policy
+
+If 60% or more of a PR is AI generated, or if a whole PR is AI  
+generated, it will be denied due to it conflicting with copyright.  
+Both lawsuits say copyrighted material requires human creativity.  
+See *Feist Publications, Inc. v. Rural Telephone Service Co.*, 499 U.S. 340 (1991); *Thaler v. Perlmutter*, 606 U.S. __ (2026).
+
+---
+
 ## Workflow
 
 1. Fork the repository and create a branch from `Development`.  
