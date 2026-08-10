@@ -24,7 +24,7 @@ The CC BY-NC-SA license requires the following elements:
 - SA: Adaptations must be licensed under the same terms
 
 > [!CAUTION]
-> PRs that are 60% or more AI generated, or entirely AI generated, will be denied due to conflicting with copyright. Both lawsuits say copyrighted material requires human creativity. See *Feist Publications, Inc. v. Rural Telephone Service Co.*, 499 U.S. 340 (1991); *Thaler v. Perlmutter*, 606 U.S. __ (2026).
+> PRs that are 60% or more AI generated, or entirely AI generated, will be denied due to conflicting with copyright. Both lawsuits say copyrighted material requires human creativity. See *Feist Publications, Inc. v. Rural Telephone Service Co.*, 499 U.S. 340 (1991); *Thaler v. Perlmutter*, 606 U.S. __ (2026); Berne Convention (1886); WIPO Copyright Treaty (1996); TRIPS (1994); CJEU *Infopaq* (C-5/08); CJEU *Painer* (C-145/10).
 
 
 [![Better Stack Badge](https://uptime.betterstack.com/status-badges/v1/monitor/insx.svg)](https://uptime.betterstack.com/?utm_source=status_badge)
