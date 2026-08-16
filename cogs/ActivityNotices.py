@@ -20,6 +20,8 @@ from utils.constants import BLANK_COLOR, GREEN_COLOR
 from utils.paginators import CustomPage, SelectPagination
 from utils.timestamp import td_format
 from utils.utils import (
+    activity_notice_channel,
+    activity_notice_enabled,
     invis_embed,
     removesuffix,
     require_settings,
@@ -149,7 +151,7 @@ class ActivityCoreCommands:
             or not settings.get("staff_management", {}).get(
                 f"{request_type_object.lower()}_role", None
             )
-            or not settings.get("staff_management", {}).get("channel")
+            or not activity_notice_channel(settings, request_type_object)
         ):
             await ctx.send(
                 embed=discord.Embed(
@@ -162,7 +164,7 @@ class ActivityCoreCommands:
 
         try:
             staff_channel = await ctx.guild.fetch_channel(
-                settings["staff_management"]["channel"]
+                activity_notice_channel(settings, request_type_object)
             )
         except Exception as _:
             return await ctx.send(
@@ -478,7 +480,7 @@ class ActivityCoreCommands:
             or not settings.get("staff_management", {}).get(
                 f"{request_type_object.lower()}_role", None
             )
-            or not settings.get("staff_management", {}).get("enabled")
+            or not activity_notice_enabled(settings, request_type_object)
         ):
             await ctx.send(
                 embed=discord.Embed(
@@ -494,10 +496,18 @@ class ActivityCoreCommands:
         else:
             member = ctx.author
 
-        try:
-            staff_channel = await ctx.guild.fetch_channel(
-                settings["staff_management"]["channel"]
+        notice_channel = activity_notice_channel(settings, request_type_object)
+        if not notice_channel:
+            return await ctx.send(
+                embed=discord.Embed(
+                    title="Channel Not Found",
+                    description=f"Activity Notice channel was not found.",
+                    color=BLANK_COLOR,
+                )
             )
+
+        try:
+            staff_channel = await ctx.guild.fetch_channel(notice_channel)
         except discord.NotFound:
             return await ctx.send(
                 embed=discord.Embed(

@@ -677,8 +677,9 @@ class APIRoutes:
             config.get("staff_management", {}).get(f"{s_loa['type']}_role", []) or []
         )
 
+        event = "ra_accept" if s_loa["type"].upper() == "RA" else "loa_accept"
         self.bot.dispatch(
-            "loa_accept", s_loa=s_loa, role_ids=roles, accepted_by=accepted_by
+            event, s_loa=s_loa, role_ids=roles, accepted_by=accepted_by
         )
 
         return 200
@@ -705,7 +706,8 @@ class APIRoutes:
                 status_code=400, detail="This LOA has already been accepted."
             )
 
-        self.bot.dispatch("loa_deny", s_loa=s_loa, denied_by=denied_by, reason=reason)
+        event = "ra_deny" if s_loa["type"].upper() == "RA" else "loa_deny"
+        self.bot.dispatch(event, s_loa=s_loa, denied_by=denied_by, reason=reason)
 
         return 200
 
