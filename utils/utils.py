@@ -233,6 +233,34 @@ def time_converter(parameter: str) -> int:
     raise ValueError("Invalid time format")
 
 
+def activity_notice_enabled(settings: dict, request_type: str) -> bool:
+    """Whether a notice type is enabled.
+
+    Reduced Activity has its own toggle; servers that never set one fall back to
+    the LOA toggle it used to share.
+    """
+    staff_management = (settings or {}).get("staff_management") or {}
+    reduced_activity = (settings or {}).get("reduced_activity") or {}
+
+    if (request_type or "").upper() == "RA" and "enabled" in reduced_activity:
+        return bool(reduced_activity["enabled"])
+    return bool(staff_management.get("enabled"))
+
+
+def activity_notice_channel(settings: dict, request_type: str) -> int:
+    """Where a notice type is posted.
+
+    Reduced Activity has its own channel, kept separate from the LOA channel. If
+    it is cleared, Reduced Activity requests have nowhere to go and are refused.
+    """
+    staff_management = (settings or {}).get("staff_management") or {}
+    reduced_activity = (settings or {}).get("reduced_activity") or {}
+
+    if (request_type or "").upper() == "RA":
+        return reduced_activity.get("channel") or 0
+    return staff_management.get("channel") or 0
+
+
 class GuildCheckFailure(commands.CheckFailure):
     pass
 

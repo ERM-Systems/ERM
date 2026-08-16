@@ -6673,6 +6673,76 @@ class RAConfiguration(AssociationConfigurationView):
             f"RA Role Set: {', '.join([f'<@&{i.id}>' for i in select.values])}.",
         )
 
+    @discord.ui.select(
+        cls=discord.ui.ChannelSelect,
+        placeholder="RA Channel",
+        row=1,
+        max_values=1,
+        channel_types=[discord.ChannelType.text],
+    )
+    async def ra_channel_select(
+        self, interaction: discord.Interaction, select: discord.ui.ChannelSelect
+    ):
+        value = await self.interaction_check(interaction)
+        if not value:
+            return
+
+        await interaction.response.defer()
+        guild_id = interaction.guild.id
+
+        bot = self.bot
+        sett = await bot.settings.find_by_id(guild_id)
+        sett.setdefault("reduced_activity", {})["channel"] = select.values[0].id
+        await bot.settings.update_by_id(sett)
+        await config_change_log(
+            self.bot,
+            interaction.guild,
+            interaction.user,
+            f"RA Channel has been set to <#{select.values[0].id}>.",
+        )
+
+    @discord.ui.select(
+        placeholder="RA Requests",
+        row=0,
+        options=[
+            discord.SelectOption(
+                label="Enabled",
+                value="enabled",
+                description="RA Requests are enabled.",
+            ),
+            discord.SelectOption(
+                label="Disabled",
+                value="disabled",
+                description="RA Requests are disabled.",
+            ),
+        ],
+        max_values=1,
+    )
+    async def ra_enabled_select(
+        self, interaction: discord.Interaction, select: discord.ui.Select
+    ):
+        value = await self.interaction_check(interaction)
+        if not value:
+            return
+
+        await interaction.response.defer()
+        guild_id = interaction.guild.id
+
+        bot = self.bot
+        sett = await bot.settings.find_by_id(guild_id)
+        sett.setdefault("reduced_activity", {})["enabled"] = bool(
+            select.values[0] == "enabled"
+        )
+        await bot.settings.update_by_id(sett)
+        await config_change_log(
+            self.bot,
+            interaction.guild,
+            interaction.user,
+            f"RA Requests have been {'enabled' if select.values[0] == 'enabled' else 'disabled'}.",
+        )
+        for i in select.options:
+            i.default = False
+
 
 class ExtendedPunishmentConfiguration(AssociationConfigurationView):
     def __init__(self, *args, **kwargs):
