@@ -20,8 +20,6 @@ from utils.constants import BLANK_COLOR, GREEN_COLOR
 from utils.paginators import CustomPage, SelectPagination
 from utils.timestamp import td_format
 from utils.utils import (
-    activity_notice_channel,
-    activity_notice_enabled,
     invis_embed,
     removesuffix,
     require_settings,
@@ -146,12 +144,19 @@ class ActivityCoreCommands:
                 )
             )
 
+        notice_settings = settings.get(
+            "reduced_activity"
+            if request_type_object.upper() == "RA"
+            else "staff_management",
+            {},
+        )
+
         if (
             not settings.get("staff_management")
             or not settings.get("staff_management", {}).get(
                 f"{request_type_object.lower()}_role", None
             )
-            or not activity_notice_channel(settings, request_type_object)
+            or not notice_settings.get("channel")
         ):
             await ctx.send(
                 embed=discord.Embed(
@@ -163,9 +168,7 @@ class ActivityCoreCommands:
             return
 
         try:
-            staff_channel = await ctx.guild.fetch_channel(
-                activity_notice_channel(settings, request_type_object)
-            )
+            staff_channel = await ctx.guild.fetch_channel(notice_settings["channel"])
         except Exception as _:
             return await ctx.send(
                 embed=discord.Embed(
@@ -475,12 +478,19 @@ class ActivityCoreCommands:
         starting: str = None,
     ):
         settings = await self.bot.settings.find_by_id(ctx.guild.id)
+        notice_settings = settings.get(
+            "reduced_activity"
+            if request_type_object.upper() == "RA"
+            else "staff_management",
+            {},
+        )
+
         if (
             not settings.get("staff_management")
             or not settings.get("staff_management", {}).get(
                 f"{request_type_object.lower()}_role", None
             )
-            or not activity_notice_enabled(settings, request_type_object)
+            or not notice_settings.get("enabled")
         ):
             await ctx.send(
                 embed=discord.Embed(
@@ -496,18 +506,8 @@ class ActivityCoreCommands:
         else:
             member = ctx.author
 
-        notice_channel = activity_notice_channel(settings, request_type_object)
-        if not notice_channel:
-            return await ctx.send(
-                embed=discord.Embed(
-                    title="Channel Not Found",
-                    description=f"Activity Notice channel was not found.",
-                    color=BLANK_COLOR,
-                )
-            )
-
         try:
-            staff_channel = await ctx.guild.fetch_channel(notice_channel)
+            staff_channel = await ctx.guild.fetch_channel(notice_settings.get("channel"))
         except discord.NotFound:
             return await ctx.send(
                 embed=discord.Embed(
