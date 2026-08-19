@@ -82,6 +82,7 @@ class OnInfractionCreate(commands.Cog):
                 "{guild.icon}": str(guild.icon.url) if guild.icon else "",
                 "{reason}": infraction_doc["reason"],
                 "{type}": infraction_doc["type"],
+                "{id}": str(infraction_doc.get("_id", "")),
                 "{issuer}": f"<@{infraction_doc.get('issuer_id', '0')}>",
                 "{issuer.id}": str(infraction_doc.get("issuer_id", "0")),
                 "{issuer.name}": issuer.name if issuer else "Unknown",
