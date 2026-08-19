@@ -338,6 +338,7 @@ class Infractions(commands.Cog):
         existing_count = 0
         original_type = type
         current_type = type
+        original_config = infraction_config
         
         embed2 = discord.Embed(
                 title=f"{self.bot.emoji_controller.get_emoji('success')} Infraction Issued",
@@ -353,6 +354,7 @@ class Infractions(commands.Cog):
             will_escalate = False
             existing_count = 0
             current_type = original_type
+            infraction_config = original_config
             # Create infraction document
             
             if infraction_config.get("escalation"):
@@ -391,7 +393,6 @@ class Infractions(commands.Cog):
                         break
 
             if will_escalate:
-                type = current_type
                 reason = (
                     f"{reason}\n\nEscalated from {original_type} after reaching threshold"
                 )
@@ -401,8 +402,8 @@ class Infractions(commands.Cog):
                 "user_id": user.id,
                 "username": user.name,
                 "guild_id": ctx.guild.id,
-                "type": type,
-                "original_type": None,
+                "type": current_type,
+                "original_type": original_type if will_escalate else None,
                 "reason": reason,
                 "notes": notes,
                 "timestamp": datetime.datetime.now(tz=pytz.UTC).timestamp(),
@@ -418,7 +419,7 @@ class Infractions(commands.Cog):
                 name="Details",
                 value=(
                     f"> **User:** {target_name}\n"
-                    f"> **Type:** {type}\n"
+                    f"> **Type:** {current_type}\n"
                     f"> **Reason:** {reason}\n"
                     f"> **Issued By:** {ctx.author.mention}\n"
                     f"> **Date:** <t:{int(infraction_doc['timestamp'])}:F>\n"
@@ -452,7 +453,7 @@ class Infractions(commands.Cog):
                 pass
             embed = discord.Embed(title = "You've been infracted", description=(
                     f"You were infracted in {ctx.guild.name}. Please refer below for more information.\n"
-                    f"> **Type:** {type}\n"
+                    f"> **Type:** {current_type}\n"
                     f"> **Reason:** {reason}\n"
                     f"> **Notes:** {notes}\n"
                     f"> **Issued By:** {ctx.author.mention}\n"
