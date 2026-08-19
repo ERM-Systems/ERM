@@ -111,7 +111,7 @@ def count_erlc_owners(players: list[Player]):
 
 def count_erlc_queue(
     queue: list[Player],
-):  # this one isnt supported for maple county yet
+):
     return len(queue)
 
 
@@ -191,12 +191,12 @@ operator_table = {
 }
 
 variable_table = [
-    "ERLC_Players",  # these obviously still work for maple county as well
+    "ERLC_Players",
     "ERLC_Moderators",
     "ERLC_Admins",
     "ERLC_Owner",
     "ERLC_Staff",
-    "ERLC_Queue",  # this doesnt work for maple county :(
+    "ERLC_Queue",
     "ERLC_Police",
     "ERLC_Sheriff",
     "ERLC_Fire",

@@ -86,10 +86,6 @@ Required only for Activity Report and Duty Leaderboard spreadsheet exports:
   `CLIENT_X509_CERT_URL`  
 - `DUTY_LEADERBOARD_ID` / `ACTIVITY_REPORT_ID` — Google Sheets document IDs  
 
-### Optional — MC API
-
-- `MC_API_URL` / `MC_API_KEY` — Used by the MapleCounty integration
-
 ### Optional — Reserved
 
 - `GITHUB_TOKEN` — Reserved for future use, not currently used by the bot  

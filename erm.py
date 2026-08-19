@@ -8,14 +8,12 @@ import re
 from collections import defaultdict
 import asyncio
 
-from datamodels.MapleKeys import MapleKeys
 from datamodels.Whitelabel import Whitelabel
 
 from utils.accounts import Accounts
 from utils.emojis import EmojiController
 
 from utils.log_tracker import LogTracker
-from utils.mc_api import MCApiClient
 from utils.mongo import Document
 
 import aiohttp
@@ -191,8 +189,6 @@ class Bot(commands.AutoShardedBot):
             self.punishments = Warnings(self)
             self.settings = Settings(self.db, "settings")
             self.server_keys = ServerKeys(self.db, "server_keys")
-            self.maple_county = self.mongo[f"{f"{dbname}_" if dbname != "erm" else ""}MapleCounty"]
-            self.mc_keys = MapleKeys(self.maple_county, "Auth")
             self.sessions = Document(self.db, "sessions")
             
             self.staff_connections = StaffConnections(self.db, "staff_connections")
@@ -214,9 +210,6 @@ class Bot(commands.AutoShardedBot):
                     "PRC_API_URL", default="https://api.erlc.gg/v2"
                 ),
                 api_key=config("PRC_API_KEY", default=None),
-            )
-            self.mc_api = MCApiClient(
-                self, base_url=config("MC_API_URL"), api_key=config("MC_API_KEY")
             )
             self.bloxlink = Bloxlink(self, config("BLOXLINK_API_KEY"))
 

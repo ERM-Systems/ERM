@@ -49,7 +49,6 @@ They are loaded automatically on startup via `pkgutil.iter_modules`.
 | `GameLogging` | In-game event log forwarding to Discord channels |
 | `Infractions` | Staff infraction tracking and management |
 | `Jishaku` | Developer/debug REPL |
-| `MC` | MapleCounty game integration |
 | `OAuth2` | Discord OAuth2 flow handling |
 | `Privacy` | User data and consent management |
 | `Punishments` | Player punishment logging (warns, bans, kicks, BOLOs) |
@@ -106,7 +105,6 @@ staggered 2-second delay between each to avoid startup load spikes.
 | `iterate_conditions` | Periodic | Evaluates server conditions and triggers actions |
 | `check_infractions` | Hourly | Reverts expired temporary role changes from infractions |
 | `prc_automations` | Periodic | Runs configured PRC automation rules |
-| `mc_discord_checks` | Periodic | Runs MapleCounty Discord integration checks |
 
 `check_reminders` and `iterate_conditions` are controlled by  
 `REMINDERS_ENABLED` and `ACTIONS_ENABLED` respectively and will not  
@@ -139,7 +137,6 @@ Provides the `Document` base class used by all datamodels. Wraps
 |--------|----------|
 | `api.py` | FastAPI application exposing internal HTTP endpoints |
 | `prc_api.py` | Client for the ER:LC PRC API with typed response models |
-| `mc_api.py` | Client for the MapleCounty API |
 | `utils.py` | General shared helpers used across cogs and tasks |
 | `autocompletes.py` | Discord slash command autocomplete handlers |
 | `conditions.py` | Condition evaluation logic used by the Actions system |
