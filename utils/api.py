@@ -1755,14 +1755,13 @@ class APIRoutes:
                         break
 
             if will_escalate:
-                original_infraction_type = current_type
                 reason = f"{reason}\n\nEscalated from {original_infraction_type} after reaching threshold"
 
             infraction_doc = {
                 "user_id": user_id,
                 "username": username,
                 "guild_id": guild_id,
-                "type": original_infraction_type,
+                "type": current_type,
                 "reason": reason,
                 "timestamp": datetime.datetime.now().timestamp(),
                 "issuer_id": issuer_id,
@@ -1780,7 +1779,7 @@ class APIRoutes:
                 "status": "success",
                 "infraction_id": str(result.inserted_id),
                 "escalated": will_escalate,
-                "type": original_infraction_type,
+                "type": current_type,
             }
 
         except Exception as e:
