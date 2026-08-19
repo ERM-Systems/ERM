@@ -629,7 +629,10 @@ class APIRoutes:
             (code := system_code_gen()),
         )
 
-        staff_channel = settings.get("staff_management").get("channel")
+        staff_channel = settings.get(
+            "reduced_activity" if request_type.upper() == "RA" else "staff_management",
+            {},
+        ).get("channel")
         staff_channel = discord.utils.get(guild.channels, id=staff_channel)
 
         msg = await staff_channel.send(embed=embed, view=view)
@@ -678,9 +681,7 @@ class APIRoutes:
         )
 
         event = "ra_accept" if s_loa["type"].upper() == "RA" else "loa_accept"
-        self.bot.dispatch(
-            event, s_loa=s_loa, role_ids=roles, accepted_by=accepted_by
-        )
+        self.bot.dispatch(event, s_loa=s_loa, role_ids=roles, accepted_by=accepted_by)
 
         return 200
 

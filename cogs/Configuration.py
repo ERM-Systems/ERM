@@ -32,13 +32,7 @@ from menus import (
 )
 from ui.MapleCounty import MapleCountyConfiguration
 from utils.paginators import CustomPage, SelectPagination
-from utils.utils import (
-    activity_notice_channel,
-    activity_notice_enabled,
-    require_settings,
-    generator,
-    log_command_usage,
-)
+from utils.utils import require_settings, generator, log_command_usage
 
 
 class Configuration(commands.Cog):
@@ -752,7 +746,7 @@ class Configuration(commands.Cog):
                         ["CUSTOM_CONF", {"_FIND_BY_LABEL": True}],
                         (
                             "Enabled"
-                            if activity_notice_enabled(settings, "RA")
+                            if settings.get("reduced_activity", {}).get("enabled")
                             else "Disabled"
                         ),
                     ],
@@ -762,11 +756,12 @@ class Configuration(commands.Cog):
                     "RA Channel",
                     [
                         (
-                            discord.utils.get(
-                                ctx.guild.channels,
-                                id=activity_notice_channel(settings, "RA"),
+                            discord.utils.get(ctx.guild.channels, id=channel)
+                            if (
+                                channel := settings.get("reduced_activity", {}).get(
+                                    "channel"
+                                )
                             )
-                            if activity_notice_channel(settings, "RA")
                             else 0
                         )
                     ],
