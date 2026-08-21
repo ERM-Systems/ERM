@@ -20,6 +20,10 @@ base_configuration = {
         "loa_role": [],
         "ra_role": [],
     },
+    "reduced_activity": {
+        "enabled": False,
+        "channel": None,
+    },
     "punishments": {
         "enabled": False,
         "channel": None,

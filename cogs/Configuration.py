@@ -354,18 +354,48 @@ class Configuration(commands.Cog):
 
         ra_requests_settings = discord.ui.View()
 
+        ra_channel_view = ChannelSelect(ctx.author.id, limit=1)
+        ra_channel_select = ra_channel_view.children[0]
+        ra_channel_select.placeholder = "RA Channel"
+        ra_channel_select.row = 1
+
         ra_role_view = RoleSelect(ctx.author.id, limit=1)
         ra_role_select = ra_role_view.children[0]
         ra_role_select.placeholder = "RA Role"
         ra_role_select.row = 2
         ra_role_select.min_values = 0
 
+        ra_enabled_view = CustomSelectMenu(
+            ctx.author.id,
+            [
+                discord.SelectOption(
+                    label="Enabled",
+                    value="enabled",
+                    description="RA Requests are enabled.",
+                ),
+                discord.SelectOption(
+                    label="Disabled",
+                    value="disabled",
+                    description="RA Requests are disabled.",
+                ),
+            ],
+        )
+        ra_enabled_select = ra_enabled_view.children[0]
+        ra_enabled_select.callback = callback_override
+        ra_enabled_select.row = 0
+        ra_enabled_select.placeholder = "RA Requests"
+
         next_view = NextView(bot, ctx.author.id)
         next_button = next_view.children[0]
         next_button.callback = stop_override
         next_button.row = 4
 
-        for item in [ra_role_select, next_button]:
+        for item in [
+            ra_enabled_select,
+            ra_channel_select,
+            ra_role_select,
+            next_button,
+        ]:
             ra_requests_settings.add_item(item)
 
         await msg.edit(
@@ -373,6 +403,8 @@ class Configuration(commands.Cog):
                 title=f"{self.bot.emoji_controller.get_emoji('loa')} RA Requests",
                 description=(
                     "**What are RA Requests?** RA Requests, also called Reduced Activity Requests, are a form of Leave of Absence where the staff member isn't required to complete the full quota, but expects that they will be able to complete it partially.\n\n"
+                    "**Enabled:** This setting enables or disables the RA Requests module on its own, separately from LOA Requests.\n\n"
+                    "**RA Channel:** This channel will be where Reduced Activity requests will be logged, and where they will be accepted or denied. This is separate from the LOA Channel. Make sure this is a channel that Administrators can see, so that they can approve RA requests.\n\n"
                     "**RA Role:** This role is given to those who are on Reduced Activity, and is removed when they go off Reduced Activity.\n\n"
                 ),
                 color=blank_color,
@@ -384,12 +416,20 @@ class Configuration(commands.Cog):
         await ra_requests_settings.wait()
 
         for item in ra_requests_settings.children:
-            if isinstance(item, discord.ui.Select) or isinstance(
-                item, discord.ui.RoleSelect
+            if (
+                isinstance(item, discord.ui.Select)
+                or isinstance(item, discord.ui.RoleSelect)
+                or isinstance(item, discord.ui.ChannelSelect)
             ):
                 if len(item.values) > 0:
                     if item.placeholder == "RA Role":
                         modifications["staff_management"]["ra_role"] = item.values[0].id
+                    elif item.placeholder == "RA Channel":
+                        modifications["reduced_activity"]["channel"] = item.values[0].id
+                    elif item.placeholder == "RA Requests":
+                        modifications["reduced_activity"]["enabled"] = bool(
+                            item.values[0] == "enabled"
+                        )
 
         punishment_settings = discord.ui.View()
 
@@ -696,7 +736,38 @@ class Configuration(commands.Cog):
         else:
             ra_roles = [0]
 
-        ra_view = RAConfiguration(bot, ctx.author.id, [("RA Role", ra_roles)])
+        ra_view = RAConfiguration(
+            bot,
+            ctx.author.id,
+            [
+                (
+                    "RA Requests",
+                    [
+                        ["CUSTOM_CONF", {"_FIND_BY_LABEL": True}],
+                        (
+                            "Enabled"
+                            if settings.get("reduced_activity", {}).get("enabled")
+                            else "Disabled"
+                        ),
+                    ],
+                ),
+                ("RA Role", ra_roles),
+                (
+                    "RA Channel",
+                    [
+                        (
+                            discord.utils.get(ctx.guild.channels, id=channel)
+                            if (
+                                channel := settings.get("reduced_activity", {}).get(
+                                    "channel"
+                                )
+                            )
+                            else 0
+                        )
+                    ],
+                ),
+            ],
+        )
 
         roblox_punishments = PunishmentsConfiguration(
             bot,
@@ -1025,7 +1096,7 @@ class Configuration(commands.Cog):
                     description=(
                         "**Enabled:** This setting enables or disables the LOA Requests module. When enabled, this allows your staff members to fill out Leave of Absence requests for your management members to approve.\n\n"
                         "**LOA Role:** This role is given to those who are on Leave of Absence, and is removed when they go off Leave of Absence.\n\n"
-                        "**LOA Channel:** This channel will be where Leave of Absence requests will be logged, and where they will be accepted or denied. Make sure this is a channel that Management members can see, so that they can approve LOA requests."
+                        "**LOA Channel:** This channel will be where Leave of Absence requests will be logged, and where they will be accepted or denied. Make sure this is a channel that Administrators can see, so that they can approve LOA requests."
                     ),
                     color=blank_color,
                 ),

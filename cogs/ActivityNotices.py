@@ -144,12 +144,19 @@ class ActivityCoreCommands:
                 )
             )
 
+        notice_settings = settings.get(
+            "reduced_activity"
+            if request_type_object.upper() == "RA"
+            else "staff_management",
+            {},
+        )
+
         if (
             not settings.get("staff_management")
             or not settings.get("staff_management", {}).get(
                 f"{request_type_object.lower()}_role", None
             )
-            or not settings.get("staff_management", {}).get("channel")
+            or not notice_settings.get("channel")
         ):
             await ctx.send(
                 embed=discord.Embed(
@@ -161,9 +168,7 @@ class ActivityCoreCommands:
             return
 
         try:
-            staff_channel = await ctx.guild.fetch_channel(
-                settings["staff_management"]["channel"]
-            )
+            staff_channel = await ctx.guild.fetch_channel(notice_settings["channel"])
         except Exception as _:
             return await ctx.send(
                 embed=discord.Embed(
@@ -473,12 +478,19 @@ class ActivityCoreCommands:
         starting: str = None,
     ):
         settings = await self.bot.settings.find_by_id(ctx.guild.id)
+        notice_settings = settings.get(
+            "reduced_activity"
+            if request_type_object.upper() == "RA"
+            else "staff_management",
+            {},
+        )
+
         if (
             not settings.get("staff_management")
             or not settings.get("staff_management", {}).get(
                 f"{request_type_object.lower()}_role", None
             )
-            or not settings.get("staff_management", {}).get("enabled")
+            or not notice_settings.get("enabled")
         ):
             await ctx.send(
                 embed=discord.Embed(
@@ -495,9 +507,7 @@ class ActivityCoreCommands:
             member = ctx.author
 
         try:
-            staff_channel = await ctx.guild.fetch_channel(
-                settings["staff_management"]["channel"]
-            )
+            staff_channel = await ctx.guild.fetch_channel(notice_settings.get("channel"))
         except discord.NotFound:
             return await ctx.send(
                 embed=discord.Embed(
