@@ -2,7 +2,6 @@ import datetime
 import logging
 import discord
 from discord.ext import commands
-from discord.http import Route
 from utils.constants import BLANK_COLOR
 
 logger = logging.getLogger(__name__)
@@ -220,15 +219,15 @@ class OnInfractionCreate(commands.Cog):
         if components := config.get("components"):
             if isinstance(destination, (discord.Member, discord.User)):
                 destination = destination.dm_channel or await destination.create_dm()
-            route = Route(
-                "POST", "/channels/{channel_id}/messages", channel_id=destination.id
-            )
-            await self.bot.http.request(
-                route,
-                json={
-                    "flags": 32768,
-                    "components": self.replace_variables(components, variables),
-                },
+            j = {
+                "flags": 32768,
+                "components": self.replace_variables(components, variables),
+            }
+            await self.bot.http.send_message(
+                destination.id,
+                params=discord.http.MultipartParameters(
+                    payload=j, multipart=None, files=None
+                ),
             )
             return
 
