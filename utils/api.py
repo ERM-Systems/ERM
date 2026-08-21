@@ -734,7 +734,7 @@ class APIRoutes:
         embeds = [embed]
 
         for item in json_data["Applicants"]:
-            new_content = f"<@{item['DiscordID']}>\n> Status: **{item['Status']}**\n> Reason: **{item['Reason']}**\n> Submission Time: <t:{int(item['SubmissionTime'])}>\n\n"
+            new_content = f"<@{item['DiscordID']}>\n> Status: **{item['Status'].capitalize()}**\n> Reason: **{item['Reason']}**\n> Submission Time: <t:{int(item['SubmissionTime'])}>\n\n"
 
             current_desc = embeds[-1].description or ""
             if len(current_desc) + len(new_content) > 4000:
