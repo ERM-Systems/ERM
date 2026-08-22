@@ -32,7 +32,11 @@ async def check_whitelabel(bot: Bot):
                     title="Whitelabel Subscription Expired",
                     description="Your whitelabel subscription has expired, therefore, the avatar, banner, and bio will be reset. Please renew your subscription through the web dashboard or open a ticket if you need assistance."
                 ))
-                await bot_member.edit(avatar=None, banner=None, bio=None, nick=None, reason="Whitelabel subscription expired")
+                nick = item["UserData"].get("Nickname") or None
+                if nick:
+                    await bot_member.edit(avatar=None, banner=None, bio=None, nick=None, reason="Whitelabel subscription expired")
+                else:
+                    await bot_member.edit(avatar=None, banner=None, bio=None, reason="Whitelabel subscription expired")
                 return
 
             session = aiohttp.ClientSession()
