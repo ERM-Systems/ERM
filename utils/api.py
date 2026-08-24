@@ -1784,7 +1784,8 @@ class APIRoutes:
                 "escalated": will_escalate,
                 "type": current_type,
             }
-
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Error issuing infraction: {str(e)}")
             raise HTTPException(
