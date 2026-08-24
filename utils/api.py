@@ -93,6 +93,51 @@ class APIRoutes:
                     methods=[i.split("_")[0].upper()],
                 )
 
+    def replace_variables(self, data, variables):
+        if isinstance(data, str):
+            result = data
+            for key, value in variables.items():
+                result = result.replace(key, value)
+            return result
+        elif isinstance(data, dict):
+            result = {}
+            for key, value in data.items():
+                if key == "color" and isinstance(value, (int, float)):
+                    result[key] = int(value)
+                elif isinstance(value, (dict, list)):
+                    result[key] = self.replace_variables(value, variables)
+                elif isinstance(value, str):
+                    result[key] = self.replace_variables(value, variables)
+                else:
+                    result[key] = value
+            return result
+        elif isinstance(data, list):
+            return [self.replace_variables(item, variables) for item in data]
+        return data
+
+    async def _send_notification(self, destination, config, variables):
+        if components := config.get("components"):
+            if isinstance(destination, (discord.Member, discord.User)):
+                destination = destination.dm_channel or await destination.create_dm()
+            j = {
+                "flags": 32768,
+                "components": self.replace_variables(components, variables),
+            }
+            await self.bot.http.send_message(
+                destination.id,
+                params=discord.http.MultipartParameters(
+                    payload=j, multipart=None, files=None
+                ),
+            )
+            return
+
+        content = self.replace_variables(config.get("content", ""), variables)
+        if config.get("embed"):
+            embed = discord.Embed.from_dict(
+                self.replace_variables(config["embed"], variables)
+            )
+            await destination.send(content=content or None, embed=embed)
+
     def GET_status(self):
         return {"guilds": len(self.bot.guilds), "ping": round(self.bot.latency * 1000)}
 
@@ -191,14 +236,36 @@ class APIRoutes:
                     status_code=400, detail=f"Error fetching user: {str(e)}"
                 )
 
-            embed = discord.Embed(
-                title=f"{self.bot.emoji_controller.get_emoji('success')} Application Accepted",
-                description=f"Your application in **{guild.name}** has been accepted. Congratulations!\n\n**Application Information**\n> **Application Name:** {application_name}\n> **Submitted On:** <t:{submitted_on}>\n> **Note:** {note}",
-                color=GREEN_COLOR,
-            )
+            message_config = json_data.get("message")
+            variables = {
+                "{user}": user.mention,
+                "{user.name}": user.name,
+                "{user.id}": str(user.id),
+                "{user.tag}": str(user),
+                "{application}": str(application_name),
+                "{status}": "Accepted",
+                "{reason}": note,
+                "{guild}": guild.name,
+                "{guild.id}": str(guild.id),
+                "{guild.icon}": str(guild.icon.url) if guild.icon else "",
+                "{submitted}": f"<t:{int(submitted_on)}:F>",
+                "{submitted.relative}": f"<t:{int(submitted_on)}:R>",
+            }
 
             try:
-                await user.send(embed=embed)
+                if message_config and (
+                    message_config.get("content")
+                    or message_config.get("embed")
+                    or message_config.get("components")
+                ):
+                    await self._send_notification(user, message_config, variables)
+                else:
+                    embed = discord.Embed(
+                        title=f"{self.bot.emoji_controller.get_emoji('success')} Application Accepted",
+                        description=f"Your application in **{guild.name}** has been accepted. Congratulations!\n\n**Application Information**\n> **Application Name:** {application_name}\n> **Submitted On:** <t:{submitted_on}>\n> **Note:** {note}",
+                        color=GREEN_COLOR,
+                    )
+                    await user.send(embed=embed)
             except discord.Forbidden:
                 logging.warning(f"Could not send DM to user {user_id}")
 
@@ -294,14 +361,36 @@ class APIRoutes:
                     status_code=400, detail=f"Error fetching user: {str(e)}"
                 )
 
-            embed = discord.Embed(
-                title="Application Denied",
-                description=f"Your application in **{guild.name}** has been denied.\n\n**Application Information**\n> **Application Name:** {application_name}\n> **Submitted On:** <t:{submitted_on}>\n> **Note:** {note}",
-                color=BLANK_COLOR,
-            )
+            message_config = json_data.get("message")
+            variables = {
+                "{user}": user.mention,
+                "{user.name}": user.name,
+                "{user.id}": str(user.id),
+                "{user.tag}": str(user),
+                "{application}": str(application_name),
+                "{status}": "Denied",
+                "{reason}": note,
+                "{guild}": guild.name,
+                "{guild.id}": str(guild.id),
+                "{guild.icon}": str(guild.icon.url) if guild.icon else "",
+                "{submitted}": f"<t:{int(submitted_on)}:F>",
+                "{submitted.relative}": f"<t:{int(submitted_on)}:R>",
+            }
 
             try:
-                await user.send(embed=embed)
+                if message_config and (
+                    message_config.get("content")
+                    or message_config.get("embed")
+                    or message_config.get("components")
+                ):
+                    await self._send_notification(user, message_config, variables)
+                else:
+                    embed = discord.Embed(
+                        title="Application Denied",
+                        description=f"Your application in **{guild.name}** has been denied.\n\n**Application Information**\n> **Application Name:** {application_name}\n> **Submitted On:** <t:{submitted_on}>\n> **Note:** {note}",
+                        color=BLANK_COLOR,
+                    )
+                    await user.send(embed=embed)
             except discord.Forbidden:
                 logging.warning(f"Could not send DM to user {user_id}")
 
@@ -728,6 +817,34 @@ class APIRoutes:
             return HTTPException(status_code=400, detail="Bad Format")
 
         channel = await self.bot.fetch_channel(json_data["Channel"])
+
+        message_config = json_data.get("message")
+        if message_config and (
+            message_config.get("content")
+            or message_config.get("embed")
+            or message_config.get("components")
+        ):
+            guild = getattr(channel, "guild", None)
+            application_name = json_data.get("ApplicationName")
+            for item in json_data["Applicants"]:
+                member = guild.get_member(int(item["DiscordID"])) if guild else None
+                variables = {
+                    "{user}": f"<@{item['DiscordID']}>",
+                    "{user.name}": member.name if member else "",
+                    "{user.id}": str(item["DiscordID"]),
+                    "{user.tag}": str(member) if member else "",
+                    "{application}": str(application_name),
+                    "{status}": str(item["Status"]).capitalize(),
+                    "{reason}": item["Reason"],
+                    "{guild}": guild.name if guild else "",
+                    "{guild.id}": str(guild.id) if guild else "",
+                    "{guild.icon}": str(guild.icon.url) if guild and guild.icon else "",
+                    "{submitted}": f"<t:{int(item['SubmissionTime'])}:F>",
+                    "{submitted.relative}": f"<t:{int(item['SubmissionTime'])}:R>",
+                }
+                await self._send_notification(channel, message_config, variables)
+            return
+
         embed = discord.Embed(
             title="Application Results",
             description=f"The applications for **{json_data['ApplicationName']}** have been released!\n\n",
