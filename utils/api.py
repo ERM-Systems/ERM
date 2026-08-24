@@ -28,7 +28,7 @@ from decouple import config
 import copy
 from menus import LOAMenu
 from utils.constants import BLANK_COLOR, GREEN_COLOR
-from utils.utils import get_elapsed_time, secure_logging
+from utils.utils import get_elapsed_time, secure_logging, staff_rank
 from pydantic import BaseModel
 
 from utils.timestamp import td_format
@@ -1871,6 +1871,12 @@ class APIRoutes:
                 raise HTTPException(status_code=404, detail="Guild not found")
 
             staff_roles = settings.get("staff_management", {}).get("role", [])
+            admin_roles = set(
+                settings.get("staff_management", {}).get("admin_role", []) or []
+            )
+            management_roles = set(
+                settings.get("staff_management", {}).get("management_role", []) or []
+            )
             role_quotas = settings.get("shift_management", {}).get("role_quotas", [])
             general_quota = settings.get("shift_management", {}).get("quota") or 0
 
@@ -1901,10 +1907,13 @@ class APIRoutes:
                 if role:
                     for member in role.members:
                         if member.id not in all_staff:
+                            rank = staff_rank(member, admin_roles, management_roles)
+
                             if omit_loas and member.id in active_loas:
                                 all_staff[member.id] = {
                                     "user_id": member.id,
                                     "username": member.name,
+                                    "rank": rank,
                                     "shift_time": 0,
                                     "required_quota": 0,
                                     "met_quota": True,
@@ -1925,6 +1934,7 @@ class APIRoutes:
                             all_staff[member.id] = {
                                 "user_id": member.id,
                                 "username": member.name,
+                                "rank": rank,
                                 "shift_time": 0,
                                 "required_quota": required_quota,
                                 "met_quota": met_quota,
