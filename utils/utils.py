@@ -399,6 +399,15 @@ async def sub_vars(bot, ctx: commands.Context, channel, string, **kwargs):
         return string
 
 
+def staff_rank(member, admin_roles, management_roles):
+    member_role_ids = {role.id for role in member.roles}
+    if member_role_ids & set(management_roles):
+        return "Management"
+    if member_role_ids & set(admin_roles):
+        return "Administrator"
+    return "Moderator"
+
+
 def get_elapsed_time(document):
     from datamodels.ShiftManagement import ShiftItem
 
