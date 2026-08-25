@@ -1,12 +1,14 @@
 import asyncio
 import base64
 import datetime
+import json
 import logging
 import re
 import typing
 
 import aiohttp
 import discord
+import discord.http
 import pytz
 import requests
 from decouple import config
@@ -102,21 +104,20 @@ async def get_roblox_by_username(user: str, bot, ctx: commands.Context):
             member_converted = await discord.ext.commands.MemberConverter().convert(
                 ctx, user
             )
-            if member_converted:
-                bl_user_data = await bot.bloxlink.find_roblox(member_converted.id)
-                roblox_user = await bot.bloxlink.get_roblox_info(
-                    bl_user_data["robloxID"]
-                )
-                return roblox_user
-        except KeyError:
+        except commands.BadArgument:
             return {"errors": ["Member could not be found in Discord."]}
+
+        roblox_id = await bot.linking.get_roblox_id(member_converted.id)
+        if not roblox_id:
+            return {"errors": ["Member has not linked their Roblox account with ERM."]}
+        return await bot.linking.get_roblox_info(roblox_id)
 
     client = roblox.Client()
     roblox_user = await client.get_user_by_username(user)
     if not roblox_user:
         return {"errors": ["Could not find user"]}
     else:
-        return await bot.bloxlink.get_roblox_info(roblox_user.id)
+        return await bot.linking.get_roblox_info(roblox_user.id)
 
 
 async def staff_check(bot_obj, guild, member):
@@ -183,15 +184,10 @@ async def sync_ingame_permission(bot_obj, guild, member, guild_settings, grant: 
     if not is_admin and not is_mod:
         return
 
-    linked_account = await bot_obj.oauth2_users.db.find_one({"discord_id": member.id})
-    if linked_account:
-        roblox_id = linked_account["roblox_id"]
-    else:
-        bloxlink_user = await bot_obj.bloxlink.find_roblox(member.id)
-        roblox_id = bloxlink_user.get("robloxID") if bloxlink_user else None
-        if not roblox_id:
-            logging.warning(f"Could not resolve Roblox account for {member.id} in {guild.id}, skipping permission sync")
-            return
+    roblox_id = await bot_obj.linking.get_roblox_id(member.id)
+    if not roblox_id:
+        logging.warning(f"Could not resolve Roblox account for {member.id} in {guild.id}, skipping permission sync")
+        return
 
     if is_admin:
         command = f":admin {roblox_id}" if grant else f":unadmin {roblox_id}"
@@ -647,13 +643,13 @@ async def get_discord_by_roblox(bot, username):
     payload = {"usernames": [username], "excludeBannedUsers": True}
     async with aiohttp.ClientSession() as session:
         async with session.post(api_url, json=payload) as response:
-            if response.status == 200:
-                data = (await response.json())["data"][0]
-                roblox_id = data["id"]
-                linked_account = await bot.oauth2_users.db.find_one({"roblox_id": roblox_id})
-                if linked_account:
-                    return linked_account["discord_id"]
-    return None
+            if response.status != 200:
+                return None
+            data = (await response.json()).get("data") or []
+
+    if not data:
+        return None
+    return await bot.linking.get_discord_id(data[0]["id"])
 
 
 async def log_command_usage(bot, guild, member, command_name):
@@ -722,16 +718,26 @@ async def secure_logging(
         channel = await (await bot.fetch_guild(guild_id)).fetch_channel(channel)
     except discord.HTTPException:
         channel = None
-    bloxlink_user = await bot.bloxlink.find_roblox(author_id)
-    if not bloxlink_user: # we'll think of a better solution eventually
+    roblox_id = await bot.linking.get_roblox_id(author_id)
+    if not roblox_id:
         return
+
+    roblox_name = (await bot.linking.get_roblox_info(roblox_id)).get("name", "Unknown")
+    actor = f"[{roblox_name}:{roblox_id}](https://roblox.com/users/{roblox_id}/profile)"
+    if interpret_type == "Message":
+        formatted_command = f"`:m {command_string}`"
+    elif interpret_type == "Hint":
+        formatted_command = f"`:h {command_string}`"
+    else:
+        formatted_command = f"`{command_string}`"
+
     server_status: ServerStatus = await bot.prc_api.get_server_status(guild_id)
     if channel is not None:
         if not attempted:
             await channel.send(
                 embed=discord.Embed(
                     title="Remote Server Logs",
-                    description=f"[{(await bot.bloxlink.get_roblox_info(bloxlink_user['robloxID']))['name']}:{bloxlink_user['robloxID']}](https://roblox.com/users/{bloxlink_user['robloxID']}/profile) used a command: {'`:m {}`'.format(command_string) if interpret_type == 'Message' else ('`:h {}`'.format(command_string) if interpret_type == 'Hint' else '`{}`'.format(command_string))}",
+                    description=f"{actor} used a command: {formatted_command}",
                     color=RED_COLOR,
                 ).set_footer(text=f"Private Server: {server_status.join_key}")
             )
@@ -739,7 +745,209 @@ async def secure_logging(
             await channel.send(
                 embed=discord.Embed(
                     title="Attempted Command Execution",
-                    description=f"[{(await bot.bloxlink.get_roblox_info(bloxlink_user['robloxID']))['name']}:{bloxlink_user['robloxID']}](https://roblox.com/users/{bloxlink_user['robloxID']}/profile) attempted to use the command: {'`:m {}`'.format(command_string) if interpret_type == 'Message' else ('`:h {}`'.format(command_string) if interpret_type == 'Hint' else '`{}`'.format(command_string))}",
+                    description=f"{actor} attempted to use the command: {formatted_command}",
                     color=RED_COLOR,
                 ).set_footer(text=f"Private Server: {server_status.join_key}")
             )
+
+
+def render_session_message(template: str, replacements: dict) -> dict:
+    for token, value in replacements.items():
+        template = template.replace(token, value)
+    return json.loads(template)
+
+
+async def get_session_status(bot, guild_id: int):
+    try:
+        return await bot.prc_api.get_server_status(guild_id)
+    except Exception:
+        return None
+
+
+async def get_session_configuration(bot, guild_id: int, message_type: str) -> dict:
+    settings = await bot.settings.find(guild_id)
+    if not settings or not settings.get("sessions"):
+        raise ValueError("Sessions have not been configured for this server.")
+
+    sessions = settings["sessions"]
+    if not sessions.get("channel_id"):
+        raise ValueError("There is no session channel configured.")
+    if not sessions.get(message_type):
+        raise ValueError(f"There has been no {message_type} message configured.")
+
+    return sessions
+
+
+async def create_session_vote(
+    bot, guild_id: int, user_id: int, required_votes: int | None = None
+) -> int:
+    sessions = await get_session_configuration(bot, guild_id, "vote")
+    if await bot.sessions.find(guild_id):
+        raise ValueError("There is already an active session.")
+
+    required = required_votes or sessions.get("required_votes_default") or 5
+    session = {
+        "_id": guild_id,
+        "user": user_id,
+        "voted_users": [],
+        "started": False,
+        "votes": 0,
+        "required_votes": required,
+        "created_at": int(datetime.datetime.now().timestamp()),
+        "analytics": {"max_players": 0, "player_counts": []},
+    }
+
+    dynamic = sessions.get("dynamic_button")
+    payload = render_session_message(
+        sessions["vote"],
+        {
+            "{user}": f"<@{user_id}>",
+            "{vote_button_name}": f"0/{required}"
+            if dynamic
+            else sessions.get("vote_button_label", "Vote"),
+            "{required_members}": str(required),
+        },
+    )
+    if dynamic:
+        button = next(
+            (
+                component
+                for row in payload.get("components") or []
+                for component in row.get("components") or []
+                if component.get("custom_id") == f"vote_button:{guild_id}"
+            ),
+            None,
+        )
+        if not button:
+            raise ValueError("The vote message needs a vote button for the dynamic button to work.")
+        button["label"] = f"0/{required}"
+
+    message = await bot.http.send_message(
+        sessions["channel_id"],
+        params=discord.http.MultipartParameters(payload=payload, multipart=None, files=None),
+    )
+    session["vote_message"] = message["id"]
+    await bot.sessions.insert(session)
+
+    return sessions["channel_id"]
+
+
+async def disable_vote_button(bot, guild_id: int, sessions: dict, session: dict):
+    if not session.get("vote_message"):
+        return
+
+    try:
+        channel = bot.get_channel(sessions["channel_id"]) or await bot.fetch_channel(
+            sessions["channel_id"]
+        )
+        message = await channel.fetch_message(session["vote_message"])
+
+        view = discord.ui.View.from_message(message)
+        for child in view.walk_children():
+            if isinstance(child, discord.ui.Button) and child.custom_id == f"vote_button:{guild_id}":
+                child.disabled = True
+                await message.edit(view=view)
+                return
+    except Exception as error:
+        logging.warning(f"Could not disable the vote button in {guild_id}: {error}")
+
+
+async def start_session(bot, guild_id: int, user_id: int) -> int:
+    sessions = await get_session_configuration(bot, guild_id, "start")
+    session = await bot.sessions.find(guild_id)
+    if not session:
+        raise ValueError("There is no active session.")
+
+    info = await get_session_status(bot, guild_id)
+    if "{erlc.players}" in sessions["start"]:
+        session["dynamic"] = True
+
+    payload = render_session_message(
+        sessions["start"],
+        {
+            "{user}": f"<@{user_id}>",
+            "{user_mentions}": " | ".join([f"<@{user}>" for user in session["voted_users"]]),
+            "{erlc.name}": info.name if info else "{erlc.name}",
+            "{erlc.code}": info.join_key if info else "{erlc.code}",
+            "{erlc.players}": str(info.current_players) if info else "{erlc.players}",
+        },
+    )
+
+    await disable_vote_button(bot, guild_id, sessions, session)
+
+    message = await bot.http.send_message(
+        sessions["channel_id"],
+        params=discord.http.MultipartParameters(payload=payload, multipart=None, files=None),
+    )
+    session["user"] = f"<@{user_id}>"
+    session["started"] = True
+    session["started_by"] = user_id
+    session["started_at"] = int(datetime.datetime.now().timestamp())
+    session["message"], session["channel"] = message["id"], sessions["channel_id"]
+    await bot.sessions.update(session)
+
+    return sessions["channel_id"]
+
+
+async def monitor_session_logs(bot, guild_id: int, started_at: int, ended_at: int) -> dict:
+    counts = {"commands": 0, "kills": 0, "joins": 0}
+
+    async def within(fetch, key):
+        try:
+            entries = await fetch(guild_id)
+        except Exception:
+            return
+        counts[key] = len(
+            [entry for entry in entries if started_at <= entry.timestamp <= ended_at]
+        )
+
+    await within(bot.prc_api.fetch_server_logs, "commands")
+    await within(bot.prc_api.fetch_kill_logs, "kills")
+    await within(bot.prc_api.fetch_player_logs, "joins")
+
+    return counts
+
+
+async def end_session(bot, guild_id: int, user_id: int) -> int:
+    sessions = await get_session_configuration(bot, guild_id, "shutdown")
+    session = await bot.sessions.find(guild_id)
+    if not session:
+        raise ValueError("There is no active session.")
+
+    info = await get_session_status(bot, guild_id)
+    payload = render_session_message(
+        sessions["shutdown"],
+        {
+            "{user}": f"<@{user_id}>",
+            "{erlc.name}": info.name if info else "{erlc.name}",
+            "{erlc.code}": info.join_key if info else "{erlc.code}",
+            "{erlc.max_players}": str(session.get("analytics", {}).get("max_players", 0)),
+        },
+    )
+
+    await bot.http.send_message(
+        sessions["channel_id"],
+        params=discord.http.MultipartParameters(payload=payload, multipart=None, files=None),
+    )
+
+    ended_at = int(datetime.datetime.now().timestamp())
+    started_at = session.get("started_at") or session.get("created_at") or ended_at
+    analytics = session.get("analytics", {})
+
+    await bot.session_history.insert(
+        {
+            "guild_id": guild_id,
+            "started_by": session.get("started_by") or session.get("user"),
+            "ended_by": user_id,
+            "started_at": started_at,
+            "ended_at": ended_at,
+            "votes": session.get("votes", 0),
+            "voted_users": session.get("voted_users", []),
+            "max_players": analytics.get("max_players", 0),
+            "player_counts": analytics.get("player_counts", []),
+            "logs": await monitor_session_logs(bot, guild_id, started_at, ended_at),
+        }
+    )
+    await bot.sessions.delete(session["_id"])
+
+    return sessions["channel_id"]
