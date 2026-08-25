@@ -72,24 +72,15 @@ class MC(commands.Cog):
     @is_management()
     async def mc_link(self, ctx: commands.Context, *, server_name: str):
         # get the linked roblox user
-        roblox_id = 0
-        oauth2_user = (
-            await self.bot.oauth2_users.db.find_one({"discord_id": ctx.author.id}) or {}
-        )
-        if not oauth2_user.get("roblox_id"):
-            # go to fallback
-            roblox_user = await self.bot.bloxlink.find_roblox(ctx.author.id)
-            if not roblox_user.get("robloxID"):
-                return await ctx.send(
-                    embed=discord.Embed(
-                        title="Not Linked",
-                        description="You are not linked to any ROBLOX account.",
-                        color=BLANK_COLOR,
-                    )
+        roblox_id = await self.bot.linking.get_roblox_id(ctx.author.id)
+        if not roblox_id:
+            return await ctx.send(
+                embed=discord.Embed(
+                    title="Not Linked",
+                    description="You are not linked to any ROBLOX account. Run `/link` to link your account.",
+                    color=BLANK_COLOR,
                 )
-            roblox_id = roblox_user["robloxID"]
-        else:
-            roblox_id = oauth2_user["roblox_id"]
+            )
 
         try:
             server_token = await self.bot.mc_api.authorize(

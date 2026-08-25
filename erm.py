@@ -65,7 +65,7 @@ from datamodels.SavedLogs import SavedLogs
 
 from menus import CompleteReminder, LOAMenu, RDMActions
 from utils.viewstatemanger import ViewStateManager
-from utils.bloxlink import Bloxlink
+from utils.linking import AccountLinking
 from utils.prc_api import PRCApiClient
 from utils.prc_api import ResponseFailure
 from utils.utils import *
@@ -98,7 +98,6 @@ accepted_envs = ["PRODUCTION", "DEVELOPMENT", "ALPHA"]
 
 
 sentry_url = config("SENTRY_URL", "")
-bloxlink_api_key = config("BLOXLINK_API_KEY", "")
 dbname = config("DB_NAME", "erm").replace("$", "").replace(".", "") # Note that $ and . are forbidden chars
 
 discord.utils.setup_logging(level=logging.INFO)
@@ -194,6 +193,7 @@ class Bot(commands.AutoShardedBot):
             self.maple_county = self.mongo[f"{f"{dbname}_" if dbname != "erm" else ""}MapleCounty"]
             self.mc_keys = MapleKeys(self.maple_county, "Auth")
             self.sessions = Document(self.db, "sessions")
+            self.session_history = Document(self.db, "session_history")
             
             self.staff_connections = StaffConnections(self.db, "staff_connections")
             self.ics = IntegrationCommandStorage(self.db, "logged_command_data")
@@ -205,6 +205,7 @@ class Bot(commands.AutoShardedBot):
             self.pending_oauth2 = PendingOAuth2(self.db, "pending_oauth2")
             self.oauth2_users = OAuth2Users(self.db, "oauth2")
 
+            self.linking = AccountLinking(self)
             self.accounts = Accounts(self)
 
             self.roblox = roblox.Client()
@@ -218,7 +219,6 @@ class Bot(commands.AutoShardedBot):
             self.mc_api = MCApiClient(
                 self, base_url=config("MC_API_URL"), api_key=config("MC_API_KEY")
             )
-            self.bloxlink = Bloxlink(self, config("BLOXLINK_API_KEY"))
 
             Extensions = [m.name for m in iter_modules(["cogs"], prefix="cogs.")]
             Events = [m.name for m in iter_modules(["events"], prefix="events.")]
@@ -310,7 +310,6 @@ bot = Bot(
 bot.is_synced = False
 bot.shift_management_disabled = False
 bot.punishments_disabled = False
-bot.bloxlink_api_key = bloxlink_api_key
 environment = config("ENVIRONMENT", default="DEVELOPMENT")
 bot.internal_command_storage = {}
 

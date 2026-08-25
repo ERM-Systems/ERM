@@ -53,16 +53,15 @@ class Search(commands.Cog):
             )
 
         bot = self.bot
-        roblox_user = await bot.bloxlink.find_roblox(user.id)
-        if not roblox_user or not (roblox_user or {}).get("robloxID"):
+        roblox_user = await bot.linking.get_roblox_id(user.id)
+        if not roblox_user:
             return await ctx.send(
                 embed=discord.Embed(
                     title="Could not find user",
-                    description="I could not find this user's ROBLOX account. Ensure that they are linked with Bloxlink and try again.",
+                    description="I could not find this user's ROBLOX account. Ensure that they have linked their account with `/link` and try again.",
                     color=BLANK_COLOR,
                 )
             )
-        roblox_user = roblox_user["robloxID"]
 
         roblox_player = await self.bot.roblox.get_user(roblox_user)
 

@@ -705,45 +705,6 @@ class EnableDisableMenu(discord.ui.View):
         self.stop()
 
 
-class LinkPathwayMenu(discord.ui.View):
-    def __init__(self, user_id):
-        super().__init__(timeout=600.0)
-        self.value = None
-        self.user_id = user_id
-
-    # When the confirm button is pressed, set the inner value to `True` and
-    # stop the View from listening to more input.
-    # We also send the user an ephemeral message that we're confirming their choice.
-    @discord.ui.button(label="ERM", style=discord.ButtonStyle.secondary)
-    async def ERM(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id != self.user_id:
-            await interaction.response.defer(ephemeral=True, thinking=True)
-            await generalised_interaction_check_failure(interaction.followup)
-            return
-        await interaction.response.defer()
-        for item in self.children:
-            item.disabled = True
-        self.value = "erm"
-        await interaction.edit_original_response(view=self)
-        self.stop()
-
-    # This one is similar to the confirmation button except sets the inner value to `False`
-    @discord.ui.button(label="Bloxlink", style=discord.ButtonStyle.danger)
-    async def Bloxlink(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ):
-        if interaction.user.id != self.user_id:
-            await interaction.response.defer(ephemeral=True, thinking=True)
-            await generalised_interaction_check_failure(interaction.followup)
-            return
-        await interaction.response.defer()
-        for item in self.children:
-            item.disabled = True
-        self.value = "bloxlink"
-        await interaction.edit_original_response(view=self)
-        self.stop()
-
-
 class ShiftModify(discord.ui.View):
     def __init__(self, user_id):
         super().__init__(timeout=600.0)

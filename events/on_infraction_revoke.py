@@ -73,11 +73,10 @@ class OnInfractionRevoke(commands.Cog):
                     "remove_ingame_perms", False
                 ):
                     try:
-                        roblox_info = await self.bot.bloxlink.find_roblox(
+                        roblox_id = await self.bot.linking.get_roblox_id(
                             infraction["user_id"]
                         )
-                        if roblox_info and "robloxID" in roblox_info:
-                            roblox_id = roblox_info["robloxID"]
+                        if roblox_id:
                             if member:
                                 await self.bot.prc_api.run_command(
                                     guild.id, f":mod {roblox_id}"

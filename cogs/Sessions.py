@@ -3,12 +3,12 @@ from discord.ext import commands
 from discord import app_commands
 from erm import Bot, is_admin, require_settings, is_management
 from utils.constants import CUSTOM_IDS_FOR_SESSIONS, SESSION_VIEW_TYPES
-import discord.http
 import json
 from menus import CustomDropdown
 from ui.CustomModals import CustomModalButton
 from ui.Sessions import SessionsEmbedCreationView
 from ui.Selects import SimpleTextChannelSelect
+from utils.utils import create_session_vote, end_session, start_session
 import utils.prc_api as prc_api
 import matplotlib.pyplot as plt
 import matplotlib
@@ -107,141 +107,31 @@ class Sessions(commands.Cog):
     @is_admin()
     @app_commands.describe(required_votes="The votes required for the session to start")
     async def _vote(self, ctx: commands.Context, required_votes: int | None=None):
-        settings = await self.bot.settings.find(ctx.guild.id)
-        if not settings:
-            return
-        if await self.bot.sessions.find(ctx.guild.id):
-            return await ctx.reply(embed=discord.Embed(
-                title = "Current Session",
-                description="There is already an active session."
-            ))
-        
-        session_data = {
-            "_id": ctx.guild.id,
-            "user": ctx.author.id,
-            "voted_users": [],
-            "started": False,
-            "votes": 0,
-            "required_votes": required_votes or settings["sessions"].get("required_votes_default") or 5,
-            "analytics": {
-                "max_players": 0,
-                "player_counts": []
-            }
-        }
-        if not settings["sessions"].get("vote"):
-            return await ctx.reply(embed=discord.Embed(title = "No Vote Message", description="There has been no vote message configured"))
-        d = settings["sessions"]["vote"].replace(
-            "{user}",
-            ctx.author.mention
-        ).replace(
-            "{vote_button_name}",
-            settings["sessions"].get("vote_button_label", "vote") if not settings["sessions"].get("dynamic_button") else f"0/{session_data["required_votes"]}"
-        ).replace(
-            "{required_members}",
-            str(required_votes or settings["sessions"].get("required_votes_default") or 5)
-        )
-        j = json.loads(d)
-        if settings["sessions"].get("dynamic_button"):
-            j["components"][0]["components"][0]["label"] = f"0/{session_data["required_votes"]}"
-
-        msg = await self.bot.http.send_message(settings["sessions"]["channel_id"], params=discord.http.MultipartParameters(payload = j, multipart=None, files=None))
-        session_data["vote_message"] = msg["id"]
-        await self.bot.sessions.insert(session_data)
-        return await (ctx.reply if not ctx.interaction else ctx.interaction.followup.send)(embed=discord.Embed(title = f"{self.bot.emoji_controller.get_emoji("success")} Successfully posted session vote message", description=f"You can find it at <#{settings["sessions"]["channel_id"]}>", colour=discord.Colour.green()), ephemeral=True)
+        try:
+            channel_id = await create_session_vote(self.bot, ctx.guild.id, ctx.author.id, required_votes)
+        except ValueError as error:
+            return await ctx.reply(embed=discord.Embed(title = "Session", description=str(error)))
+        return await (ctx.reply if not ctx.interaction else ctx.interaction.followup.send)(embed=discord.Embed(title = f"{self.bot.emoji_controller.get_emoji("success")} Successfully posted session vote message", description=f"You can find it at <#{channel_id}>", colour=discord.Colour.green()), ephemeral=True)
     
     @session.command(name = "start", description="Start a session")
     @require_settings(["sessions"])
     @is_admin()
     async def _start(self, ctx: commands.Context):
-        settings = await self.bot.settings.find(ctx.guild.id)
-        if not settings:
-            return
-        session = await self.bot.sessions.find(ctx.guild.id)
-        if not session:
-            return await ctx.reply(embed=discord.Embed(
-                title = "No Session",
-                description="There is no active session."
-            ))
         try:
-            info = await self.bot.prc_api.get_server_status(ctx.guild.id)
-        except:
-            info = None
-        if not settings["sessions"].get("start"):
-            return await ctx.reply(embed=discord.Embed(title = "No Start Message", description="There has been no start message configured"))
-        if "{erlc.players}" in settings["sessions"]["start"]: session["dynamic"] = True
-        d = settings["sessions"]["start"].replace(
-            "{user}",
-            ctx.author.mention
-        ).replace(
-            "{user_mentions}",
-            f"{" | ".join([f"<@{user}>" for user in session["voted_users"]])}"
-        ).replace(
-            "{erlc.name}",
-            info.name if info else "{erlc.name}"
-        ).replace(
-            "{erlc.code}",
-            f"{info.join_key}" if info else "{erlc.code}"
-        ).replace(
-            "{erlc.players}",
-            str(info.current_players if info else "{erlc.players}")
-        )
-        session["user"] = ctx.author.mention
-
-        j = json.loads(d)
-        channel = await ctx.guild.fetch_channel(settings["sessions"]["channel_id"])
-        msg = await channel.fetch_message(session["vote_message"])
-        view = discord.ui.View.from_message(msg)
-        item = None
-
-        for c in view.walk_children():
-            if isinstance(c, discord.ui.Button) and c.custom_id == f"vote_button:{ctx.guild.id}":
-                item = c
-                break
-        if item == None:
-            pass
-        else:
-            item.disabled = True
-        await msg.edit(view=view)
-        s = await self.bot.http.send_message(settings["sessions"]["channel_id"], params=discord.http.MultipartParameters(payload = j, multipart=None, files=None))
-        session["message"], session["channel"] = s["id"], settings["sessions"]["channel_id"]
-        await self.bot.sessions.update(session)
-        return await (ctx.reply if not ctx.interaction else ctx.interaction.followup.send)(embed=discord.Embed(title = f"{self.bot.emoji_controller.get_emoji("success")} Successfully posted session start message", description=f"You can find it at <#{settings["sessions"]["channel_id"]}>", colour=discord.Colour.green()), ephemeral=True)
+            channel_id = await start_session(self.bot, ctx.guild.id, ctx.author.id)
+        except ValueError as error:
+            return await ctx.reply(embed=discord.Embed(title = "Session", description=str(error)))
+        return await (ctx.reply if not ctx.interaction else ctx.interaction.followup.send)(embed=discord.Embed(title = f"{self.bot.emoji_controller.get_emoji("success")} Successfully posted session start message", description=f"You can find it at <#{channel_id}>", colour=discord.Colour.green()), ephemeral=True)
     
     @session.command(name = "end", description="End a session")
     @require_settings(["sessions"])
     @is_admin()
     async def _end(self, ctx: commands.Context):
-        settings = await self.bot.settings.find(ctx.guild.id)
-        if not settings:
-            return
-        session = await self.bot.sessions.find(ctx.guild.id)
-        if not session:
-            return await ctx.reply(embed=discord.Embed(
-                title = "No Session",
-                description="There is no active session."
-            ))
         try:
-            info = await self.bot.prc_api.get_server_status(ctx.guild.id)
-        except: info = None
-        if not settings["sessions"].get("shutdown"):
-            return await ctx.reply(embed=discord.Embed(title = "No End Message", description="There has been no end message configured"))
-        d = settings["sessions"]["shutdown"].replace(
-            "{user}",
-            ctx.author.mention
-        ).replace(
-            "{erlc.name}",
-            info.name if info else "{erlc.name}"
-        ).replace(
-            "{erlc.code}",
-            info.join_key if info else "{erlc.code}"
-        ).replace(
-            "{erlc.max_players}",
-            str(session.get("analytics", {}).get("max_players", 0))
-        )
-        j = json.loads(d)
-        await self.bot.http.send_message(settings["sessions"]["channel_id"], params=discord.http.MultipartParameters(payload = j, multipart=None, files=None))
-        await self.bot.sessions.delete(session["_id"])
-        return await (ctx.reply if not ctx.interaction else ctx.interaction.followup.send)(embed=discord.Embed(title = f"{self.bot.emoji_controller.get_emoji("success")} Successfully posted session end message", description=f"You can find it at <#{settings["sessions"]["channel_id"]}>", colour=discord.Colour.green()), ephemeral=True)
+            channel_id = await end_session(self.bot, ctx.guild.id, ctx.author.id)
+        except ValueError as error:
+            return await ctx.reply(embed=discord.Embed(title = "Session", description=str(error)))
+        return await (ctx.reply if not ctx.interaction else ctx.interaction.followup.send)(embed=discord.Embed(title = f"{self.bot.emoji_controller.get_emoji("success")} Successfully posted session end message", description=f"You can find it at <#{channel_id}>", colour=discord.Colour.green()), ephemeral=True)
     def generate_graph(self, session):
         """
         Generates player graph.
@@ -327,10 +217,8 @@ class Sessions(commands.Cog):
                 msg = await ctx.reply(view = (view := discord.ui.LayoutView(timeout=None).add_item(cont)))
             else:
                 await msg.edit(view = (view := discord.ui.LayoutView(timeout=None).add_item(cont)))
-            w = await view.wait()
-            if not w:
-                continue
-            del w
+            if await view.wait():
+                return
             match sel.values[0]:
                 case "channel":
                     ch = SimpleTextChannelSelect(default_values=[discord.SelectDefaultValue(id=settings["sessions"].get("channel_id", 0), type=discord.SelectDefaultValueType.channel)])
@@ -389,7 +277,7 @@ class Sessions(commands.Cog):
                     )
                     await msg.edit(view = (view := discord.ui.LayoutView(timeout=None).add_item(cont)))
                     await view.wait()
-                    settings["sessions"]["vote_button_name"] = modal.values[0]
+                    settings["sessions"]["vote_button_label"] = modal.values[0]
                     settings["sessions"]["required_votes_default"] = modal.values[1]
                     settings["sessions"]["dynamic_button"] = bool(modal.values[2])
                 case "done":

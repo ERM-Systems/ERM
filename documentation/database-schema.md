@@ -9,6 +9,8 @@ corresponding datamodel class in `datamodels/`.
 The default database name is `erm`. This can be overridden with  
 the `DB_NAME` environment variable.
 
+ERM also uses three separate databases: `MapleCounty` for the MapleCounty integration, `ERMProcessing` for whitelabel instances, and `UserIdentity` for panel data.
+
 ---
 
 ## Collections
@@ -35,7 +37,7 @@ The base schema is defined in `utils/constants.py` as `base_configuration`.
 
 ---
 
-### `shifts`
+### `shift_management`
 
 Individual staff shift records.
 
@@ -53,7 +55,7 @@ Key fields:
 
 ---
 
-### `warnings`
+### `punishments`
 
 Player punishment records (warnings, kicks, bans, BOLOs).
 
@@ -88,7 +90,7 @@ Key fields:
 
 ---
 
-### `activity_notices`
+### `leave_of_absences`
 
 Leave of absence and reduced activity requests.
 
@@ -180,15 +182,38 @@ Key fields:
 
 ---
 
-### `oauth2_users`
+### `oauth2`
 
-Linked OAuth2 user accounts.
+Linked Roblox accounts, populated by `/link`.
 
 Key fields:
 
-- `_id` — Discord user ID  
-- `RobloxID` — Linked Roblox user ID  
-- `AccessToken` / `RefreshToken` — OAuth2 credentials  
+- `discord_id` — Discord user ID  
+- `roblox_id` — Linked Roblox user ID  
+- `last_updated` — Timestamp of the most recent link  
+
+---
+
+### `sessions`
+
+Active session votes. One document per guild.
+
+Key fields:
+
+- `_id` — Discord guild ID  
+- `user` — Discord user ID who started the session  
+- `voted_users` — List of Discord user IDs who have voted  
+- `started` — Whether the session has started  
+- `votes` — Current vote count  
+- `required_votes` — Votes needed to start  
+- `vote_message` — Message ID of the vote message  
+- `analytics` — Player count tracking for the session  
+
+---
+
+### `recovery`
+
+Backup copies of `punishments` documents removed by bulk deletion. Same shape as `punishments`.
 
 ---
 
@@ -303,9 +328,9 @@ Key fields:
 
 ---
 
-### `maple_keys`
+### `Auth`
 
-MapleCounty integration API keys.
+MapleCounty integration API keys (stored in the `MapleCounty` database, not the main `erm` database).
 
 Key fields:
 
@@ -314,7 +339,7 @@ Key fields:
 
 ---
 
-### `prohibited_use_keys`
+### `prohibited_keys`
 
 Keys flagged for prohibited or abusive use.
 
@@ -336,13 +361,12 @@ Key fields:
 
 ### `pending_oauth2`
 
-Temporary OAuth2 state records for in-progress authentication flows.
+Temporary records for in-progress `/link` flows.
 
 Key fields:
 
-- `_id` — State token  
-- `user_id` — Discord user ID  
-- `expires_at` — Unix timestamp for state expiry  
+- `discord_id` — Discord user ID awaiting verification  
+- `created_at` — When the flow was started  
 
 ---
 
@@ -353,10 +377,9 @@ for PRC log iteration).
 
 ---
 
-### `whitelabel`
+### `Instances`
 
-Whitelabel bot subscription instances (stored in `ERMProcessing`  
-database, not the main `erm` database).
+Whitelabel bot subscription instances (stored in the `ERMProcessing` database, not the main `erm` database).
 
 Key fields:
 
