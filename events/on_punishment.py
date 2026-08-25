@@ -82,18 +82,10 @@ class OnPunishment(commands.Cog):
         )
         thumbnail = thumbnails[0].image_url
 
-        async def get_discord_id_by_roblox_id(self, roblox_id):
-            linked_account = await self.bot.oauth2_users.db.find_one(
-                {"roblox_id": roblox_id}
-            )
-            if linked_account:
-                return linked_account["discord_id"]
-            return None
-
         if channel is not None:
             try:
-                warned_discord_id = await get_discord_id_by_roblox_id(
-                    self, warning.user_id
+                warned_discord_id = await self.bot.linking.get_discord_id(
+                    warning.user_id
                 )
             except Exception as e:
                 logging.warning(f"Error getting warned discord ID: {e}")
@@ -165,7 +157,7 @@ class OnPunishment(commands.Cog):
         staff_alert_channel_id = guild_settings.get("punishments", {}).get("staff_alert_channel")
         if staff_alert_channel_id:
             try:
-                warned_discord_id = await get_discord_id_by_roblox_id(self, warning.user_id)
+                warned_discord_id = await self.bot.linking.get_discord_id(warning.user_id)
                 if warned_discord_id:
                     member = guild.get_member(warned_discord_id)
                     if member:

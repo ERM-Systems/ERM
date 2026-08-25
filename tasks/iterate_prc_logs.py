@@ -617,11 +617,9 @@ async def check_automatic_shifts(bot, settings, guild_id, join_logs, ts: int, pl
     # quick check
     temp_linked = []
     for item in leaves:
-        oauth2_user = await bot.oauth2_users.db.find_one(
-            {"roblox_id": int(item.user_id)}
-        )
-        if oauth2_user:
-            temp_linked.append(oauth2_user["discord_id"])
+        discord_id = await bot.linking.get_discord_id(item.user_id)
+        if discord_id:
+            temp_linked.append(discord_id)
     discordid_to_shift = {
         x["UserID"]: x
         async for x in bot.shift_management.shifts.db.find(
@@ -676,9 +674,8 @@ async def check_automatic_shifts(bot, settings, guild_id, join_logs, ts: int, pl
     linked_users = []
     for item in new_data:
         uid = item["UserID"]
-        doc = await bot.oauth2_users.db.find_one({"roblox_id": int(uid)})
-        if doc is not None:
-            discord_uid = doc["discord_id"]
+        discord_uid = await bot.linking.get_discord_id(uid)
+        if discord_uid is not None:
             consent_doc = await bot.consent.db.find_one({"_id": discord_uid}) or {
                 "automatic_shifts": True
             }

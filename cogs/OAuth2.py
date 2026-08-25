@@ -60,10 +60,9 @@ class OAuth2(commands.Cog):
             await msg.edit(**verification_message)
 
         attempts = 0
-        while True:
+        while attempts < 60:
             await asyncio.sleep(3)
-            if attempts > 60:
-                break
+            attempts += 1
             if not linked_account:
                 if await self.bot.oauth2_users.db.find_one(
                     {"discord_id": ctx.author.id}

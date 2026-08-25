@@ -792,19 +792,12 @@ class ERLC(commands.Cog):
     async def server_send_command(self, ctx: commands.Context, *, command: str):
         if command[0] != ":":
             command = ":" + command
-        elevated_privileges = None
         status: ServerStatus = await self.bot.prc_api.get_server_status(ctx.guild.id)
-        for item in status.co_owner_ids + [status.owner_id]:
-            if int(item) == int(
-                (await self.bot.bloxlink.find_roblox(ctx.author.id) or {}).get(
-                    "robloxID"
-                )
-                or 0
-            ):
-                elevated_privileges = True
-                break
-        else:
-            elevated_privileges = False
+        author_roblox_id = await self.bot.linking.get_roblox_id(ctx.author.id)
+        elevated_privileges = bool(author_roblox_id) and any(
+            int(item) == author_roblox_id
+            for item in status.co_owner_ids + [status.owner_id]
+        )
 
         if (
             any([i in command for i in [":admin", ":unadmin"]])
@@ -1461,17 +1454,17 @@ class ERLC(commands.Cog):
         user = ctx.author
 
         guild_id = ctx.guild.id
-        roblox_user = await self.bot.bloxlink.find_roblox(user.id)
-        if not roblox_user or not (roblox_user or {}).get("robloxID"):
+        roblox_user_id = await self.bot.linking.get_roblox_id(user.id)
+        if not roblox_user_id:
             return await ctx.send(
                 embed=discord.Embed(
                     title="Could not find user",
-                    description="I couldn't find your ROBLOX user. Please make sure that you're verified with Bloxlink.",
+                    description="I couldn't find your ROBLOX user. Please make sure that you're linked by running `/link`.",
                     color=BLANK_COLOR,
                 )
             )
 
-        roblox_info = await self.bot.bloxlink.get_roblox_info(roblox_user["robloxID"])
+        roblox_info = await self.bot.linking.get_roblox_info(roblox_user_id)
         username = roblox_info.get("name")
 
         if not username:
@@ -1492,7 +1485,7 @@ class ERLC(commands.Cog):
 
         embed = discord.Embed(
             title="Confirm Refresh",
-            description=f"Is this your account? If not, be sure to set a new primary account with Bloxlink.",
+            description="Is this your account? If not, relink your Roblox account by running `/link`.",
             color=BLANK_COLOR,
         )
         embed.set_thumbnail(url=thumbnail_url)
@@ -1500,7 +1493,7 @@ class ERLC(commands.Cog):
             name="Account Information",
             value=(
                 f"> **Username:** {username}\n"
-                f"> **User ID:** {roblox_user['robloxID']}\n"
+                f"> **User ID:** {roblox_user_id}\n"
                 f"> **Discord:** {user.mention}\n"
             ),
         )

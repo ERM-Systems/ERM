@@ -54,7 +54,6 @@ cp .env.template .env
 
 ### Optional — Bot Features
 
-- `BLOXLINK_API_KEY` — Required for Roblox username lookups via Bloxlink  
 - `AI_API_ENABLED` — `TRUE` or `FALSE`. Enables AI-powered features  
 - `API_URL` / `API_AUTH` — Endpoint and auth token for the AI API  
 - `REMINDERS_ENABLED` — `TRUE` or `FALSE`. Controls the Reminders cog  

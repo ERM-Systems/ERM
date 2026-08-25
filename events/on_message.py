@@ -330,11 +330,7 @@ class OnMessage(commands.Cog):
                 except (IndexError, ValueError):
                     continue
 
-                discord_user = 0
-                async for document in bot.oauth2_users.db.find(
-                    {"roblox_id": roblox_id}
-                ):
-                    discord_user = document["discord_id"]
+                discord_user = await bot.linking.get_discord_id(roblox_id) or 0
 
                 if discord_user == 0:
                     await message.add_reaction("❌")
@@ -488,11 +484,9 @@ class OnMessage(commands.Cog):
                 invoked_command = " ".join(combined.replace("`", "").split(" ")[:-1])
                 _cmd = command
 
-                discord_user = 0
-                async for document in bot.oauth2_users.db.find(
-                    {"roblox_id": int(profile_link.split("/")[4])}
-                ):
-                    discord_user = document["discord_id"]
+                discord_user = await bot.linking.get_discord_id(
+                    int(profile_link.split("/")[4])
+                ) or 0
 
                 if discord_user == 0:
                     await message.add_reaction("❌")

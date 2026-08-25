@@ -4,6 +4,7 @@ import typing
 from menus import CustomModal
 from base64 import urlsafe_b64decode, b64encode
 import json
+import logging
 
 
 class SessionsEmbedCreationView(discord.ui.LayoutView):
@@ -91,7 +92,6 @@ class SessionsEmbedCreationView(discord.ui.LayoutView):
                 data_encoded = val.split("?data=")[1]
             except:
                 return await interaction.followup.send("This discohook.app url does not have a message attached.")
-            print(data_encoded)
 
             data = urlsafe_b64decode(data_encoded + "==").decode()
             try:
@@ -100,50 +100,56 @@ class SessionsEmbedCreationView(discord.ui.LayoutView):
                 return await interaction.followup.send("The data is not valid. Please try again.")
             
             message = data["messages"][0]["data"]
-            self.satisfied_conditions = False # Checks for buttons being correct.
-            if not message["components"] and self.type != "vote":
-                print(message["components"])
-                self.satisfied_conditions = True
-            else:
-                for component in message["components"][0]["components"]: # 
-                    print(component)
-                    if not component["type"] == 2: # button
-                        return await interaction.followup.send("Your data has components that are not permitted.")
-                    match self.type:
-                        case 'vote':
-                            if component["label"] == "{vote_button}":
-                                if not settings["sessions"].get("dynamic_button", True):
-                                    component["label"] = settings["sessions"]["vote_button_label"]
-                                if component["style"] == 5: continue 
-                                component["custom_id"] = f"vote_button:{interaction.guild.id}"
-                                self.satisfied_conditions = True
-                                continue
-                            if component["label"] == "{view_votes_button}":
-                                if component["style"] == 5: continue 
-                                component["label"] = "View Votes"
-                                component["custom_id"] = f"view_votes_button:{interaction.guild.id}"
-                                continue
-                            if component["style"] == 5:
-                                if component["custom_id"]:
-                                    del component["custom_id"]
-                        case 'start':
-                            if component["style"] == 5:
-                                if component["custom_id"]:
-                                    del component["custom_id"]
-                                self.satisfied_conditions = True
-                                break
-                            
-                        case 'shutdown':
-                            if component["style"] == 5:
-                                self.satisfied_conditions = True
-                                break
+            rows = message.get("components") or []
+            buttons = [
+                component
+                for row in rows
+                if row.get("type") == 1
+                for component in row.get("components") or []
+            ]
+
+            if any(component.get("type") != 2 for component in buttons):
+                return await interaction.followup.send("Your data has components that are not permitted.")
+
+            if any(row.get("type") != 1 for row in rows):
+                message["flags"] = (message.get("flags") or 0) | 1 << 15
+
+            self.satisfied_conditions = not buttons and self.type != "vote"
+            for component in buttons:
+                match self.type:
+                    case 'vote':
+                        if component["label"] == "{vote_button}":
+                            if not settings["sessions"].get("dynamic_button", False):
+                                component["label"] = settings["sessions"].get("vote_button_label", "vote")
+                            if component["style"] == 5: continue
+                            component["custom_id"] = f"vote_button:{interaction.guild.id}"
+                            self.satisfied_conditions = True
+                            continue
+                        if component["label"] == "{view_votes_button}":
+                            if component["style"] == 5: continue
+                            component["label"] = "View Votes"
+                            component["custom_id"] = f"view_votes_button:{interaction.guild.id}"
+                            continue
+                        if component["style"] == 5:
+                            if component.get("custom_id"):
+                                del component["custom_id"]
+                    case 'start':
+                        if component["style"] == 5:
+                            if component.get("custom_id"):
+                                del component["custom_id"]
+                            self.satisfied_conditions = True
+                            break
+                    case 'shutdown':
+                        if component["style"] == 5:
+                            self.satisfied_conditions = True
+                            break
 
             if not self.satisfied_conditions:
                 return await interaction.followup.send("Your components are invalid for the specific type of embed you are making. This may be because you have regular buttons in the start and end styling (which only allow links) or you may have missing buttons in the vote area.")
 
             settings["sessions"][self.type] = json.dumps(message)
-            print(settings["sessions"])
             await self.bot.settings.update(settings)
             self.stop()
         except Exception as e:
-            print(str(e.with_traceback(None)))
+            logging.warning(f"Failed to save the session {self.type} message: {e}")
+            await interaction.followup.send("That message could not be saved. Please try again.", ephemeral=True)

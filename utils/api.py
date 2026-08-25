@@ -27,6 +27,7 @@ from typing import Annotated
 from decouple import config
 import copy
 from menus import LOAMenu
+from utils.utils import create_session_vote, end_session, start_session
 from utils.constants import BLANK_COLOR, GREEN_COLOR
 from utils.utils import get_elapsed_time, secure_logging, staff_rank
 from pydantic import BaseModel
@@ -518,6 +519,77 @@ class APIRoutes:
         staff_request_id = json_data["document_id"]
         self.bot.dispatch("staff_request_send", ObjectId(staff_request_id))
         return {"op": 1, "code": 200}
+
+    async def _session_request(self, authorization: str | None, request: Request):
+        if not authorization:
+            raise HTTPException(status_code=401, detail="Invalid authorization")
+
+        if not await validate_authorization(self.bot, authorization):
+            raise HTTPException(
+                status_code=401, detail="Invalid or expired authorization."
+            )
+
+        json_data = await request.json()
+        guild_id = int(json_data["guild_id"])
+        user_id = int(json_data["user_id"])
+
+        guild = self.bot.get_guild(guild_id)
+        if not guild:
+            raise HTTPException(status_code=404, detail="That server was not found.")
+
+        try:
+            member = guild.get_member(user_id) or await guild.fetch_member(user_id)
+        except discord.HTTPException:
+            raise HTTPException(status_code=404, detail="You are not in that server.")
+
+        if not await admin_check(self.bot, guild, member) and not await management_check(
+            self.bot, guild, member
+        ):
+            raise HTTPException(
+                status_code=403, detail="You do not have permission to manage sessions."
+            )
+
+        return guild_id, user_id, json_data
+
+    async def POST_session_vote(
+        self, authorization: Annotated[str | None, Header()], request: Request
+    ):
+        guild_id, user_id, json_data = await self._session_request(
+            authorization, request
+        )
+
+        try:
+            channel_id = await create_session_vote(
+                self.bot, guild_id, user_id, json_data.get("required_votes")
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error))
+
+        return {"op": 1, "code": 200, "channel_id": str(channel_id)}
+
+    async def POST_session_start(
+        self, authorization: Annotated[str | None, Header()], request: Request
+    ):
+        guild_id, user_id, _ = await self._session_request(authorization, request)
+
+        try:
+            channel_id = await start_session(self.bot, guild_id, user_id)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error))
+
+        return {"op": 1, "code": 200, "channel_id": str(channel_id)}
+
+    async def POST_session_end(
+        self, authorization: Annotated[str | None, Header()], request: Request
+    ):
+        guild_id, user_id, _ = await self._session_request(authorization, request)
+
+        try:
+            channel_id = await end_session(self.bot, guild_id, user_id)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error))
+
+        return {"op": 1, "code": 200, "channel_id": str(channel_id)}
 
     async def POST_send_priority_dm(
         self, authorization: Annotated[str | None, Header()], request: Request

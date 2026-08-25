@@ -147,7 +147,7 @@ Provides the `Document` base class used by all datamodels. Wraps
 | | and weather code mappings |
 | `emojis.py` | `EmojiController` for resolving custom emoji by name |
 | `paginators.py` | Reusable paginated embed components |
-| `bloxlink.py` | Bloxlink API client for Roblox username resolution |
+| `linking.py` | Account linking client for Roblox user resolution |
 | `accounts.py` | Staff account lookup helpers |
 | `AI.py` | AI API client wrapper |
 | `hot_reload.py` | Development cog reloading utility |
@@ -180,4 +180,3 @@ to follow or reuse.
 Do not use this file for any new views, instead, please create a new file
 in the `ui` folder and reference that. `menus.py` will be removed in a later
 version of ERM.
-
