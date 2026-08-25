@@ -303,17 +303,6 @@ Key fields:
 
 ---
 
-### `maple_keys`
-
-MapleCounty integration API keys.
-
-Key fields:
-
-- `_id` — Authentication identifier  
-- `Key` — API key string  
-
----
-
 ### `prohibited_use_keys`
 
 Keys flagged for prohibited or abusive use.

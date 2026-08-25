@@ -177,7 +177,6 @@ class OnCommandError(commands.Cog):
 
         if isinstance(error, ServerLinkNotFound):
             aliases = {
-                "mc": "Maple County",
                 "erlc": "ER:LC",
             }
             if error.code == 9999 and not do_not_send:

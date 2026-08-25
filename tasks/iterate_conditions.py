@@ -51,8 +51,6 @@ async def get_cached_guild(bot, guild_id):
 
 async def handle_erlc_condition(bot, guild_id, condition) -> bool:
     api_client = bot.prc_api
-    if await bot.mc_api.get_server_key(guild_id) is not None:
-        api_client = bot.mc_api
     try:
         players = await api_client.get_server_players(guild_id)
     except prc_api.ResponseFailure:
