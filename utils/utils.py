@@ -11,6 +11,7 @@ import discord
 import discord.http
 import pytz
 import requests
+from bson import ObjectId
 from decouple import config
 import roblox.users
 from discord import Embed, InteractionResponse, Webhook
@@ -936,6 +937,7 @@ async def end_session(bot, guild_id: int, user_id: int) -> int:
 
     await bot.session_history.insert(
         {
+            "_id": ObjectId(),
             "guild_id": guild_id,
             "started_by": session.get("started_by") or session.get("user"),
             "ended_by": user_id,
