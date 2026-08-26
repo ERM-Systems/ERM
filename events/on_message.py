@@ -3,11 +3,9 @@ import datetime
 import logging
 import string
 
-import aiohttp
 import discord
 import num2words
 import roblox
-from decouple import config
 from discord.ext import commands
 from reactionmenu import Page, ViewButton, ViewMenu, ViewSelect
 
@@ -52,12 +50,12 @@ class OnMessage(commands.Cog):
                 message.content = f"{prefix}punish " + args[1] + " " + command + " " + " ".join(args[2:])
                 await bot.process_commands(message)
                 return
-            
+
 
         if not message.guild:
             return
 
-       
+
         if not hasattr(bot, "settings"):
             return
 
@@ -70,7 +68,7 @@ class OnMessage(commands.Cog):
             if last and (now - last).total_seconds() < 5:
                 return
             self._mention_cooldowns[message.author.id] = now
-            
+
             container = discord.ui.Container()
             section = discord.ui.Section(
                 accessory=discord.ui.Thumbnail(
@@ -368,34 +366,6 @@ class OnMessage(commands.Cog):
                     f"{prefix}punish {violator_user} {action_type} {reason}"
                 )
                 await bot.process_commands(new_message)
-
-        if (
-            remote_commands
-            and remote_command_channel is not None
-            and message.channel.id in [remote_command_channel]
-        ):
-            for embed in message.embeds:
-                if embed.description in ["", None] and embed.title in ["", None]:
-                    break
-
-                if (
-                    ":bring" in embed.description.lower()
-                    or ":tp" in embed.description.lower()
-                    or ":kick" in embed.description.lower()
-                    or ":ban" in embed.description.lower()
-                ):
-                    async with aiohttp.ClientSession(
-                        headers={
-                            "Content-Type": "application/json",
-                            "X-Static-Token": config("PANEL_STATIC_AUTH"),
-                        }
-                    ) as session:
-                        async with session.post(
-                            url=f"{config('PANEL_API_URL')}/Internal/{message.guild.id}/SyncWebhookLogs",
-                            data={"content": embed.description.split("`")[1].strip()},
-                        ) as resp:
-                            if resp.status != 200:
-                                pass
 
         if (
             remote_commands

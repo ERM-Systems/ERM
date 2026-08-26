@@ -1,5 +1,7 @@
 import asyncio
+import contextvars
 import datetime
+import logging
 import typing
 
 import discord
@@ -12,6 +14,46 @@ from utils.basedataclass import BaseDataClass
 from datamodels.ServerKeys import ServerKey
 
 from utils.game_api_classes import *
+
+
+command_actor = contextvars.ContextVar("command_actor", default=None)
+
+
+async def sync_panel_command(guild_id: int, command: str) -> None:
+    actor = command_actor.get()
+    panel_url = config("PANEL_API_URL", default="")
+    if actor is None or not panel_url:
+        return
+
+    verb, _, remainder = command.lstrip(":").partition(" ")
+    if not verb:
+        return
+
+    payload = {
+        "command": verb.lower(),
+        "target": remainder.split(" ")[0] if remainder else "",
+        "by": actor.name,
+        "by_id": str(actor.id),
+    }
+
+    try:
+        async with aiohttp.ClientSession(
+            headers={
+                "Content-Type": "application/json",
+                "X-Static-Token": config("PANEL_STATIC_AUTH", default=""),
+            }
+        ) as session:
+            async with session.post(
+                f"{panel_url}/Internal/{guild_id}/SyncWebhookLogs",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as resp:
+                if resp.status != 200:
+                    logging.warning(
+                        f"Failed to sync panel command {resp.status} for guild {guild_id}"
+                    )
+    except Exception as exception:
+        logging.warning(f"Failed to sync panel command: {exception}")
 
 
 class BanItem(BaseDataClass):
@@ -105,7 +147,7 @@ class PRCApiClient:
     async def get_server_key(self, guild_id: int) -> ServerKey:
         return await self.bot.server_keys.get_server_key(
             guild_id
-        ) 
+        )
 
     async def _send_api_request(
         self,
@@ -545,6 +587,8 @@ class PRCApiClient:
         if status_code == 429:
             await asyncio.sleep(response_json["retry_after"] + 0.1)
             return await self.run_command(guild_id, command)
+        if status_code == 200:
+            await sync_panel_command(guild_id, command)
         return status_code, response_json
 
     async def unban_user(self, guild_id: int, user_id: int):

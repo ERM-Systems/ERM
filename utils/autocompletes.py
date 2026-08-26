@@ -7,6 +7,7 @@ from discord import app_commands
 from discord.ext import commands
 from discord.ext.commands import Context
 import utils.prc_api
+from utils.constants import ERLC_TEAMS
 from erm import Bot
 import asyncio
 
@@ -66,28 +67,26 @@ async def erlc_group_autocomplete(
         discord.app_commands.Choice(name="Moderators", value="moderators"),
         discord.app_commands.Choice(name="Admins", value="admins"),
         discord.app_commands.Choice(name="Players", value="players"),
+        *(discord.app_commands.Choice(name=f"{team} Team", value=team.lower()) for team in ERLC_TEAMS),
+    ]
+    defaults = [
+        choice for choice in defaults if choice.value.startswith(incomplete.lower())
     ]
     try:
         data = await bot.prc_api.get_server_players(interaction.guild.id)
     except utils.prc_api.ResponseFailure:
-        return defaults
+        return defaults[:25]
 
-    for player in data:
-        if len(incomplete) > 2:
-            if incomplete.lower() in player.username.lower():
-                defaults.append(
-                    discord.app_commands.Choice(
-                        name=player.username, value=player.username
-                    )
-                )
-                continue
-            else:
-                continue
-        defaults.append(
+    players = sorted(
+        (
             discord.app_commands.Choice(name=player.username, value=player.username)
-        )
+            for player in data
+            if len(incomplete) <= 2 or incomplete.lower() in player.username.lower()
+        ),
+        key=lambda choice: choice.name.lower(),
+    )
 
-    return defaults[:25]
+    return (defaults + players)[:25]
 
 
 async def all_shift_type_autocomplete(

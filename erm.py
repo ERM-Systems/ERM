@@ -327,6 +327,7 @@ def running():
 @bot.before_invoke
 async def AutoDefer(ctx: commands.Context):
     guild_id = ctx.guild.id
+    utils.prc_api.command_actor.set(ctx.author)
     bot.internal_command_storage[ctx.message.id] = datetime.datetime.now(tz=pytz.UTC).timestamp()
     if ctx.command:
         if ctx.command.extras.get("ephemeral") is True:
@@ -517,7 +518,7 @@ if environment in accepted_envs:
         raise Exception("The environment specified does not have a token associated with it")
 else:
     raise Exception("Invalid Environment")
-# Mongo is critical for bot function so it should most definitely error 
+# Mongo is critical for bot function so it should most definitely error
 mongo_url = config("MONGO_URL", default=None)
 if not mongo_url:
     raise Exception("Missing MongoDB URL")

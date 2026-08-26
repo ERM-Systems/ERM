@@ -719,12 +719,21 @@ async def secure_logging(
         channel = await (await bot.fetch_guild(guild_id)).fetch_channel(channel)
     except discord.HTTPException:
         channel = None
-    roblox_id = await bot.linking.get_roblox_id(author_id)
-    if not roblox_id:
+    if channel is None:
         return
 
-    roblox_name = (await bot.linking.get_roblox_info(roblox_id)).get("name", "Unknown")
-    actor = f"[{roblox_name}:{roblox_id}](https://roblox.com/users/{roblox_id}/profile)"
+    roblox_id = await bot.linking.get_roblox_id(author_id)
+    if roblox_id:
+        roblox_name = (await bot.linking.get_roblox_info(roblox_id)).get(
+            "name", "Unknown"
+        )
+        actor = (
+            f"[{roblox_name}:{roblox_id}]"
+            f"(https://roblox.com/users/{roblox_id}/profile)"
+        )
+    else:
+        actor = f"<@{author_id}> (no linked Roblox account)"
+
     if interpret_type == "Message":
         formatted_command = f"`:m {command_string}`"
     elif interpret_type == "Hint":
@@ -733,23 +742,22 @@ async def secure_logging(
         formatted_command = f"`{command_string}`"
 
     server_status: ServerStatus = await bot.prc_api.get_server_status(guild_id)
-    if channel is not None:
-        if not attempted:
-            await channel.send(
-                embed=discord.Embed(
-                    title="Remote Server Logs",
-                    description=f"{actor} used a command: {formatted_command}",
-                    color=RED_COLOR,
-                ).set_footer(text=f"Private Server: {server_status.join_key}")
-            )
-        else:
-            await channel.send(
-                embed=discord.Embed(
-                    title="Attempted Command Execution",
-                    description=f"{actor} attempted to use the command: {formatted_command}",
-                    color=RED_COLOR,
-                ).set_footer(text=f"Private Server: {server_status.join_key}")
-            )
+    if not attempted:
+        embed=discord.Embed(
+            title="Remote Server Logs",
+            description=f"{actor} used a command: {formatted_command}",
+            color=RED_COLOR,
+        )
+    else:
+        embed=discord.Embed(
+            title="Attempted Command Execution",
+            description=f"{actor} attempted to use the command: {formatted_command}",
+            color=RED_COLOR,
+        )
+    embed.set_footer(
+        text=f"Private Server: {server_status.join_key}"
+    )
+    await channel.send(embed=embed)
 
 
 def render_session_message(template: str, replacements: dict) -> dict:
@@ -853,41 +861,61 @@ async def disable_vote_button(bot, guild_id: int, sessions: dict, session: dict)
         logging.warning(f"Could not disable the vote button in {guild_id}: {error}")
 
 
-async def start_session(bot, guild_id: int, user_id: int) -> int:
-    sessions = await get_session_configuration(bot, guild_id, "start")
+async def start_session(bot, guild_id: int, user_id: int) -> int | None:
+    try:
+        sessions = await get_session_configuration(bot, guild_id, "start")
+    except ValueError:
+        sessions = None
+
     session = await bot.sessions.find(guild_id)
-    if not session:
-        raise ValueError("There is no active session.")
+    fresh = session is None
 
-    info = await get_session_status(bot, guild_id)
-    if "{erlc.players}" in sessions["start"]:
-        session["dynamic"] = True
+    if fresh:
+        session = {
+            "_id": guild_id,
+            "user": user_id,
+            "voted_users": [],
+            "votes": 0,
+            "required_votes": 0,
+            "created_at": int(datetime.datetime.now().timestamp()),
+            "analytics": {"max_players": 0, "player_counts": []},
+        }
 
-    payload = render_session_message(
-        sessions["start"],
-        {
-            "{user}": f"<@{user_id}>",
-            "{user_mentions}": " | ".join([f"<@{user}>" for user in session["voted_users"]]),
-            "{erlc.name}": info.name if info else "{erlc.name}",
-            "{erlc.code}": info.join_key if info else "{erlc.code}",
-            "{erlc.players}": str(info.current_players) if info else "{erlc.players}",
-        },
-    )
+    if sessions:
+        info = await get_session_status(bot, guild_id)
+        if "{erlc.players}" in sessions["start"]:
+            session["dynamic"] = True
 
-    await disable_vote_button(bot, guild_id, sessions, session)
+        payload = render_session_message(
+            sessions["start"],
+            {
+                "{user}": f"<@{user_id}>",
+                "{user_mentions}": " | ".join([f"<@{user}>" for user in session["voted_users"]]),
+                "{erlc.name}": info.name if info else "{erlc.name}",
+                "{erlc.code}": info.join_key if info else "{erlc.code}",
+                "{erlc.players}": str(info.current_players) if info else "{erlc.players}",
+            },
+        )
 
-    message = await bot.http.send_message(
-        sessions["channel_id"],
-        params=discord.http.MultipartParameters(payload=payload, multipart=None, files=None),
-    )
+        await disable_vote_button(bot, guild_id, sessions, session)
+
+        message = await bot.http.send_message(
+            sessions["channel_id"],
+            params=discord.http.MultipartParameters(payload=payload, multipart=None, files=None),
+        )
+        session["message"], session["channel"] = message["id"], sessions["channel_id"]
+
     session["user"] = f"<@{user_id}>"
     session["started"] = True
     session["started_by"] = user_id
     session["started_at"] = int(datetime.datetime.now().timestamp())
-    session["message"], session["channel"] = message["id"], sessions["channel_id"]
-    await bot.sessions.update(session)
 
-    return sessions["channel_id"]
+    if fresh:
+        await bot.sessions.insert(session)
+    else:
+        await bot.sessions.update(session)
+
+    return sessions["channel_id"] if sessions else None
 
 
 async def monitor_session_logs(bot, guild_id: int, started_at: int, ended_at: int) -> dict:
@@ -909,27 +937,32 @@ async def monitor_session_logs(bot, guild_id: int, started_at: int, ended_at: in
     return counts
 
 
-async def end_session(bot, guild_id: int, user_id: int) -> int:
-    sessions = await get_session_configuration(bot, guild_id, "shutdown")
+async def end_session(bot, guild_id: int, user_id: int) -> int | None:
+    try:
+        sessions = await get_session_configuration(bot, guild_id, "shutdown")
+    except ValueError:
+        sessions = None
+
     session = await bot.sessions.find(guild_id)
     if not session:
         raise ValueError("There is no active session.")
 
-    info = await get_session_status(bot, guild_id)
-    payload = render_session_message(
-        sessions["shutdown"],
-        {
-            "{user}": f"<@{user_id}>",
-            "{erlc.name}": info.name if info else "{erlc.name}",
-            "{erlc.code}": info.join_key if info else "{erlc.code}",
-            "{erlc.max_players}": str(session.get("analytics", {}).get("max_players", 0)),
-        },
-    )
+    if sessions:
+        info = await get_session_status(bot, guild_id)
+        payload = render_session_message(
+            sessions["shutdown"],
+            {
+                "{user}": f"<@{user_id}>",
+                "{erlc.name}": info.name if info else "{erlc.name}",
+                "{erlc.code}": info.join_key if info else "{erlc.code}",
+                "{erlc.max_players}": str(session.get("analytics", {}).get("max_players", 0)),
+            },
+        )
 
-    await bot.http.send_message(
-        sessions["channel_id"],
-        params=discord.http.MultipartParameters(payload=payload, multipart=None, files=None),
-    )
+        await bot.http.send_message(
+            sessions["channel_id"],
+            params=discord.http.MultipartParameters(payload=payload, multipart=None, files=None),
+        )
 
     ended_at = int(datetime.datetime.now().timestamp())
     started_at = session.get("started_at") or session.get("created_at") or ended_at
@@ -952,4 +985,4 @@ async def end_session(bot, guild_id: int, user_id: int) -> int:
     )
     await bot.sessions.delete(session["_id"])
 
-    return sessions["channel_id"]
+    return sessions["channel_id"] if sessions else None
