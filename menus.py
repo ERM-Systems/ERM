@@ -8857,6 +8857,144 @@ class ERLCIntegrationConfiguration(AssociationConfigurationView):
             view=view
         )
 
+    @discord.ui.button(label="In-Game Commands", row=3)
+    async def ingame_commands(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+        val = await self.interaction_check(interaction)
+        if val is False:
+            return
+
+        settings = await self.bot.settings.find_by_id(interaction.guild.id)
+        cmd_config = settings.get("ERLC", {}).get("ingame_commands", {"enabled": False, "commands": []})
+
+        embed = discord.Embed(title="In-Game Commands", description="", color=BLANK_COLOR)
+        embed.set_author(
+            name=interaction.guild.name,
+            icon_url=interaction.guild.icon.url if interaction.guild.icon else "",
+        )
+
+        status = "Enabled" if cmd_config.get("enabled") else "Disabled"
+        embed.description = f"**Status:** {status}\n\n"
+
+        commands = cmd_config.get("commands", [])
+        if commands:
+            for cmd in commands:
+                embed.description += f"> **;{cmd['trigger']}** → {cmd['action']}\n"
+        else:
+            embed.description += "> No commands configured."
+
+        view = InGameCommandsConfigView(self.bot, interaction.user.id)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+
+class InGameCommandsConfigView(discord.ui.View):
+    def __init__(self, bot, user_id):
+        super().__init__(timeout=300)
+        self.bot = bot
+        self.user_id = user_id
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return interaction.user.id == self.user_id
+
+    @discord.ui.select(
+        placeholder="In-Game Commands",
+        row=0,
+        options=[
+            discord.SelectOption(label="Enabled", value="enabled"),
+            discord.SelectOption(label="Disabled", value="disabled"),
+        ],
+        max_values=1,
+    )
+    async def toggle_enabled(self, interaction: discord.Interaction, select: discord.ui.Select):
+        await interaction.response.defer()
+        sett = await self.bot.settings.find_by_id(interaction.guild.id)
+        if not sett.get("ERLC"):
+            sett["ERLC"] = {}
+        if not sett["ERLC"].get("ingame_commands"):
+            sett["ERLC"]["ingame_commands"] = {"enabled": False, "commands": []}
+        sett["ERLC"]["ingame_commands"]["enabled"] = select.values[0] == "enabled"
+        await self.bot.settings.update_by_id(sett)
+        await config_change_log(self.bot, interaction.guild, interaction.user, f"In-Game Commands {select.values[0]}")
+
+    @discord.ui.button(label="Add Command", style=discord.ButtonStyle.success, row=1)
+    async def add_command(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = InGameCommandModal()
+        await interaction.response.send_modal(modal)
+        if await modal.wait():
+            return
+
+        trigger = modal.trigger_input.value.strip().lower()
+        action = modal.action_input.value.strip().lower()
+        channel_id = modal.channel_input.value.strip()
+        extra = modal.extra_input.value.strip()
+
+        if action not in ("move_to_voice", "send_message", "ping_role"):
+            await modal.interaction.followup.send("Invalid action. Use: move_to_voice, send_message, or ping_role", ephemeral=True)
+            return
+
+        cmd_data = {"trigger": trigger, "action": action}
+        if channel_id:
+            cmd_data["channel"] = int(channel_id)
+        if action == "move_to_voice" and extra:
+            pairs = [p.strip().split("=") for p in extra.split(",") if "=" in p]
+            cmd_data["voice_channels"] = {k.strip(): v.strip() for k, v in pairs}
+        elif action == "ping_role" and extra:
+            cmd_data["role"] = int(extra)
+        elif action == "send_message" and extra:
+            cmd_data["message"] = extra
+
+        sett = await self.bot.settings.find_by_id(interaction.guild.id)
+        if not sett.get("ERLC"):
+            sett["ERLC"] = {}
+        if not sett["ERLC"].get("ingame_commands"):
+            sett["ERLC"]["ingame_commands"] = {"enabled": False, "commands": []}
+        sett["ERLC"]["ingame_commands"]["commands"].append(cmd_data)
+        await self.bot.settings.update_by_id(sett)
+        await modal.interaction.followup.send(f"Added command **;{trigger}** → {action}", ephemeral=True)
+
+    @discord.ui.button(label="Remove Command", style=discord.ButtonStyle.danger, row=1)
+    async def remove_command(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = CustomModal(
+            "Remove In-Game Command",
+            [("trigger", discord.ui.TextInput(label="Command Trigger", placeholder="e.g. ts"))],
+            {"ephemeral": True, "thinking": True},
+        )
+        await interaction.response.send_modal(modal)
+        if await modal.wait():
+            return
+
+        trigger = modal.trigger.value.strip().lower()
+        sett = await self.bot.settings.find_by_id(interaction.guild.id)
+        commands = sett.get("ERLC", {}).get("ingame_commands", {}).get("commands", [])
+        new_commands = [c for c in commands if c.get("trigger", "").lower() != trigger]
+
+        if len(new_commands) == len(commands):
+            await modal.interaction.followup.send(f"No command with trigger **;{trigger}** found.", ephemeral=True)
+            return
+
+        sett["ERLC"]["ingame_commands"]["commands"] = new_commands
+        await self.bot.settings.update_by_id(sett)
+        await modal.interaction.followup.send(f"Removed command **;{trigger}**", ephemeral=True)
+
+
+class InGameCommandModal(discord.ui.Modal, title="Add In-Game Command"):
+    trigger_input = discord.ui.TextInput(label="Trigger (without ;)", placeholder="e.g. ts")
+    action_input = discord.ui.TextInput(label="Action", placeholder="move_to_voice, send_message, or ping_role")
+    channel_input = discord.ui.TextInput(label="Channel ID (for send_message/ping_role)", required=False, placeholder="Channel ID")
+    extra_input = discord.ui.TextInput(
+        label="Extra Config",
+        required=False,
+        placeholder="move_to_voice: 1=CHANNEL_ID,2=CHANNEL_ID | ping_role: ROLE_ID | send_message: message text",
+        style=discord.TextStyle.paragraph,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        self.interaction = interaction
+        await interaction.response.defer(ephemeral=True)
+        self.stop()
+
+
 class MoreERLCConfiguration(discord.ui.View):
     def __init__(self, bot, settings):
         super().__init__(timeout=None)

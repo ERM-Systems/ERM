@@ -2337,10 +2337,160 @@ class APIRoutes:
                 status_code=500, detail=f"Internal server error: {str(e)}"
             )
 
+    async def POST_erlc_webhook(self, request: Request):
+        signature = request.headers.get("X-Signature-Ed25519")
+        timestamp = request.headers.get("X-Signature-Timestamp")
+        if not signature or not timestamp:
+            raise HTTPException(status_code=401, detail="Missing signature headers")
+
+        body = await request.body()
+        logger.info(f"ERLC webhook received: {body[:500]}")
+        if not verify_erlc_signature(signature, timestamp, body):
+            raise HTTPException(status_code=401, detail="Invalid signature")
+
+        payload = await request.json()
+        server_key = payload.get("server")
+        events = payload.get("events", [])
+        logger.info(f"ERLC webhook: server={server_key}, events={len(events)}, types={[e.get('event') for e in events]}")
+
+        guild_doc = await self.bot.server_keys.db.find_one({"key": server_key})
+        if not guild_doc:
+            guild_doc = await self.bot.server_keys.db.find_one({"key": {"$regex": f"{server_key}$"}})
+        if not guild_doc:
+            logger.warning(f"ERLC webhook: no guild found for server key {server_key[:10]}...")
+            return {"status": "ok"}
+
+        guild_id = guild_doc["_id"]
+        settings = await self.bot.settings.find_by_id(guild_id)
+        if not settings:
+            return {"status": "ok"}
+
+        guild = self.bot.get_guild(guild_id)
+        if not guild:
+            return {"status": "ok"}
+
+        for event in events:
+            event_type = event.get("event")
+            data = event.get("data", {})
+
+            if event_type == "CustomCommand":
+                await self._handle_custom_command(guild, settings, event)
+
+        return {"status": "ok"}
+
+    async def _handle_custom_command(self, guild, settings, event):
+        data = event.get("data", {})
+        command_text = data.get("command", "")
+        argument = data.get("argument", "")
+        caller_id = int(event.get("origin", 0)) or None
+        logger.info(f"Custom command: command={command_text}, arg={argument}, caller={caller_id}")
+
+        cmd_config = settings.get("ERLC", {}).get("ingame_commands", {})
+        if not cmd_config.get("enabled"):
+            logger.info("In-game commands disabled")
+            return
+
+        commands = cmd_config.get("commands", [])
+        logger.info(f"Available triggers: {[c.get('trigger') for c in commands]}")
+        matched = None
+        for cmd in commands:
+            if cmd.get("trigger", "").lower() == command_text.lower():
+                matched = cmd
+                break
+
+        if not matched:
+            return
+
+        action = matched.get("action")
+
+        # Resolve the caller's Discord member
+        member = None
+        if caller_id:
+            try:
+                member = await self.bot.accounts.roblox_to_discord(guild, "", roblox_user_id=caller_id)
+            except Exception:
+                member = None
+            logger.info(f"Resolved caller {caller_id} -> {member}")
+
+        if action == "move_to_voice":
+            if not member:
+                logger.info("move_to_voice: no member found")
+                return
+            voice_channels = matched.get("voice_channels", {})
+            target_channel_id = voice_channels.get(argument) or matched.get("channel")
+            if not target_channel_id:
+                logger.info(f"move_to_voice: no channel for arg={argument}, voice_channels={voice_channels}")
+                return
+            channel = guild.get_channel(int(target_channel_id))
+            if not channel:
+                logger.info(f"move_to_voice: channel {target_channel_id} not found")
+                return
+            if not member.voice:
+                logger.info(f"move_to_voice: {member} not in a voice channel")
+                return
+            try:
+                await member.move_to(channel)
+            except discord.HTTPException:
+                pass
+
+        elif action == "send_message":
+            channel_id = matched.get("channel")
+            if not channel_id:
+                return
+            channel = guild.get_channel(int(channel_id))
+            if not channel:
+                return
+            message = matched.get("message", "")
+            roblox_name = ""
+            if caller_id:
+                try:
+                    roblox_user = await self.bot.roblox.get_user(caller_id)
+                    roblox_name = roblox_user.name
+                except Exception:
+                    pass
+            message = message.replace("{player}", roblox_name).replace("{arg}", argument)
+            await channel.send(message)
+
+        elif action == "ping_role":
+            channel_id = matched.get("channel")
+            role_id = matched.get("role")
+            if not channel_id or not role_id:
+                return
+            channel = guild.get_channel(int(channel_id))
+            if not channel:
+                return
+            message = matched.get("message", "")
+            roblox_name = ""
+            if caller_id:
+                try:
+                    roblox_user = await self.bot.roblox.get_user(caller_id)
+                    roblox_name = roblox_user.name
+                except Exception:
+                    pass
+            message = message.replace("{player}", roblox_name).replace("{arg}", argument)
+            await channel.send(
+                content=f"<@&{role_id}> {message}",
+                allowed_mentions=discord.AllowedMentions(roles=True),
+            )
+
 
 api = FastAPI()
 
 from fastapi import Request
+from cryptography.hazmat.primitives.serialization import load_der_public_key
+import base64
+
+ERLC_PUBLIC_KEY = load_der_public_key(base64.b64decode(config("ERLC_WEBHOOK_PUBLIC_KEY", default="MCowBQYDK2VwAyEAjSICb9pp0kHizGQtdG8ySWsDChfGqi+gyFCttigBNOA=")))
+
+
+def verify_erlc_signature(signature_hex: str, timestamp: str, body: bytes) -> bool:
+    try:
+        signature = bytes.fromhex(signature_hex)
+        message = timestamp.encode("utf-8") + body
+        ERLC_PUBLIC_KEY.verify(signature, message)
+        return True
+    except Exception:
+        return False
 
 
 class MyMiddleware:
