@@ -498,8 +498,15 @@ class APIRoutes:
             icon_url=guild.icon.url if guild.icon else None,
         )
 
+        ping_roles = json_data.get("ping_roles") or []
+        content = " ".join(f"<@&{int(role)}>" for role in ping_roles)
+
         try:
-            await channel.send(embed=embed)
+            await channel.send(
+                content=content or None,
+                embed=embed,
+                allowed_mentions=discord.AllowedMentions(roles=True),
+            )
             return {"op": 1, "code": 200}
         except discord.HTTPException as e:
             raise HTTPException(status_code=500, detail=f"Failed to send message: {str(e)}")
