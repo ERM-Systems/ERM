@@ -121,8 +121,9 @@ class Sessions(commands.Cog):
             channel_id = await start_session(self.bot, ctx.guild.id, ctx.author.id)
         except ValueError as error:
             return await ctx.reply(embed=discord.Embed(title = "Session", description=str(error)))
-        return await (ctx.reply if not ctx.interaction else ctx.interaction.followup.send)(embed=discord.Embed(title = f"{self.bot.emoji_controller.get_emoji("success")} Successfully posted session start message", description=f"You can find it at <#{channel_id}>", colour=discord.Colour.green()), ephemeral=True)
-    
+        description = f"You can find it at <#{channel_id}>" if channel_id else "Nothing was sent because the sessions channel isn't configured."
+        return await (ctx.reply if not ctx.interaction else ctx.interaction.followup.send)(embed=discord.Embed(title = f"{self.bot.emoji_controller.get_emoji("success")} Successfully started the session", description=description, colour=discord.Colour.green()), ephemeral=True)
+
     @session.command(name = "end", description="End a session")
     @require_settings(["sessions"])
     @is_admin()
@@ -131,7 +132,8 @@ class Sessions(commands.Cog):
             channel_id = await end_session(self.bot, ctx.guild.id, ctx.author.id)
         except ValueError as error:
             return await ctx.reply(embed=discord.Embed(title = "Session", description=str(error)))
-        return await (ctx.reply if not ctx.interaction else ctx.interaction.followup.send)(embed=discord.Embed(title = f"{self.bot.emoji_controller.get_emoji("success")} Successfully posted session end message", description=f"You can find it at <#{channel_id}>", colour=discord.Colour.green()), ephemeral=True)
+        description = f"You can find it at <#{channel_id}>" if channel_id else "Nothing was sent because the sessions channel isn't configured."
+        return await (ctx.reply if not ctx.interaction else ctx.interaction.followup.send)(embed=discord.Embed(title = f"{self.bot.emoji_controller.get_emoji("success")} Successfully ended the session", description=description, colour=discord.Colour.green()), ephemeral=True)
     def generate_graph(self, session):
         """
         Generates player graph.

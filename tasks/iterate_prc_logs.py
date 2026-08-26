@@ -1,4 +1,5 @@
 import re
+from collections import Counter, defaultdict
 from typing import List
 import discord
 from discord.ext import commands, tasks
@@ -15,7 +16,7 @@ from utils.prc_api import JoinLeaveLog, Player
 from utils.utils import fetch_get_channel, has_whitelabel, staff_check
 from utils import prc_api
 from utils.constants import BLANK_COLOR, GREEN_COLOR, RED_COLOR
-from menus import AvatarCheckView
+from menus import AvatarCheckView, RDMActions
 from utils.username_check import UsernameChecker
 
 global_aggregate = [
@@ -69,7 +70,7 @@ async def iterate_prc_logs(bot):
                 await asyncio.gather(*batch, return_exceptions=True)
                 logging.warning(f"[ITERATE] Executed {processed}/{server_count} servers")
                 batch.clear()
-        
+
         if batch:
             await asyncio.gather(*batch, return_exceptions=True)
 
@@ -95,6 +96,7 @@ async def unprimitive_guild_process(items, bot):
     channels = {
         "kill_logs": erlc_settings.get("kill_logs"),
         "player_logs": erlc_settings.get("player_logs"),
+        "rdm_channel": erlc_settings.get("rdm_channel"),
     }
 
     channels = {
@@ -107,7 +109,7 @@ async def unprimitive_guild_process(items, bot):
     )
     has_team_restrictions = bool(erlc_settings.get("team_restrictions"))
     has_automatic_shifts = bool(
-        erlc_settings.get("automatic_shifts", {})
+        (erlc_settings.get("automatic_shifts") or {}).get("enabled")
     )
 
     if (
@@ -179,6 +181,26 @@ async def unprimitive_guild_process(items, bot):
                 guild.id, "kill_logs", latest_timestamp
             )
 
+    if channels.get("rdm_channel") and kill_logs:
+        last_timestamp = bot.log_tracker.get_last_timestamp(
+            guild.id, "rdm_alerts"
+        )
+        bursts, latest_timestamp = process_rdm_logs(
+            kill_logs,
+            last_timestamp,
+            erlc_settings.get("rdm_threshold") or 4,
+            erlc_settings.get("rdm_window") or 20,
+        )
+        if bursts:
+            subtasks.append(
+                send_rdm_alerts(
+                    bot, guild, channels["rdm_channel"], erlc_settings, bursts
+                )
+            )
+        bot.log_tracker.update_timestamp(
+            guild.id, "rdm_alerts", latest_timestamp
+        )
+
     if "player_logs" in channels and player_logs:
         last_timestamp = bot.log_tracker.get_last_timestamp(
             guild.id, "player_logs"
@@ -211,7 +233,7 @@ async def process_guild(bot, items, semaphore):
         try:
             await unprimitive_guild_process(items, bot)
         except Exception as e:
-            logging.warning(f"error processing guild: {e}")
+            logging.warning(f"error processing guild {items['_id']}: {e}", exc_info=True)
 
 
 async def fetch_logs_with_retry(guild_id, bot, retries=3, extra_resources=()):
@@ -302,6 +324,99 @@ def process_kill_logs(kill_logs, last_timestamp):
         embeds.append(embed)
 
     return embeds, latest_timestamp
+
+
+def process_rdm_logs(kill_logs, last_timestamp, threshold, window):
+    """Process fresh kill logs that exceed set RDM threshold"""
+    latest_timestamp = last_timestamp
+    by_killer = defaultdict(list)
+
+    for log in sorted(kill_logs):
+        if log.timestamp <= last_timestamp:
+            continue
+
+        latest_timestamp = max(latest_timestamp, log.timestamp)
+        if log.killer_user_id == log.killed_user_id:
+            continue
+
+        by_killer[log.killer_user_id].append(log)
+
+    bursts = []
+    for kills in by_killer.values():
+        flagged = []
+        index = 0
+        while index < len(kills):
+            first = kills[index]
+            burst = [
+                log
+                for log in kills[index:]
+                if log.timestamp - first.timestamp <= window
+            ]
+            if len(burst) >= threshold:
+                flagged.extend(burst)
+                index += len(burst)
+            else:
+                index += 1
+
+        if flagged:
+            bursts.append(flagged)
+
+    return bursts, latest_timestamp
+
+
+async def send_rdm_alerts(bot, guild, channel, erlc_settings, bursts):
+    """Send alert once RDM threshold is exceeded"""
+    roles = [
+        guild.get_role(role_id)
+        for role_id in (erlc_settings.get("rdm_mentionables") or [])
+    ]
+    pings = " ".join(role.mention for role in roles if role)
+
+    for burst in bursts:
+        first = burst[0]
+        victim_counts = Counter(log.killed_username for log in burst)
+        victims = [
+            name if count == 1 else f"{name} (x{count})"
+            for name, count in victim_counts.items()
+        ]
+        victim_names = ", ".join(victims)
+        if len(victim_names) > 900:
+            victim_names = victim_names[:900] + "..."
+
+        embed = (
+            discord.Embed(
+                title=f"{bot.emoji_controller.get_emoji('security')} RDM Detected",
+                color=BLANK_COLOR,
+            )
+            .add_field(
+                name="Player Information",
+                value=(
+                    f"> **Username:** {first.killer_username}\n"
+                    f"> **User ID:** {first.killer_user_id}\n"
+                    f"> **Profile Link:** [Click here](https://roblox.com/users/{first.killer_user_id}/profile)"
+                ),
+                inline=False,
+            )
+            .add_field(
+                name="Kill Information",
+                value=(
+                    f"> **Kills [{len(burst)}]:** {victim_names}\n"
+                    f"> **Started:** <t:{int(first.timestamp)}:T>\n"
+                    f"> **Ended:** <t:{int(burst[-1].timestamp)}:T>"
+                ),
+                inline=False,
+            )
+        )
+        embed.set_footer(
+            text="This alert may not reflect the current situation and is only an estimate."
+        )
+
+        try:
+            await channel.send(
+                content=pings or None, embed=embed, view=RDMActions(bot)
+            )
+        except discord.HTTPException as e:
+            logging.warning(f"Failed to send RDM alert: {e}")
 
 
 async def process_player_logs(bot, settings, guild_id, player_logs, last_timestamp):
@@ -575,14 +690,14 @@ async def send_welcome_message(
                     del player_names[log.username]
     players = player_names.keys()
     if len(players) == 0:
-        return sorted(player_logs, key=lambda x: x.timestamp, reverse=True)[0].timestamp
+        return max((log.timestamp for log in player_logs), default=last_timestamp)
     try:
         await bot.prc_api.run_command(
             guild_id, f":pm {','.join(players)} {welcome_message}"
         )
     except prc_api.ResponseFailure:
         pass
-    return sorted(player_logs, key=lambda x: x.timestamp, reverse=True)[0].timestamp
+    return max((log.timestamp for log in player_logs), default=last_timestamp)
 
 
 async def check_automatic_shifts(bot, settings, guild_id, join_logs, ts: int, players=None) -> int:
@@ -591,23 +706,23 @@ async def check_automatic_shifts(bot, settings, guild_id, join_logs, ts: int, pl
     try:
         guild = bot.get_guild(guild_id) or await bot.fetch_guild(guild_id)
     except:
-        return sorted(join_logs, key=lambda x: x.timestamp, reverse=True)[0].timestamp
+        return max((log.timestamp for log in join_logs), default=ts)
 
     if not guild:
-        return sorted(join_logs, key=lambda x: x.timestamp, reverse=True)[0].timestamp
+        return max((log.timestamp for log in join_logs), default=ts)
 
     if automatic_shifts in [{}, None]:
-        return sorted(join_logs, key=lambda x: x.timestamp, reverse=True)[0].timestamp
+        return max((log.timestamp for log in join_logs), default=ts)
 
     if automatic_shifts["enabled"] is False:
-        return sorted(join_logs, key=lambda x: x.timestamp, reverse=True)[0].timestamp
+        return max((log.timestamp for log in join_logs), default=ts)
 
     if players is None:
         try:
             players = await bot.prc_api.get_server_players(guild_id)
         except Exception as e:
             logging.info(f"Skipping {guild_id} (automatic shifts) because of exc: {e}")
-            return sorted(join_logs, key=lambda x: x.timestamp, reverse=True)[0].timestamp
+            return max((log.timestamp for log in join_logs), default=ts)
 
     new_players: list[Player] = list(
         filter(lambda x: x.permission != "Normal", players)
@@ -712,7 +827,7 @@ async def check_automatic_shifts(bot, settings, guild_id, join_logs, ts: int, pl
             except Exception as e:
                 pass
 
-    return sorted(join_logs, key=lambda x: x.timestamp, reverse=True)[0].timestamp
+    return max((log.timestamp for log in join_logs), default=ts)
 
 
 async def check_team_restrictions(bot, settings, guild_id, players):
@@ -929,7 +1044,7 @@ async def handle_kick_timer(bot, settings, guild_id, player_logs, command_logs):
     current_time = int(time.time())
     if guild_id in bot.kicked_users:
         bot.kicked_users[guild_id] = {
-            username: timestamp 
+            username: timestamp
             for username, timestamp in bot.kicked_users[guild_id].items()
             if (current_time - timestamp) <= time_limit
         }

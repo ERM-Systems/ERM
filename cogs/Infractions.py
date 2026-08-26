@@ -321,6 +321,14 @@ class Infractions(commands.Cog):
             )
 
         options = await infraction_type_autocomplete_special(ctx.guild.id, self.bot)
+        if not options:
+            return await ctx.send(
+                embed=discord.Embed(
+                    title="No Presets Found",
+                    description="There are no infraction presets configured on this server.",
+                    color=BLANK_COLOR,
+                )
+            )
 
         modal = self.InfractionsModal(self.bot, ctx.interaction.guild.id, options)
         await ctx.interaction.response.send_modal(modal)
@@ -339,7 +347,7 @@ class Infractions(commands.Cog):
         original_type = type
         current_type = type
         original_config = infraction_config
-        
+
         embed2 = discord.Embed(
                 title=f"{self.bot.emoji_controller.get_emoji('success')} Infraction Issued",
                 description="Successfully issued an infraction!",
@@ -356,7 +364,7 @@ class Infractions(commands.Cog):
             current_type = original_type
             infraction_config = original_config
             # Create infraction document
-            
+
             if infraction_config.get("escalation"):
                 while True:
                     threshold = infraction_config.get("escalation", {}).get("threshold", 0)

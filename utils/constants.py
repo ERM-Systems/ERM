@@ -61,6 +61,8 @@ base_configuration = {
         "elevation_required": None,
         "rdm_mentionables": [],
         "rdm_channel": None,
+        "rdm_threshold": 4,
+        "rdm_window": 20,
         "automatic_shifts": {"enabled": False, "shift_type": None},
     },
 }
@@ -88,6 +90,8 @@ ONE_WEEK = 7 * 24 * 60 * 60
 """
 
 DAY_NAMES = {1: "Sunday", 2: "Monday", 3: "Tuesday", 4: "Wednesday", 5: "Thursday", 6: "Friday", 7: "Saturday"}
+
+ERLC_TEAMS = ("Police", "Sheriff", "Fire", "DOT", "Civilian", "Jail")
 
 SERVER_CONDITIONS = {
     "In-Game Players": "ERLC_Players",

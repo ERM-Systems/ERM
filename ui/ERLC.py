@@ -2,6 +2,7 @@ from discord.ext import commands
 from utils.constants import blank_color
 from utils.utils import config_change_log
 import discord
+import typing
 
 class callSignCheck(discord.ui.View):
     def __init__(self, bot: commands.Bot, user_id: int, settings: dict = None):
@@ -41,7 +42,7 @@ class callSignCheck(discord.ui.View):
         sett = await self.bot.settings.find_by_id(interaction.guild.id)
         if not sett:
             sett = {}
-        
+
         sett['ERLC']['callsign_check'] = {
             'enabled': selected_value == 'enabled'
         }
@@ -69,3 +70,79 @@ class callSignCheck(discord.ui.View):
             color=blank_color
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+class PMTargetMenu(discord.ui.View):
+    def __init__(
+        self,
+        user_id: int,
+        team: typing.Optional[str],
+        usernames: list,
+        team_count: int,
+    ):
+        super().__init__(timeout=30)
+        self.user_id = user_id
+        self.value = None
+        self.message = None
+
+        options = []
+        if team is not None:
+            options.append(
+                discord.SelectOption(
+                    label=f"{team} Team",
+                    description=(
+                        f"All {team_count} player(s) currently on the {team} team."
+                    ),
+                    value="team",
+                )
+            )
+        options.extend(
+            discord.SelectOption(
+                label=username,
+                description="This player only.",
+                value=f"player:{username}",
+            )
+            for username in usernames[:24]
+        )
+
+        self.target_select = discord.ui.Select(
+            placeholder="Select who should receive this PM...",
+            options=options,
+        )
+        self.target_select.callback = self.target_callback
+        self.add_item(self.target_select)
+
+    async def interaction_check(self, interaction: discord.Interaction, /) -> bool:
+        if interaction.user.id == self.user_id:
+            return True
+        await interaction.response.send_message(
+            embed=discord.Embed(
+                title="Not Permitted",
+                description="You are not permitted to interact with this menu.",
+                color=blank_color,
+            ),
+            ephemeral=True,
+        )
+        return False
+
+    async def target_callback(self, interaction: discord.Interaction):
+        self.value = self.target_select.values[0]
+        self.target_select.disabled = True
+        await interaction.response.edit_message(view=self)
+        self.stop()
+
+    async def on_timeout(self) -> None:
+        self.target_select.disabled = True
+        if not self.message:
+            return
+        try:
+            await self.message.edit(
+                embed=discord.Embed(
+                    title="Timed Out",
+                    description="You did not select a target in time.",
+                    color=blank_color,
+                ),
+                view=self,
+            )
+        except discord.HTTPException:
+            pass
