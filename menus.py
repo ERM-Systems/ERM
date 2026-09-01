@@ -42,6 +42,8 @@ from ui.ERLC import (
     callSignCheck
 )
 
+from ui.InGameCommands import InGameCommands
+
 REQUIREMENTS = ["gspread", "oauth2client"]
 
 
@@ -120,11 +122,6 @@ class Dropdown(discord.ui.Select):
                 label="Punishments",
                 value="punishments",
                 description="Punishing community members for rule infractions",
-            ),
-            discord.SelectOption(
-                label="Moderation Sync",
-                value="moderation_sync",
-                description="Syncing moderation actions from Roblox to Discord",
             ),
             discord.SelectOption(
                 label="Shift Management",
@@ -8855,6 +8852,43 @@ class ERLCIntegrationConfiguration(AssociationConfigurationView):
         )
 
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    @discord.ui.button(label="In-Game Commands", row=3)
+    async def ingame_commands(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+        val = await self.interaction_check(interaction)
+        if val is False:
+            return
+
+        settings = await self.bot.settings.find_by_id(interaction.guild.id)
+        configuration = settings.get("ERLC", {}).get("ingame_commands", {}) or {}
+
+        embed = discord.Embed(
+            title="In-Game Commands", description="", color=BLANK_COLOR
+        )
+        embed.description += "**Status:** {}\n\n".format(
+            "Enabled" if configuration.get("enabled") else "Disabled"
+        )
+        for command in configuration.get("commands") or []:
+            embed.description += "> **;{}** runs `{}`\n".format(
+                command.get("trigger", ""), command.get("action", "")
+            )
+        if not configuration.get("commands"):
+            embed.description += "> No commands configured.\n"
+
+        embed.set_author(
+            name=interaction.guild.name,
+            icon_url=interaction.guild.icon.url if interaction.guild.icon else "",
+        )
+        view = InGameCommands(self.bot, interaction.user.id)
+
+        await interaction.response.send_message(
+            embed=embed,
+            view=view,
+            ephemeral=True
+        )
+        view.message = await interaction.original_response()
 
     @discord.ui.button(label="More Options", row=3)
     async def more_options(self, interaction: discord.Interaction, button: discord.ui.Button):

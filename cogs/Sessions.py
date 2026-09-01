@@ -8,7 +8,7 @@ from menus import CustomDropdown
 from ui.CustomModals import CustomModalButton
 from ui.Sessions import SessionsEmbedCreationView
 from ui.Selects import SimpleTextChannelSelect
-from utils.utils import create_session_vote, end_session, start_session
+from utils.utils import create_session_vote, end_session, send_session_boost, staff_check, start_session
 import utils.prc_api as prc_api
 import matplotlib.pyplot as plt
 import matplotlib
@@ -61,6 +61,15 @@ class Sessions(commands.Cog):
         if not session:
             return
         if id == "vote_button":
+            if session.get("staff_only"):
+                try:
+                    is_staff = await staff_check(self.bot, guild, interaction.user)
+                except KeyError:
+                    is_staff = False
+                if not is_staff:
+                    return await interaction.response.send_message(
+                        "Only staff can vote on this session.", ephemeral=True
+                    )
             if interaction.user.id in session["voted_users"]:
                 action = "decrement"
             else:
@@ -105,10 +114,10 @@ class Sessions(commands.Cog):
     @session.command(name = "vote", description="Create a session vote")
     @require_settings(["sessions"])
     @is_admin()
-    @app_commands.describe(required_votes="The votes required for the session to start")
-    async def _vote(self, ctx: commands.Context, required_votes: int | None=None):
+    @app_commands.describe(required_votes="The votes required for the session to start", staff_only="A special staff-only vote for sessions.")
+    async def _vote(self, ctx: commands.Context, required_votes: int | None=None, staff_only: bool = False):
         try:
-            channel_id = await create_session_vote(self.bot, ctx.guild.id, ctx.author.id, required_votes)
+            channel_id = await create_session_vote(self.bot, ctx.guild.id, ctx.author.id, required_votes, staff_only)
         except ValueError as error:
             return await ctx.reply(embed=discord.Embed(title = "Session", description=str(error)))
         return await (ctx.reply if not ctx.interaction else ctx.interaction.followup.send)(embed=discord.Embed(title = f"{self.bot.emoji_controller.get_emoji("success")} Successfully posted session vote message", description=f"You can find it at <#{channel_id}>", colour=discord.Colour.green()), ephemeral=True)
@@ -152,6 +161,15 @@ class Sessions(commands.Cog):
         self.fig.savefig(buf, format="png", bbox_inches="tight", dpi=100, facecolor="black")
         buf.seek(0)
         return buf
+    @session.command(name = "boost", description="Ask for more players to join the running session")
+    @require_settings(["sessions"])
+    @is_admin()
+    async def _boost(self, ctx: commands.Context):
+        try:
+            channel_id = await send_session_boost(self.bot, ctx.guild.id, ctx.author.id)
+        except ValueError as error:
+            return await ctx.reply(embed=discord.Embed(title = "Session", description=str(error)))
+        return await (ctx.reply if not ctx.interaction else ctx.interaction.followup.send)(embed=discord.Embed(title = f"{self.bot.emoji_controller.get_emoji("success")} Successfully posted the boost message", description=f"You can find it at <#{channel_id}>", colour=discord.Colour.green()), ephemeral=True)
     @session.command(name = "info", description="View analytics about your session")
     @require_settings(["sessions"])
     @is_erlc_server_linked()
@@ -198,7 +216,10 @@ class Sessions(commands.Cog):
             [
                 discord.SelectOption(label = "Channel", description="Select the channel for sessions to be sent to.", value="channel"),
                 discord.SelectOption(label = "Vote Message", description="Edit the session vote message", value="vote"),
+                discord.SelectOption(label = "Staff Vote Message", description="Edit the vote message only staff may vote on", value="staff_vote"),
                 discord.SelectOption(label = "Start Message", description="Edit the start message", value = "start"),
+                discord.SelectOption(label = "Boost Message", description="Edit the message asking for more players", value = "boost"),
+                discord.SelectOption(label = "Full Message", description="Edit the message sent when the server fills up", value = "full"),
                 discord.SelectOption(label = "End Message", description="Edit the session end message", value = "shutdown"),
                 discord.SelectOption(label = "Other Options", description="Edit other options, such as the dynamic button.", value = "other"),
                 discord.SelectOption(label = "Finish", description="Finish editing these options.", value = "done")   
@@ -280,7 +301,10 @@ class Sessions(commands.Cog):
                     await msg.edit(view = (view := discord.ui.LayoutView(timeout=None).add_item(cont)))
                     await view.wait()
                     settings["sessions"]["vote_button_label"] = modal.values[0]
-                    settings["sessions"]["required_votes_default"] = modal.values[1]
+                    try:
+                        settings["sessions"]["required_votes_default"] = max(1, int(modal.values[1]))
+                    except (TypeError, ValueError):
+                        settings["sessions"]["required_votes_default"] = 5
                     settings["sessions"]["dynamic_button"] = bool(modal.values[2])
                 case "done":
                     await self.bot.settings.update(settings)

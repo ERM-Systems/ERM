@@ -17,6 +17,7 @@ import roblox.users
 from discord import Embed, InteractionResponse, Webhook
 from discord.ext import commands
 from fuzzywuzzy import fuzz
+from pymongo.errors import DuplicateKeyError
 from snowflake import SnowflakeGenerator
 from zuid import ZUID
 
@@ -762,8 +763,12 @@ async def secure_logging(
 
 def render_session_message(template: str, replacements: dict) -> dict:
     for token, value in replacements.items():
-        template = template.replace(token, value)
-    return json.loads(template)
+        template = template.replace(token, json.dumps(str(value))[1:-1])
+
+    try:
+        return json.loads(template)
+    except json.JSONDecodeError:
+        raise ValueError("That message could not be rendered, please configure it again.")
 
 
 async def get_session_status(bot, guild_id: int):
@@ -788,18 +793,24 @@ async def get_session_configuration(bot, guild_id: int, message_type: str) -> di
 
 
 async def create_session_vote(
-    bot, guild_id: int, user_id: int, required_votes: int | None = None
+    bot, guild_id: int, user_id: int, required_votes: int | None = None, staff_only: bool = False
 ) -> int:
-    sessions = await get_session_configuration(bot, guild_id, "vote")
+    message_type = "staff_vote" if staff_only else "vote"
+    sessions = await get_session_configuration(bot, guild_id, message_type)
     if await bot.sessions.find(guild_id):
         raise ValueError("There is already an active session.")
 
-    required = required_votes or sessions.get("required_votes_default") or 5
+    try:
+        required = int(required_votes or sessions.get("required_votes_default") or 5)
+    except (TypeError, ValueError):
+        required = 5
+
     session = {
         "_id": guild_id,
         "user": user_id,
         "voted_users": [],
         "started": False,
+        "staff_only": staff_only,
         "votes": 0,
         "required_votes": required,
         "created_at": int(datetime.datetime.now().timestamp()),
@@ -808,7 +819,7 @@ async def create_session_vote(
 
     dynamic = sessions.get("dynamic_button")
     payload = render_session_message(
-        sessions["vote"],
+        sessions[message_type],
         {
             "{user}": f"<@{user_id}>",
             "{vote_button_name}": f"0/{required}"
@@ -841,6 +852,68 @@ async def create_session_vote(
     return sessions["channel_id"]
 
 
+async def send_session_boost(bot, guild_id: int, user_id: int) -> int:
+    sessions = await get_session_configuration(bot, guild_id, "boost")
+    session = await bot.sessions.find(guild_id)
+    if not session or not session.get("started"):
+        raise ValueError("There is no session running right now.")
+
+    info = await get_session_status(bot, guild_id)
+    payload = render_session_message(
+        sessions["boost"],
+        {
+            "{user}": f"<@{user_id}>",
+            "{erlc.name}": str(info.name) if info else "{erlc.name}",
+            "{erlc.code}": str(info.join_key) if info else "{erlc.code}",
+            "{erlc.players}": str(info.current_players) if info else "{erlc.players}",
+        },
+    )
+
+    await bot.http.send_message(
+        sessions["channel_id"],
+        params=discord.http.MultipartParameters(payload=payload, multipart=None, files=None),
+    )
+
+    return sessions["channel_id"]
+
+
+async def send_session_full(bot, guild_id: int, info) -> bool:
+    try:
+        sessions = await get_session_configuration(bot, guild_id, "full")
+    except ValueError:
+        return False
+
+    claim = await bot.sessions.db.update_one(
+        {"_id": guild_id, "full_announced": {"$ne": True}},
+        {"$set": {"full_announced": True}},
+    )
+    if not claim.modified_count:
+        return False
+
+    try:
+        payload = render_session_message(
+            sessions["full"],
+            {
+                "{erlc.name}": str(info.name) if info else "{erlc.name}",
+                "{erlc.code}": str(info.join_key) if info else "{erlc.code}",
+                "{erlc.players}": str(info.current_players) if info else "{erlc.players}",
+                "{erlc.max_players}": str(info.max_players) if info else "{erlc.max_players}",
+            },
+        )
+
+        await bot.http.send_message(
+            sessions["channel_id"],
+            params=discord.http.MultipartParameters(payload=payload, multipart=None, files=None),
+        )
+    except Exception:
+        await bot.sessions.db.update_one(
+            {"_id": guild_id}, {"$unset": {"full_announced": ""}}
+        )
+        raise
+
+    return True
+
+
 async def disable_vote_button(bot, guild_id: int, sessions: dict, session: dict):
     if not session.get("vote_message"):
         return
@@ -861,59 +934,82 @@ async def disable_vote_button(bot, guild_id: int, sessions: dict, session: dict)
         logging.warning(f"Could not disable the vote button in {guild_id}: {error}")
 
 
+async def release_session_start(bot, guild_id: int, previous: dict | None) -> None:
+    if previous is None:
+        return await bot.sessions.delete(guild_id)
+
+    await bot.sessions.db.update_one(
+        {"_id": guild_id},
+        {
+            "$set": {"user": previous.get("user"), "started": False},
+            "$unset": {"started_by": "", "started_at": ""},
+        },
+    )
+
+
 async def start_session(bot, guild_id: int, user_id: int) -> int | None:
     try:
         sessions = await get_session_configuration(bot, guild_id, "start")
     except ValueError:
         sessions = None
 
-    session = await bot.sessions.find(guild_id)
-    fresh = session is None
+    now = int(datetime.datetime.now().timestamp())
 
-    if fresh:
-        session = {
-            "_id": guild_id,
-            "user": user_id,
-            "voted_users": [],
-            "votes": 0,
-            "required_votes": 0,
-            "created_at": int(datetime.datetime.now().timestamp()),
-            "analytics": {"max_players": 0, "player_counts": []},
-        }
+    try:
+        previous = await bot.sessions.db.find_one_and_update(
+            {"_id": guild_id, "started": {"$ne": True}},
+            {
+                "$set": {
+                    "user": f"<@{user_id}>",
+                    "started": True,
+                    "started_by": user_id,
+                    "started_at": now,
+                },
+                "$setOnInsert": {
+                    "voted_users": [],
+                    "votes": 0,
+                    "required_votes": 0,
+                    "created_at": now,
+                    "analytics": {"max_players": 0, "player_counts": []},
+                },
+            },
+            upsert=True,
+        )
+    except DuplicateKeyError:
+        raise ValueError("There is already an active session.")
+
+    session = await bot.sessions.find(guild_id)
 
     if sessions:
-        info = await get_session_status(bot, guild_id)
-        if "{erlc.players}" in sessions["start"]:
-            session["dynamic"] = True
+        try:
+            info = await get_session_status(bot, guild_id)
+            if "{erlc.players}" in sessions["start"]:
+                session["dynamic"] = True
 
-        payload = render_session_message(
-            sessions["start"],
-            {
-                "{user}": f"<@{user_id}>",
-                "{user_mentions}": " | ".join([f"<@{user}>" for user in session["voted_users"]]),
-                "{erlc.name}": info.name if info else "{erlc.name}",
-                "{erlc.code}": info.join_key if info else "{erlc.code}",
-                "{erlc.players}": str(info.current_players) if info else "{erlc.players}",
-            },
-        )
+            payload = render_session_message(
+                sessions["start"],
+                {
+                    "{user}": f"<@{user_id}>",
+                    "{user_mentions}": " | ".join([f"<@{user}>" for user in session["voted_users"]]),
+                    "{erlc.name}": info.name if info else "{erlc.name}",
+                    "{erlc.code}": info.join_key if info else "{erlc.code}",
+                    "{erlc.players}": str(info.current_players) if info else "{erlc.players}",
+                },
+            )
 
-        await disable_vote_button(bot, guild_id, sessions, session)
+            await disable_vote_button(bot, guild_id, sessions, session)
 
-        message = await bot.http.send_message(
-            sessions["channel_id"],
-            params=discord.http.MultipartParameters(payload=payload, multipart=None, files=None),
-        )
+            message = await bot.http.send_message(
+                sessions["channel_id"],
+                params=discord.http.MultipartParameters(payload=payload, multipart=None, files=None),
+            )
+        except Exception:
+            await release_session_start(bot, guild_id, previous)
+            raise
+
         session["message"], session["channel"] = message["id"], sessions["channel_id"]
 
-    session["user"] = f"<@{user_id}>"
-    session["started"] = True
-    session["started_by"] = user_id
-    session["started_at"] = int(datetime.datetime.now().timestamp())
-
-    if fresh:
-        await bot.sessions.insert(session)
-    else:
-        await bot.sessions.update(session)
+    await bot.sessions.update(session)
 
     return sessions["channel_id"] if sessions else None
 

@@ -740,7 +740,7 @@ async def check_automatic_shifts(bot, settings, guild_id, join_logs, ts: int, pl
         async for x in bot.shift_management.shifts.db.find(
             {
                 "Guild": guild.id,
-                "Type": automatic_shifts.get("type", "Default") or "Default",
+                "Type": automatic_shifts.get("shift_type", "Default") or "Default",
                 "EndEpoch": 0,
             }
         )
@@ -813,7 +813,7 @@ async def check_automatic_shifts(bot, settings, guild_id, join_logs, ts: int, pl
     for item in staff_members:
         if await bot.shift_management.get_current_shift(item, guild.id) is None:
             oid = await bot.shift_management.add_shift_by_user(
-                item, automatic_shifts.get("type", "Default") or "Default", [], guild.id
+                item, automatic_shifts.get("shift_type", "Default") or "Default", [], guild.id
             )
             bot.dispatch("shift_start", oid)
             try:
