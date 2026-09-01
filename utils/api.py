@@ -32,6 +32,7 @@ from utils.constants import BLANK_COLOR, GREEN_COLOR
 from utils.utils import get_elapsed_time, secure_logging, staff_rank
 from pydantic import BaseModel
 
+from utils.ingame_commands import execute_ingame_command
 from utils.timestamp import td_format
 from utils.utils import tokenGenerator, system_code_gen
 import logging
@@ -1017,6 +1018,58 @@ class APIRoutes:
             json_data["attempted"],
         )
         return {"message": "Successfully logged!"}
+
+    async def POST_ingame_command(
+        self, authorization: Annotated[str | None, Header()], request: Request
+    ):
+        if not authorization:
+            raise HTTPException(status_code=401, detail="Invalid authorization")
+
+        token_obj = await self.bot.api_tokens.db.find_one({"token": authorization})
+
+        if not token_obj or not token_obj.get("link_string"):
+            raise HTTPException(status_code=401, detail="Invalid authorization")
+
+        if int(datetime.datetime.now().timestamp()) > token_obj["expires_at"]:
+            raise HTTPException(status_code=401, detail="Invalid authorization")
+
+        link_string_obj = await self.bot.link_strings.db.find_one(
+            {"_id": token_obj["link_string"]}
+        )
+
+        if not link_string_obj:
+            raise HTTPException(status_code=401, detail="Invalid link string")
+
+        guild = self.bot.get_guild(link_string_obj["guild"])
+
+        if not guild:
+            raise HTTPException(status_code=404, detail="Guild not found")
+
+        settings = await self.bot.settings.find_by_id(guild.id)
+        if not settings:
+            raise HTTPException(status_code=404, detail="Guild is not configured")
+
+        try:
+            json_data = await request.json()
+        except ValueError as e:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid data format: {str(e)}"
+            )
+
+        if not isinstance(json_data, dict):
+            raise HTTPException(
+                status_code=400, detail="Invalid data format: expected an object"
+            )
+
+        executed = await execute_ingame_command(
+            self.bot,
+            guild,
+            settings,
+            json_data.get("command", ""),
+            json_data.get("argument", ""),
+            json_data.get("user_id"),
+        )
+        return {"executed": executed}
 
     async def POST_get_staff_guilds(self, request: Request):
         json_data = await request.json()

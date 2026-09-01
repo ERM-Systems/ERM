@@ -8,7 +8,7 @@ import logging
 
 
 class SessionsEmbedCreationView(discord.ui.LayoutView):
-    def __init__(self, bot: commands.Bot, type: typing.Literal['vote', 'start', 'shutdown'],):
+    def __init__(self, bot: commands.Bot, type: typing.Literal['vote', 'staff_vote', 'start', 'boost', 'full', 'shutdown'],):
         super().__init__(timeout=None)
         self.cont = discord.ui.Container()
         self.type = type
@@ -28,6 +28,46 @@ class SessionsEmbedCreationView(discord.ui.LayoutView):
                         "- {required_members}: How many members are needed to start the vote\n"
                     )
                 )
+            case 'staff_vote':
+                self.cont.add_item(
+                    discord.ui.TextDisplay(
+                        "### Create Staff Vote Message\n"
+                        "Please use Discohook to design the vote message that only your staff may vote on. When you are done, please press the button saying 'I Have Created My Message'. Please note that you may only have one message.\n"
+                        "**Main Variables**\n"
+                        "- Your vote button must be a button and must have the label set to `{vote_button}`. If it is not set to that, your vote button will not work.\n"
+                        "- If you want a view votes button, you must have another button with the label set to `{view_votes_button}`, else, that will not work.\n"
+                        "**Other Variables**\n"
+                        "- {user}: The user initiating the staff vote\n"
+                        "- {vote_button_name}: The name of the vote button. If you select the dynamic button option (where the button's name changes on the amount of votes), this will say 'vote' by default.\n"
+                        "- {required_members}: How many staff members are needed to start the session\n"
+                    )
+                )
+            case 'boost':
+                self.cont.add_item(discord.ui.TextDisplay(
+                    "### Create Session Boost Message\n"
+                    "Please use Discohook to create the message sent by /session boost when you want more players to join. When you are done, press the button saying 'I Have Created My Message'. Please note that you may only have one message.\n"
+                    "**Main Variables and Notes**\n"
+                    "- Only link buttons are permitted.\n"
+                    "**Other Variables**\n"
+                    "- {user}: The user asking for the boost\n"
+                    "- {erlc}: A variable with references to your linked ERLC server\n"
+                    "  - {erlc.name}: The name of your ER:LC server\n"
+                    "  - {erlc.code}: The code to your ER:LC server\n"
+                    "  - {erlc.players}: The players currently in your ER:LC server\n"
+                ))
+            case 'full':
+                self.cont.add_item(discord.ui.TextDisplay(
+                    "### Create Session Full Message\n"
+                    "Please use Discohook to create the message sent once your server reaches its player limit. It is sent at most once per session. When you are done, press the button saying 'I Have Created My Message'. Please note that you may only have one message.\n"
+                    "**Main Variables and Notes**\n"
+                    "- Only link buttons are permitted.\n"
+                    "**Other Variables**\n"
+                    "- {erlc}: A variable with references to your linked ERLC server\n"
+                    "  - {erlc.name}: The name of your ER:LC server\n"
+                    "  - {erlc.code}: The code to your ER:LC server\n"
+                    "  - {erlc.players}: The players in your ER:LC server\n"
+                    "  - {erlc.max_players}: The maximum players your ER:LC server holds\n"
+                ))
             case 'start':
                 self.cont.add_item(discord.ui.TextDisplay(
                     "### Create Session Start Message\n"
@@ -114,10 +154,10 @@ class SessionsEmbedCreationView(discord.ui.LayoutView):
             if any(row.get("type") != 1 for row in rows):
                 message["flags"] = (message.get("flags") or 0) | 1 << 15
 
-            self.satisfied_conditions = not buttons and self.type != "vote"
+            self.satisfied_conditions = not buttons and self.type not in ("vote", "staff_vote")
             for component in buttons:
                 match self.type:
-                    case 'vote':
+                    case 'vote' | 'staff_vote':
                         if component["label"] == "{vote_button}":
                             if not settings["sessions"].get("dynamic_button", False):
                                 component["label"] = settings["sessions"].get("vote_button_label", "vote")
@@ -139,7 +179,7 @@ class SessionsEmbedCreationView(discord.ui.LayoutView):
                                 del component["custom_id"]
                             self.satisfied_conditions = True
                             break
-                    case 'shutdown':
+                    case 'shutdown' | 'boost' | 'full':
                         if component["style"] == 5:
                             self.satisfied_conditions = True
                             break
