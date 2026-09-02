@@ -41,9 +41,6 @@ def get_configuration(settings: dict) -> dict:
 
 def find_command(settings: dict, command: str):
     configuration = get_configuration(settings)
-    if not configuration.get("enabled"):
-        return None
-
     trigger = normalise_trigger(command)
     if not trigger:
         return None

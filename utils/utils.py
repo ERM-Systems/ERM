@@ -762,11 +762,14 @@ async def secure_logging(
 
 
 def render_session_message(template: str, replacements: dict) -> dict:
-    for token, value in replacements.items():
-        template = template.replace(token, json.dumps(str(value))[1:-1])
+    def substitute(match):
+        if match.group() not in replacements:
+            return match.group()
+
+        return json.dumps(str(replacements[match.group()]))[1:-1]
 
     try:
-        return json.loads(template)
+        return json.loads(re.sub(r"\{[\w.]+\}", substitute, template))
     except json.JSONDecodeError:
         raise ValueError("That message could not be rendered, please configure it again.")
 
@@ -997,8 +1000,6 @@ async def start_session(bot, guild_id: int, user_id: int) -> int | None:
                 },
             )
 
-            await disable_vote_button(bot, guild_id, sessions, session)
-
             message = await bot.http.send_message(
                 sessions["channel_id"],
                 params=discord.http.MultipartParameters(payload=payload, multipart=None, files=None),
@@ -1008,6 +1009,7 @@ async def start_session(bot, guild_id: int, user_id: int) -> int | None:
             raise
 
         session["message"], session["channel"] = message["id"], sessions["channel_id"]
+        await disable_vote_button(bot, guild_id, sessions, session)
 
     await bot.sessions.update(session)
 

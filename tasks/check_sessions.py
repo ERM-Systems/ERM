@@ -7,12 +7,19 @@ import discord.http
 @tasks.loop(minutes=5, reconnect=True)
 async def check_sessions(bot: Bot):
     async for session in bot.sessions.db.find({"started": True}):
+        guild = session["_id"]
         try:
-            guild = session["_id"]
+            if not bot.get_guild(guild):
+                continue
+
             settings = await bot.settings.find(guild)
+            if not (settings or {}).get("sessions"):
+                continue
+
             try:
                 info = await bot.prc_api.get_server_status(guild)
-            except: info = None
+            except Exception:
+                info = None
 
             if session.get("dynamic") and session.get("message"):
                 try:
@@ -32,7 +39,7 @@ async def check_sessions(bot: Bot):
                         params=discord.http.MultipartParameters(payload=payload, multipart=None, files=None),
                     )
                 except Exception as e:
-                    logging.warning(f"session {guild} dynamic message: {str(e)}")
+                    logging.warning(f"session {guild} dynamic message: {str(e)}", exc_info=True)
 
             if info:
                 if info.current_players > session["analytics"]["max_players"]:
@@ -48,8 +55,8 @@ async def check_sessions(bot: Bot):
                         if await send_session_full(bot, guild, info):
                             session["full_announced"] = True
                     except Exception as e:
-                        logging.warning(f"session {guild} full announcement: {str(e)}")
+                        logging.warning(f"session {guild} full announcement: {str(e)}", exc_info=True)
 
                 await bot.sessions.update(session)
         except Exception as e:
-            logging.warning(f"error: {str(e)}")
+            logging.warning(f"Error processing session for guild {guild}: {e}", exc_info=True)
