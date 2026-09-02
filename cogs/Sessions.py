@@ -80,18 +80,28 @@ class Sessions(commands.Cog):
             else:
                 session["voted_users"].append(interaction.user.id)
             
-            if settings["sessions"].get("dynamic_button"):
-                item = None
+            dynamic = settings["sessions"].get("dynamic_button")
+            try:
+                required = int(session["required_votes"])
+            except (TypeError, ValueError):
+                required = 0
+            reached = required > 0 and session["votes"] >= required
 
-                for c in view.walk_children():
-                    if isinstance(c, discord.ui.Button) and c.custom_id == f"vote_button:{guild.id}":
-                        item = c
-                        break
+            item = None
+            for c in view.walk_children():
+                if isinstance(c, discord.ui.Button) and c.custom_id == f"vote_button:{guild.id}":
+                    item = c
+                    break
 
-                if item is None:
-                    return
-                item.label = f"{session["votes"]}/{session["required_votes"]}"
+            if item is not None:
+                if dynamic:
+                    item.label = f"{session["votes"]}/{session["required_votes"]}"
+                item.disabled = reached
+
+            if item is not None and (dynamic or reached):
                 await interaction.response.edit_message(view=view)
+                if not dynamic:
+                    await interaction.followup.send("Successfully counted your vote for the session." if action == "increment" else "Successfully removed your vote from the session.")
             else:
                 await interaction.response.send_message("Successfully counted your vote for the session." if action == "increment" else "Successfully removed your vote from the session.")
             await self.bot.sessions.update(session)

@@ -42,7 +42,7 @@ from ui.ERLC import (
     callSignCheck
 )
 
-from ui.InGameCommands import InGameCommands
+from ui.InGameCommands import InGameCommands, overview
 
 REQUIREMENTS = ["gspread", "oauth2client"]
 
@@ -6921,7 +6921,9 @@ class PunishmentsConfiguration(AssociationConfigurationView):
         if val is False:
             return
 
-        sett = await self.bot.punishment_types.find_by_id(interaction.guild.id)
+        sett = await self.bot.punishment_types.find_by_id(interaction.guild.id) or {
+            "_id": interaction.guild.id
+        }
 
         view = defaultPunishments(self.bot, sett, interaction.user.id)
         await interaction.response.send_message(view=view, ephemeral=True)
@@ -7058,9 +7060,7 @@ class defaultPunishments(discord.ui.View):
             for name in self.default_punishments
         ]
 
-        await self.bot.punishment_types.update_by_id(
-            self.sett
-        )
+        await self.bot.punishment_types.upsert(self.sett)
 
         await interaction.response.send_message(
             embed=discord.Embed(
@@ -8863,30 +8863,12 @@ class ERLCIntegrationConfiguration(AssociationConfigurationView):
 
         settings = await self.bot.settings.find_by_id(interaction.guild.id)
         configuration = settings.get("ERLC", {}).get("ingame_commands", {}) or {}
-
-        embed = discord.Embed(
-            title="In-Game Commands", description="", color=BLANK_COLOR
-        )
-        embed.description += "**Status:** {}\n\n".format(
-            "Enabled" if configuration.get("enabled") else "Disabled"
-        )
-        for command in configuration.get("commands") or []:
-            embed.description += "> **;{}** runs `{}`\n".format(
-                command.get("trigger", ""), command.get("action", "")
-            )
-        if not configuration.get("commands"):
-            embed.description += "> No commands configured.\n"
-
-        embed.set_author(
-            name=interaction.guild.name,
-            icon_url=interaction.guild.icon.url if interaction.guild.icon else "",
-        )
         view = InGameCommands(self.bot, interaction.user.id)
 
         await interaction.response.send_message(
-            embed=embed,
+            embed=overview(interaction.guild, configuration.get("commands") or []),
             view=view,
-            ephemeral=True
+            ephemeral=True,
         )
         view.message = await interaction.original_response()
 
