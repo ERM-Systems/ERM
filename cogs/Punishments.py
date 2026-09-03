@@ -157,7 +157,7 @@ class Punishments(commands.Cog):
         }
         actual_types = []
         for item in preset_types:
-            if not enabled_defaults or item.lower() in enabled_defaults:
+            if not enabled_punishments or item.lower() in enabled_defaults:
                 actual_types.append(item)
         for item in types:
             if isinstance(item, str):
