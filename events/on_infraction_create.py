@@ -137,7 +137,7 @@ class OnInfractionCreate(commands.Cog):
 
             if infraction_config.get("notifications"):
                 await self._process_notifications(
-                    infraction_config["notifications"], guild, member, variables
+                    infraction_config["notifications"], guild, member, variables, infraction_doc
                 )
 
             await self._process_additional_actions(infraction_config, guild, member)
@@ -199,7 +199,7 @@ class OnInfractionCreate(commands.Cog):
             except Exception as e:
                 logger.error(f"Failed to remove roles: {e}")
 
-    async def _process_notifications(self, notifications, guild, member, variables):
+    async def _process_notifications(self, notifications, guild, member, variables, infraction_doc):
         if notifications.get("dm", {}).get("enabled"):
             dm_config = notifications["dm"]
             try:
@@ -212,7 +212,17 @@ class OnInfractionCreate(commands.Cog):
             if channel_id := public_config.get("channel_id"):
                 if channel := guild.get_channel(int(channel_id)):
                     try:
-                        await self._send_notification(channel, public_config, variables)
+                        message_id = await self._send_notification(channel, public_config, variables)
+                        if message_id:
+                            await self.bot.db.infractions.update_one(
+                                {"_id": infraction_doc["_id"]},
+                                {
+                                    "$set": {
+                                        "notification_channel_id": channel.id,
+                                        "notification_message_id": message_id,
+                                    }
+                                },
+                            )
                     except Exception as e:
                         logger.error(f"Failed to send public notification: {e}")
 
@@ -224,20 +234,23 @@ class OnInfractionCreate(commands.Cog):
                 "flags": 32768,
                 "components": self.replace_variables(components, variables),
             }
-            await self.bot.http.send_message(
+            data = await self.bot.http.send_message(
                 destination.id,
                 params=discord.http.MultipartParameters(
                     payload=j, multipart=None, files=None
                 ),
             )
-            return
+            return int(data["id"])
 
         content = self.replace_variables(config.get("content", ""), variables)
         if config.get("embed"):
             embed = discord.Embed.from_dict(
                 self.replace_variables(config["embed"], variables)
             )
-            await destination.send(content=content or None, embed=embed)
+            message = await destination.send(content=content or None, embed=embed)
+            return message.id
+
+        return None
 
     async def _process_additional_actions(self, config, guild, member):
         if config.get("remove_ingame_perms", False):
