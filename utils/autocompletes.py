@@ -200,7 +200,7 @@ async def punishment_autocomplete(
     else:
         enabled_punishments = Data.get("default_punishments", [])
         ndt = []
-        for item in Data["types"]:
+        for item in Data.get("types", []):
             if item not in default_punishments:
                 ndt.append(item)
         enabled_defaults = {
@@ -209,7 +209,9 @@ async def punishment_autocomplete(
             if p.get("enabled", False)
         }
         filtered_punishments = [
-            name.capitalize() for name in ["warning", "kick", "ban", "bolo"] if name in enabled_defaults
+            item
+            for item in default_punishments
+            if not enabled_punishments or item.lower() in enabled_defaults
         ]
         return [
             app_commands.Choice(
