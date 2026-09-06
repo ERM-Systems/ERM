@@ -64,12 +64,15 @@ class Identification(BaseModel):
     source: typing.Literal["fivem", "discord"]
 
 
-async def validate_authorization(bot: Bot, token: str, disable_static_tokens=False):
+async def validate_authorization(bot: Bot, token: str, disable_static_tokens=False, disable_dynamic_tokens=False):
     # Check static and dynamic tokens
     if not disable_static_tokens:
         static_token = config("API_STATIC_TOKEN")
         if token == static_token:
             return True
+
+    if disable_dynamic_tokens:
+        return False
     token_obj = await bot.api_tokens.db.find_one({"token": token})
     if token_obj:
         if int(datetime.datetime.now().timestamp()) < token_obj["expires_at"]:
@@ -2389,6 +2392,158 @@ class APIRoutes:
             raise HTTPException(
                 status_code=500, detail=f"Internal server error: {str(e)}"
             )
+
+    async def _fetch_whitelabel_asset(self, url: str | None):
+        if not url:
+            return None
+
+        try:
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as session:
+                async with session.get(url) as response:
+                    if response.status != 200:
+                        raise HTTPException(
+                            status_code=502,
+                            detail=f"Failed to fetch whitelabel asset ({response.status}): {url}",
+                        )
+
+                    return await response.read()
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to fetch whitelabel asset: {str(e) or type(e).__name__}",
+            )
+
+    async def _resolve_whitelabel_guild(self, guild_id: int):
+        try:
+            guild = self.bot.get_guild(guild_id) or await self.bot.fetch_guild(guild_id)
+        except discord.HTTPException:
+            guild = None
+
+        if not guild:
+            raise HTTPException(status_code=404, detail="Guild not found")
+
+        try:
+            member = guild.me or await guild.fetch_member(self.bot.user.id)
+        except discord.HTTPException:
+            member = None
+
+        if not member:
+            raise HTTPException(status_code=404, detail="Bot member not found")
+
+        return guild, member
+
+    async def _find_whitelabel(self, guild_id: int):
+        return await self.bot.whitelabel.db.find_one(
+            {"GuildID": {"$in": [str(guild_id), guild_id]}}
+        )
+
+    async def POST_whitelabel_update(
+        self, authorization: Annotated[str | None, Header()], request: Request
+    ):
+        if not authorization:
+            raise HTTPException(status_code=401, detail="Invalid authorization")
+
+        if not await validate_authorization(
+            self.bot, authorization, disable_dynamic_tokens=True
+        ):
+            raise HTTPException(
+                status_code=401, detail="Invalid or expired authorization."
+            )
+
+        guild_id = (await request.json()).get("guild_id")
+        if not guild_id:
+            raise HTTPException(status_code=400, detail="Invalid guild")
+
+        try:
+            guild_id = int(guild_id)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Invalid guild")
+
+        instance = await self._find_whitelabel(guild_id)
+        if not instance:
+            raise HTTPException(status_code=404, detail="Whitelabel not found")
+
+        if instance.get("Expiry", 0) <= int(datetime.datetime.now(tz=pytz.UTC).timestamp()):
+            raise HTTPException(status_code=403, detail="Whitelabel has expired")
+
+        guild, member = await self._resolve_whitelabel_guild(guild_id)
+        user_data = instance.get("UserData") or {}
+
+        try:
+            await member.edit(
+                avatar=await self._fetch_whitelabel_asset(user_data.get("AvatarURL")),
+                banner=await self._fetch_whitelabel_asset(user_data.get("BannerURL")),
+                bio=user_data.get("Bio") or None,
+                nick=user_data.get("Nickname") or None,
+            )
+        except discord.HTTPException as e:
+            raise HTTPException(
+                status_code=502, detail=f"Failed to apply whitelabel profile: {e}"
+            )
+
+        logging.info(f"Applied whitelabel profile in guild {guild.id}")
+
+        return {"applied": True}
+
+    async def POST_whitelabel_cancel(
+        self, authorization: Annotated[str | None, Header()], request: Request
+    ):
+        if not authorization:
+            raise HTTPException(status_code=401, detail="Invalid authorization")
+
+        if not await validate_authorization(
+            self.bot, authorization, disable_dynamic_tokens=True
+        ):
+            raise HTTPException(
+                status_code=401, detail="Invalid or expired authorization."
+            )
+
+        json_data = await request.json()
+        guild_id = json_data.get("guild_id")
+        if not guild_id:
+            raise HTTPException(status_code=400, detail="Invalid guild")
+
+        try:
+            guild_id = int(guild_id)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Invalid guild")
+
+        instance = await self._find_whitelabel(guild_id)
+        if not instance:
+            raise HTTPException(status_code=404, detail="Whitelabel not found")
+
+        guild, member = await self._resolve_whitelabel_guild(guild_id)
+        user_data = instance.get("UserData") or {}
+
+        fields = {"avatar": None, "banner": None, "bio": None}
+        if user_data.get("Nickname"):
+            fields["nick"] = None
+
+        try:
+            await member.edit(**fields)
+        except discord.HTTPException as e:
+            raise HTTPException(
+                status_code=502, detail=f"Failed to reset whitelabel profile: {e}"
+            )
+
+        logging.info(f"Reset whitelabel profile in guild {guild.id}")
+
+        if json_data.get("notify"):
+            try:
+                owner = await guild.fetch_member(int(instance["DiscordID"]))
+                await owner.send(
+                    embed=discord.Embed(
+                        title="Whitelabel Subscription Expired",
+                        description="Your whitelabel subscription has expired, therefore, the custom profile settings in the applied server will be reset. Please renew your subscription through the web dashboard or open a ticket if you need assistance.",
+                        color=BLANK_COLOR,
+                    )
+                )
+            except (discord.HTTPException, KeyError, ValueError) as e:
+                logging.warning(f"Failed to notify whitelabel owner: {e}")
+
+        return {"cancelled": True}
 
 
 api = FastAPI()
