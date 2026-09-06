@@ -6,6 +6,9 @@ from datamodels.Warnings import WarningItem
 from utils.constants import BLANK_COLOR
 import roblox
 import logging
+from collections import deque
+
+handled = deque(maxlen=500)
 
 
 class OnPunishment(commands.Cog):
@@ -14,6 +17,11 @@ class OnPunishment(commands.Cog):
 
     @commands.Cog.listener()
     async def on_punishment(self, objectid: ObjectId):
+        if objectid in handled:
+            logging.info(f"ignoring duplicate punishment dispatch for {objectid}")
+            return
+        handled.append(objectid)
+
         warning: WarningItem = await self.bot.punishments.fetch_warning(objectid)
         guild = self.bot.get_guild(warning.guild_id)
         if guild is None:
