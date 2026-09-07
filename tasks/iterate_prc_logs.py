@@ -84,9 +84,12 @@ async def iterate_prc_logs(bot):
 
 
 async def unprimitive_guild_process(items, bot):
-    guild = bot.get_guild(items["_id"]) or await bot.fetch_guild(
-        items["_id"]
-    )
+    try:
+        guild = bot.get_guild(items["_id"]) or await bot.fetch_guild(
+            items["_id"]
+        )
+    except discord.NotFound:
+        return
     if not guild:
         return
     settings = await bot.settings.find_by_id(guild.id)
