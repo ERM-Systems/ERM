@@ -2514,6 +2514,11 @@ class APIRoutes:
         if not instance:
             raise HTTPException(status_code=404, detail="Whitelabel not found")
 
+        if json_data.get("notify") and instance.get("Expiry", 0) > int(
+            datetime.datetime.now(tz=pytz.UTC).timestamp()
+        ):
+            raise HTTPException(status_code=409, detail="Whitelabel is active")
+
         guild, member = await self._resolve_whitelabel_guild(guild_id)
         user_data = instance.get("UserData") or {}
 
