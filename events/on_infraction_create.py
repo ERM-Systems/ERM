@@ -81,7 +81,9 @@ class OnInfractionCreate(commands.Cog):
                 "{guild.id}": str(guild.id),
                 "{guild.icon}": str(guild.icon.url) if guild.icon else "",
                 "{reason}": infraction_doc["reason"],
+                "{notes}": infraction_doc.get("notes") or "N/A",
                 "{type}": infraction_doc["type"],
+                "{id}": str(infraction_doc.get("_id", "")),
                 "{issuer}": f"<@{infraction_doc.get('issuer_id', '0')}>",
                 "{issuer.id}": str(infraction_doc.get("issuer_id", "0")),
                 "{issuer.name}": issuer.name if issuer else "Unknown",
@@ -135,7 +137,7 @@ class OnInfractionCreate(commands.Cog):
 
             if infraction_config.get("notifications"):
                 await self._process_notifications(
-                    infraction_config["notifications"], guild, member, variables
+                    infraction_config["notifications"], guild, member, variables, infraction_doc
                 )
 
             await self._process_additional_actions(infraction_config, guild, member)
@@ -197,41 +199,64 @@ class OnInfractionCreate(commands.Cog):
             except Exception as e:
                 logger.error(f"Failed to remove roles: {e}")
 
-    async def _process_notifications(self, notifications, guild, member, variables):
+    async def _process_notifications(self, notifications, guild, member, variables, infraction_doc):
         if notifications.get("dm", {}).get("enabled"):
             dm_config = notifications["dm"]
-            content = self.replace_variables(dm_config.get("content", ""), variables)
-            if dm_config.get("embed"):
-                try:
-                    embed = discord.Embed.from_dict(
-                        self.replace_variables(dm_config["embed"], variables)
-                    )
-                    await member.send(content=content or None, embed=embed)
-                except Exception as e:
-                    logger.error(f"Failed to send DM notification: {e}")
+            try:
+                await self._send_notification(member, dm_config, variables)
+            except Exception as e:
+                logger.error(f"Failed to send DM notification: {e}")
 
         if notifications.get("public", {}).get("enabled"):
             public_config = notifications["public"]
-            content = self.replace_variables(
-                public_config.get("content", ""), variables
+            if channel_id := public_config.get("channel_id"):
+                if channel := guild.get_channel(int(channel_id)):
+                    try:
+                        message_id = await self._send_notification(channel, public_config, variables)
+                        if message_id:
+                            await self.bot.db.infractions.update_one(
+                                {"_id": infraction_doc["_id"]},
+                                {
+                                    "$set": {
+                                        "notification_channel_id": channel.id,
+                                        "notification_message_id": message_id,
+                                    }
+                                },
+                            )
+                    except Exception as e:
+                        logger.error(f"Failed to send public notification: {e}")
+
+    async def _send_notification(self, destination, config, variables):
+        if components := config.get("components"):
+            if isinstance(destination, (discord.Member, discord.User)):
+                destination = destination.dm_channel or await destination.create_dm()
+            j = {
+                "flags": 32768,
+                "components": self.replace_variables(components, variables),
+            }
+            data = await self.bot.http.send_message(
+                destination.id,
+                params=discord.http.MultipartParameters(
+                    payload=j, multipart=None, files=None
+                ),
             )
-            if public_config.get("embed"):
-                try:
-                    embed = discord.Embed.from_dict(
-                        self.replace_variables(public_config["embed"], variables)
-                    )
-                    if channel_id := public_config.get("channel_id"):
-                        if channel := guild.get_channel(int(channel_id)):
-                            await channel.send(content=content or None, embed=embed)
-                except Exception as e:
-                    logger.error(f"Failed to send public notification: {e}")
+            return int(data["id"])
+
+        content = self.replace_variables(config.get("content", ""), variables)
+        if config.get("embed"):
+            embed = discord.Embed.from_dict(
+                self.replace_variables(config["embed"], variables)
+            )
+            message = await destination.send(content=content or None, embed=embed)
+            return message.id
+
+        return None
 
     async def _process_additional_actions(self, config, guild, member):
         if config.get("remove_ingame_perms", False):
             try:
-                roblox_info = await self.bot.bloxlink.find_roblox(member.id)
-                if roblox_info and "robloxID" in roblox_info:
-                    roblox_id = roblox_info["robloxID"]
+                roblox_id = await self.bot.linking.get_roblox_id(member.id)
+                if roblox_id:
                     await self.bot.prc_api.run_command(guild.id, f":unmod {roblox_id}")
                     await self.bot.prc_api.run_command(
                         guild.id, f":unadmin {roblox_id}"

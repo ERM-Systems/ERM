@@ -5,7 +5,7 @@ from menus import YesNoMenu, AccountLinkingMenu
 from utils.constants import BLANK_COLOR, GREEN_COLOR
 import asyncio
 import time
-
+import datetime
 
 class OAuth2(commands.Cog):
     def __init__(self, bot):
@@ -52,17 +52,17 @@ class OAuth2(commands.Cog):
             "view": AccountLinkingMenu(self.bot, ctx.author, ctx.interaction),
         }
 
-        await self.bot.pending_oauth2.db.insert_one({"discord_id": ctx.author.id})
+        await self.bot.pending_oauth2.db.insert_one({"discord_id": ctx.author.id, "created_at": datetime.datetime.utcnow()})
 
         if msg is None:
-            await ctx.send(**verification_message)
+            msg = await ctx.send(**verification_message)
         else:
             await msg.edit(**verification_message)
 
         attempts = 0
-        while await asyncio.sleep(3):
-            if attempts > 60:
-                break
+        while attempts < 60:
+            await asyncio.sleep(3)
+            attempts += 1
             if not linked_account:
                 if await self.bot.oauth2_users.db.find_one(
                     {"discord_id": ctx.author.id}
@@ -72,20 +72,26 @@ class OAuth2(commands.Cog):
                             title=f"{self.bot.emoji_controller.get_emoji('success')} Linked",
                             description="Your Roblox account has been successfully linked to ERM.",
                             color=GREEN_COLOR,
-                        )
+                        ),
+                        view=None,
                     )
                     break
             else:
                 if item := await self.bot.oauth2_users.db.find_one(
                     {"discord_id": ctx.author.id}
-                ):
-                    if item.get("last_updated", 0) > timestamp:
+                ):  
+                    if isinstance(item.get("last_updated", 0), datetime.datetime):
+                        check = item.get("last_updated", 0).timestamp() > timestamp
+                    else:
+                        check = item.get("last_updated", 0) > timestamp 
+                    if check:
                         await msg.edit(
                             embed=discord.Embed(
                                 title=f"{self.bot.emoji_controller.get_emoji('success')} Linked",
                                 description="Your Roblox account has been successfully linked to ERM.",
                                 color=GREEN_COLOR,
-                            )
+                            ),
+                            view=None
                         )
                         break
                 else:

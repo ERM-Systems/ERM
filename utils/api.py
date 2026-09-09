@@ -11,8 +11,6 @@ from bson import ObjectId
 from fastapi import FastAPI, APIRouter, Header, HTTPException, Request
 from discord.ext import commands
 import discord
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
 
 from erm import (
     Bot,
@@ -27,10 +25,12 @@ from typing import Annotated
 from decouple import config
 import copy
 from menus import LOAMenu
+from utils.utils import create_session_vote, end_session, start_session
 from utils.constants import BLANK_COLOR, GREEN_COLOR
-from utils.utils import get_elapsed_time, secure_logging
+from utils.utils import get_elapsed_time, secure_logging, staff_rank
 from pydantic import BaseModel
 
+from utils.ingame_commands import execute_ingame_command
 from utils.timestamp import td_format
 from utils.utils import tokenGenerator, system_code_gen
 import logging
@@ -62,12 +62,15 @@ class Identification(BaseModel):
     source: typing.Literal["fivem", "discord"]
 
 
-async def validate_authorization(bot: Bot, token: str, disable_static_tokens=False):
+async def validate_authorization(bot: Bot, token: str, disable_static_tokens=False, disable_dynamic_tokens=False):
     # Check static and dynamic tokens
     if not disable_static_tokens:
         static_token = config("API_STATIC_TOKEN")
         if token == static_token:
             return True
+
+    if disable_dynamic_tokens:
+        return False
     token_obj = await bot.api_tokens.db.find_one({"token": token})
     if token_obj:
         if int(datetime.datetime.now().timestamp()) < token_obj["expires_at"]:
@@ -92,6 +95,51 @@ class APIRoutes:
                     getattr(self, i),
                     methods=[i.split("_")[0].upper()],
                 )
+
+    def replace_variables(self, data, variables):
+        if isinstance(data, str):
+            result = data
+            for key, value in variables.items():
+                result = result.replace(key, value)
+            return result
+        elif isinstance(data, dict):
+            result = {}
+            for key, value in data.items():
+                if key == "color" and isinstance(value, (int, float)):
+                    result[key] = int(value)
+                elif isinstance(value, (dict, list)):
+                    result[key] = self.replace_variables(value, variables)
+                elif isinstance(value, str):
+                    result[key] = self.replace_variables(value, variables)
+                else:
+                    result[key] = value
+            return result
+        elif isinstance(data, list):
+            return [self.replace_variables(item, variables) for item in data]
+        return data
+
+    async def _send_notification(self, destination, config, variables):
+        if components := config.get("components"):
+            if isinstance(destination, (discord.Member, discord.User)):
+                destination = destination.dm_channel or await destination.create_dm()
+            j = {
+                "flags": 32768,
+                "components": self.replace_variables(components, variables),
+            }
+            await self.bot.http.send_message(
+                destination.id,
+                params=discord.http.MultipartParameters(
+                    payload=j, multipart=None, files=None
+                ),
+            )
+            return
+
+        content = self.replace_variables(config.get("content", ""), variables)
+        if config.get("embed"):
+            embed = discord.Embed.from_dict(
+                self.replace_variables(config["embed"], variables)
+            )
+            await destination.send(content=content or None, embed=embed)
 
     def GET_status(self):
         return {"guilds": len(self.bot.guilds), "ping": round(self.bot.latency * 1000)}
@@ -191,16 +239,38 @@ class APIRoutes:
                     status_code=400, detail=f"Error fetching user: {str(e)}"
                 )
 
-            embed = discord.Embed(
-                title=f"{self.bot.emoji_controller.get_emoji('success')} Application Accepted",
-                description=f"Your application in **{guild.name}** has been accepted. Congratulations!\n\n**Application Information**\n> **Application Name:** {application_name}\n> **Submitted On:** <t:{submitted_on}>\n> **Note:** {note}",
-                color=GREEN_COLOR,
-            )
+            message_config = json_data.get("message")
+            variables = {
+                "{user}": user.mention,
+                "{user.name}": user.name,
+                "{user.id}": str(user.id),
+                "{user.tag}": str(user),
+                "{application}": str(application_name),
+                "{status}": "Accepted",
+                "{reason}": note,
+                "{guild}": guild.name,
+                "{guild.id}": str(guild.id),
+                "{guild.icon}": str(guild.icon.url) if guild.icon else "",
+                "{submitted}": f"<t:{int(submitted_on)}:F>",
+                "{submitted.relative}": f"<t:{int(submitted_on)}:R>",
+            }
 
             try:
-                await user.send(embed=embed)
+                if message_config and (
+                    message_config.get("content")
+                    or message_config.get("embed")
+                    or message_config.get("components")
+                ):
+                    await self._send_notification(user, message_config, variables)
+                else:
+                    embed = discord.Embed(
+                        title=f"{self.bot.emoji_controller.get_emoji('success')} Application Accepted",
+                        description=f"Your application in **{guild.name}** has been accepted. Congratulations!\n\n**Application Information**\n> **Application Name:** {application_name}\n> **Submitted On:** <t:{submitted_on}>\n> **Note:** {note}",
+                        color=GREEN_COLOR,
+                    )
+                    await user.send(embed=embed)
             except discord.Forbidden:
-                print(f"Could not send DM to user {user_id}")
+                logging.warning(f"Could not send DM to user {user_id}")
 
             # Fetch and validate roles
             fetched_roles = await guild.fetch_roles()
@@ -294,16 +364,38 @@ class APIRoutes:
                     status_code=400, detail=f"Error fetching user: {str(e)}"
                 )
 
-            embed = discord.Embed(
-                title="Application Denied",
-                description=f"Your application in **{guild.name}** has been denied.\n\n**Application Information**\n> **Application Name:** {application_name}\n> **Submitted On:** <t:{submitted_on}>\n> **Note:** {note}",
-                color=BLANK_COLOR,
-            )
+            message_config = json_data.get("message")
+            variables = {
+                "{user}": user.mention,
+                "{user.name}": user.name,
+                "{user.id}": str(user.id),
+                "{user.tag}": str(user),
+                "{application}": str(application_name),
+                "{status}": "Denied",
+                "{reason}": note,
+                "{guild}": guild.name,
+                "{guild.id}": str(guild.id),
+                "{guild.icon}": str(guild.icon.url) if guild.icon else "",
+                "{submitted}": f"<t:{int(submitted_on)}:F>",
+                "{submitted.relative}": f"<t:{int(submitted_on)}:R>",
+            }
 
             try:
-                await user.send(embed=embed)
+                if message_config and (
+                    message_config.get("content")
+                    or message_config.get("embed")
+                    or message_config.get("components")
+                ):
+                    await self._send_notification(user, message_config, variables)
+                else:
+                    embed = discord.Embed(
+                        title="Application Denied",
+                        description=f"Your application in **{guild.name}** has been denied.\n\n**Application Information**\n> **Application Name:** {application_name}\n> **Submitted On:** <t:{submitted_on}>\n> **Note:** {note}",
+                        color=BLANK_COLOR,
+                    )
+                    await user.send(embed=embed)
             except discord.Forbidden:
-                print(f"Could not send DM to user {user_id}")
+                logging.warning(f"Could not send DM to user {user_id}")
 
             # Fetch and validate roles
             fetched_roles = await guild.fetch_roles()
@@ -408,8 +500,15 @@ class APIRoutes:
             icon_url=guild.icon.url if guild.icon else None,
         )
 
+        ping_roles = json_data.get("ping_roles") or []
+        content = " ".join(f"<@&{int(role)}>" for role in ping_roles)
+
         try:
-            await channel.send(embed=embed)
+            await channel.send(
+                content=content or None,
+                embed=embed,
+                allowed_mentions=discord.AllowedMentions(roles=True),
+            )
             return {"op": 1, "code": 200}
         except discord.HTTPException as e:
             raise HTTPException(status_code=500, detail=f"Failed to send message: {str(e)}")
@@ -429,6 +528,77 @@ class APIRoutes:
         staff_request_id = json_data["document_id"]
         self.bot.dispatch("staff_request_send", ObjectId(staff_request_id))
         return {"op": 1, "code": 200}
+
+    async def _session_request(self, authorization: str | None, request: Request):
+        if not authorization:
+            raise HTTPException(status_code=401, detail="Invalid authorization")
+
+        if not await validate_authorization(self.bot, authorization):
+            raise HTTPException(
+                status_code=401, detail="Invalid or expired authorization."
+            )
+
+        json_data = await request.json()
+        guild_id = int(json_data["guild_id"])
+        user_id = int(json_data["user_id"])
+
+        guild = self.bot.get_guild(guild_id)
+        if not guild:
+            raise HTTPException(status_code=404, detail="That server was not found.")
+
+        try:
+            member = guild.get_member(user_id) or await guild.fetch_member(user_id)
+        except discord.HTTPException:
+            raise HTTPException(status_code=404, detail="You are not in that server.")
+
+        if not await admin_check(self.bot, guild, member) and not await management_check(
+            self.bot, guild, member
+        ):
+            raise HTTPException(
+                status_code=403, detail="You do not have permission to manage sessions."
+            )
+
+        return guild_id, user_id, json_data
+
+    async def POST_session_vote(
+        self, authorization: Annotated[str | None, Header()], request: Request
+    ):
+        guild_id, user_id, json_data = await self._session_request(
+            authorization, request
+        )
+
+        try:
+            channel_id = await create_session_vote(
+                self.bot, guild_id, user_id, json_data.get("required_votes")
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error))
+
+        return {"op": 1, "code": 200, "channel_id": str(channel_id)}
+
+    async def POST_session_start(
+        self, authorization: Annotated[str | None, Header()], request: Request
+    ):
+        guild_id, user_id, _ = await self._session_request(authorization, request)
+
+        try:
+            channel_id = await start_session(self.bot, guild_id, user_id)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error))
+
+        return {"op": 1, "code": 200, "channel_id": str(channel_id)}
+
+    async def POST_session_end(
+        self, authorization: Annotated[str | None, Header()], request: Request
+    ):
+        guild_id, user_id, _ = await self._session_request(authorization, request)
+
+        try:
+            channel_id = await end_session(self.bot, guild_id, user_id)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error))
+
+        return {"op": 1, "code": 200, "channel_id": str(channel_id)}
 
     async def POST_send_priority_dm(
         self, authorization: Annotated[str | None, Header()], request: Request
@@ -629,7 +799,10 @@ class APIRoutes:
             (code := system_code_gen()),
         )
 
-        staff_channel = settings.get("staff_management").get("channel")
+        staff_channel = settings.get(
+            "reduced_activity" if request_type.upper() == "RA" else "staff_management",
+            {},
+        ).get("channel")
         staff_channel = discord.utils.get(guild.channels, id=staff_channel)
 
         msg = await staff_channel.send(embed=embed, view=view)
@@ -677,9 +850,8 @@ class APIRoutes:
             config.get("staff_management", {}).get(f"{s_loa['type']}_role", []) or []
         )
 
-        self.bot.dispatch(
-            "loa_accept", s_loa=s_loa, role_ids=roles, accepted_by=accepted_by
-        )
+        event = "ra_accept" if s_loa["type"].upper() == "RA" else "loa_accept"
+        self.bot.dispatch(event, s_loa=s_loa, role_ids=roles, accepted_by=accepted_by)
 
         return 200
 
@@ -705,7 +877,8 @@ class APIRoutes:
                 status_code=400, detail="This LOA has already been accepted."
             )
 
-        self.bot.dispatch("loa_deny", s_loa=s_loa, denied_by=denied_by, reason=reason)
+        event = "ra_deny" if s_loa["type"].upper() == "RA" else "loa_deny"
+        self.bot.dispatch(event, s_loa=s_loa, denied_by=denied_by, reason=reason)
 
         return 200
 
@@ -725,6 +898,34 @@ class APIRoutes:
             return HTTPException(status_code=400, detail="Bad Format")
 
         channel = await self.bot.fetch_channel(json_data["Channel"])
+
+        message_config = json_data.get("message")
+        if message_config and (
+            message_config.get("content")
+            or message_config.get("embed")
+            or message_config.get("components")
+        ):
+            guild = getattr(channel, "guild", None)
+            application_name = json_data.get("ApplicationName")
+            for item in json_data["Applicants"]:
+                member = guild.get_member(int(item["DiscordID"])) if guild else None
+                variables = {
+                    "{user}": f"<@{item['DiscordID']}>",
+                    "{user.name}": member.name if member else "",
+                    "{user.id}": str(item["DiscordID"]),
+                    "{user.tag}": str(member) if member else "",
+                    "{application}": str(application_name),
+                    "{status}": str(item["Status"]).capitalize(),
+                    "{reason}": item["Reason"],
+                    "{guild}": guild.name if guild else "",
+                    "{guild.id}": str(guild.id) if guild else "",
+                    "{guild.icon}": str(guild.icon.url) if guild and guild.icon else "",
+                    "{submitted}": f"<t:{int(item['SubmissionTime'])}:F>",
+                    "{submitted.relative}": f"<t:{int(item['SubmissionTime'])}:R>",
+                }
+                await self._send_notification(channel, message_config, variables)
+            return
+
         embed = discord.Embed(
             title="Application Results",
             description=f"The applications for **{json_data['ApplicationName']}** have been released!\n\n",
@@ -734,7 +935,7 @@ class APIRoutes:
         embeds = [embed]
 
         for item in json_data["Applicants"]:
-            new_content = f"<@{item['DiscordID']}>\n> Status: **{item['Status']}**\n> Reason: **{item['Reason']}**\n> Submission Time: <t:{int(item['SubmissionTime'])}>\n\n"
+            new_content = f"<@{item['DiscordID']}>\n> Status: **{item['Status'].capitalize()}**\n> Reason: **{item['Reason']}**\n> Submission Time: <t:{int(item['SubmissionTime'])}>\n\n"
 
             current_desc = embeds[-1].description or ""
             if len(current_desc) + len(new_content) > 4000:
@@ -818,6 +1019,58 @@ class APIRoutes:
             json_data["attempted"],
         )
         return {"message": "Successfully logged!"}
+
+    async def POST_ingame_command(
+        self, authorization: Annotated[str | None, Header()], request: Request
+    ):
+        if not authorization:
+            raise HTTPException(status_code=401, detail="Invalid authorization")
+
+        token_obj = await self.bot.api_tokens.db.find_one({"token": authorization})
+
+        if not token_obj or not token_obj.get("link_string"):
+            raise HTTPException(status_code=401, detail="Invalid authorization")
+
+        if int(datetime.datetime.now().timestamp()) > token_obj["expires_at"]:
+            raise HTTPException(status_code=401, detail="Invalid authorization")
+
+        link_string_obj = await self.bot.link_strings.db.find_one(
+            {"_id": token_obj["link_string"]}
+        )
+
+        if not link_string_obj:
+            raise HTTPException(status_code=401, detail="Invalid link string")
+
+        guild = self.bot.get_guild(link_string_obj["guild"])
+
+        if not guild:
+            raise HTTPException(status_code=404, detail="Guild not found")
+
+        settings = await self.bot.settings.find_by_id(guild.id)
+        if not settings:
+            raise HTTPException(status_code=404, detail="Guild is not configured")
+
+        try:
+            json_data = await request.json()
+        except ValueError as e:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid data format: {str(e)}"
+            )
+
+        if not isinstance(json_data, dict):
+            raise HTTPException(
+                status_code=400, detail="Invalid data format: expected an object"
+            )
+
+        executed = await execute_ingame_command(
+            self.bot,
+            guild,
+            settings,
+            json_data.get("command", ""),
+            json_data.get("argument", ""),
+            json_data.get("user_id"),
+        )
+        return {"executed": executed}
 
     async def POST_get_staff_guilds(self, request: Request):
         json_data = await request.json()
@@ -1016,6 +1269,83 @@ class APIRoutes:
         #     )
 
         # return warning_objects
+
+    async def POST_get_punishments(self, request: Request):
+        json_data = await request.json()
+        authorization = request.headers.get("authorization")
+
+        if not authorization:
+            return HTTPException(status_code=401, detail="Invalid authorization")
+
+        if not await validate_authorization(self.bot, authorization):
+            raise HTTPException(
+                status_code=401, detail="Invalid or expired authorization."
+            )
+
+        guild_id = json_data.get("Guild") or json_data.get("guild")
+        if not guild_id:
+            return HTTPException(status_code=400, detail="Invalid guild")
+
+        try:
+            guild_id_int = int(guild_id)
+        except (TypeError, ValueError):
+            return HTTPException(status_code=400, detail="Invalid guild")
+
+        query: dict[str, typing.Any] = {"Guild": guild_id_int}
+
+        username = json_data.get("Username")
+        if username:
+            query["Username"] = username
+
+        reason_contains = json_data.get("ReasonContains")
+        type_filter = json_data.get("TypeFilter")
+        user_id = json_data.get("UserID")
+        before_snowflake = json_data.get("BeforeSnowflake")
+
+        if user_id:
+            try:
+                query["UserID"] = int(user_id)
+            except (TypeError, ValueError):
+                return HTTPException(status_code=400, detail="Invalid UserID")
+
+        if before_snowflake:
+            try:
+                query["Snowflake"] = {"$lt": int(before_snowflake)}
+            except (TypeError, ValueError):
+                return HTTPException(
+                    status_code=400, detail="Invalid BeforeSnowflake"
+                )
+
+        cursor = self.bot.punishments.db.find(query)
+
+        cursor = cursor.sort([("Epoch", -1), ("_id", -1)])
+
+        moderations: list[dict[str, typing.Any]] = []
+        async for document in cursor:
+            if type_filter and document.get("Type") != type_filter:
+                continue
+            if reason_contains and reason_contains.lower() not in str(
+                document.get("Reason", "")
+            ).lower():
+                continue
+
+            moderations.append(
+                {
+                    "ID": str(document["_id"]),
+                    "Snowflake": document.get("Snowflake", 0),
+                    "Username": document.get("Username", ""),
+                    "UserID": document.get("UserID", 0),
+                    "Type": document.get("Type", ""),
+                    "Reason": document.get("Reason", ""),
+                    "Moderator": document.get("Moderator", ""),
+                    "ModeratorID": document.get("ModeratorID", 0),
+                    "Guild": document.get("Guild", guild_id_int),
+                    "Epoch": document.get("Epoch", 0),
+                    "UntilEpoch": document.get("UntilEpoch", 0),
+                }
+            )
+
+        return moderations
 
     async def GET_get_token(
         self, authorization: Annotated[str | None, Header()], request: Request
@@ -1678,14 +2008,13 @@ class APIRoutes:
                         break
 
             if will_escalate:
-                original_infraction_type = current_type
                 reason = f"{reason}\n\nEscalated from {original_infraction_type} after reaching threshold"
 
             infraction_doc = {
                 "user_id": user_id,
                 "username": username,
                 "guild_id": guild_id,
-                "type": original_infraction_type,
+                "type": current_type,
                 "reason": reason,
                 "timestamp": datetime.datetime.now().timestamp(),
                 "issuer_id": issuer_id,
@@ -1703,9 +2032,10 @@ class APIRoutes:
                 "status": "success",
                 "infraction_id": str(result.inserted_id),
                 "escalated": will_escalate,
-                "type": original_infraction_type,
+                "type": current_type,
             }
-
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Error issuing infraction: {str(e)}")
             raise HTTPException(
@@ -1792,6 +2122,12 @@ class APIRoutes:
                 raise HTTPException(status_code=404, detail="Guild not found")
 
             staff_roles = settings.get("staff_management", {}).get("role", [])
+            admin_roles = set(
+                settings.get("staff_management", {}).get("admin_role", []) or []
+            )
+            management_roles = set(
+                settings.get("staff_management", {}).get("management_role", []) or []
+            )
             role_quotas = settings.get("shift_management", {}).get("role_quotas", [])
             general_quota = settings.get("shift_management", {}).get("quota") or 0
 
@@ -1822,10 +2158,13 @@ class APIRoutes:
                 if role:
                     for member in role.members:
                         if member.id not in all_staff:
+                            rank = staff_rank(member, admin_roles, management_roles)
+
                             if omit_loas and member.id in active_loas:
                                 all_staff[member.id] = {
                                     "user_id": member.id,
                                     "username": member.name,
+                                    "rank": rank,
                                     "shift_time": 0,
                                     "required_quota": 0,
                                     "met_quota": True,
@@ -1846,6 +2185,7 @@ class APIRoutes:
                             all_staff[member.id] = {
                                 "user_id": member.id,
                                 "username": member.name,
+                                "rank": rank,
                                 "shift_time": 0,
                                 "required_quota": required_quota,
                                 "met_quota": met_quota,
@@ -2051,53 +2391,165 @@ class APIRoutes:
                 status_code=500, detail=f"Internal server error: {str(e)}"
             )
 
+    async def _fetch_whitelabel_asset(self, url: str | None):
+        if not url:
+            return None
 
-api = FastAPI()
-
-from fastapi import Request
-
-
-class MyMiddleware:
-    def __init__(
-        self,
-        bot: commands.Bot,
-    ):
-        self.bot = bot
-
-    async def __call__(self, request: Request, call_next):
-        guild_id = ""
         try:
-            if config("ENVIRONMENT") == "CUSTOM":
-                raise Exception("We're already redirected.")
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as session:
+                async with session.get(url) as response:
+                    if response.status != 200:
+                        raise HTTPException(
+                            status_code=502,
+                            detail=f"Failed to fetch whitelabel asset ({response.status}): {url}",
+                        )
 
-            request_json = await request.json()
-            guild_id = int(
-                request_json.get("guild_id")
-                or request_json.get("guild")
-                or request_json.get("GuildID")
+                    return await response.read()
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to fetch whitelabel asset: {str(e) or type(e).__name__}",
             )
 
-            doc = self.bot.whitelabel.db.find_one({"GuildID": str(guild_id)})
-            if not doc:
-                raise Exception("doc not found")
+    async def _resolve_whitelabel_guild(self, guild_id: int):
+        try:
+            guild = self.bot.get_guild(guild_id) or await self.bot.fetch_guild(guild_id)
+        except discord.HTTPException:
+            guild = None
 
-            async with aiohttp.ClientSession() as session:
-                async with session.request(
-                    method=request.method,
-                    url=request.url._url.replace(
-                        request.url._url.split("https://")[1].split("/")[0],
-                        f"core-{guild_id}.erlc.site",
-                    ),
-                    body=request.body,
-                    headers=request.headers,
-                ) as resp:
-                    resp_body = await resp.read()
-                    return Response(
-                        content=resp_body, status_code=resp.status, headers=resp.headers
+        if not guild:
+            raise HTTPException(status_code=404, detail="Guild not found")
+
+        try:
+            member = guild.me or await guild.fetch_member(self.bot.user.id)
+        except discord.HTTPException:
+            member = None
+
+        if not member:
+            raise HTTPException(status_code=404, detail="Bot member not found")
+
+        return guild, member
+
+    async def _find_whitelabel(self, guild_id: int):
+        return await self.bot.whitelabel.db.find_one(
+            {"GuildID": {"$in": [str(guild_id), guild_id]}}
+        )
+
+    async def POST_whitelabel_update(
+        self, authorization: Annotated[str | None, Header()], request: Request
+    ):
+        if not authorization:
+            raise HTTPException(status_code=401, detail="Invalid authorization")
+
+        if not await validate_authorization(
+            self.bot, authorization, disable_dynamic_tokens=True
+        ):
+            raise HTTPException(
+                status_code=401, detail="Invalid or expired authorization."
+            )
+
+        guild_id = (await request.json()).get("guild_id")
+        if not guild_id:
+            raise HTTPException(status_code=400, detail="Invalid guild")
+
+        try:
+            guild_id = int(guild_id)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Invalid guild")
+
+        instance = await self._find_whitelabel(guild_id)
+        if not instance:
+            raise HTTPException(status_code=404, detail="Whitelabel not found")
+
+        if instance.get("Expiry", 0) <= int(datetime.datetime.now(tz=pytz.UTC).timestamp()):
+            raise HTTPException(status_code=403, detail="Whitelabel has expired")
+
+        guild, member = await self._resolve_whitelabel_guild(guild_id)
+        user_data = instance.get("UserData") or {}
+
+        try:
+            await member.edit(
+                avatar=await self._fetch_whitelabel_asset(user_data.get("AvatarURL")),
+                banner=await self._fetch_whitelabel_asset(user_data.get("BannerURL")),
+                bio=user_data.get("Bio") or None,
+                nick=user_data.get("Nickname") or None,
+            )
+        except discord.HTTPException as e:
+            raise HTTPException(
+                status_code=502, detail=f"Failed to apply whitelabel profile: {e}"
+            )
+
+        logging.info(f"Applied whitelabel profile in guild {guild.id}")
+
+        return {"applied": True}
+
+    async def POST_whitelabel_cancel(
+        self, authorization: Annotated[str | None, Header()], request: Request
+    ):
+        if not authorization:
+            raise HTTPException(status_code=401, detail="Invalid authorization")
+
+        if not await validate_authorization(
+            self.bot, authorization, disable_dynamic_tokens=True
+        ):
+            raise HTTPException(
+                status_code=401, detail="Invalid or expired authorization."
+            )
+
+        json_data = await request.json()
+        guild_id = json_data.get("guild_id")
+        if not guild_id:
+            raise HTTPException(status_code=400, detail="Invalid guild")
+
+        try:
+            guild_id = int(guild_id)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Invalid guild")
+
+        instance = await self._find_whitelabel(guild_id)
+        if not instance:
+            raise HTTPException(status_code=404, detail="Whitelabel not found")
+
+        if json_data.get("notify") and instance.get("Expiry", 0) > int(
+            datetime.datetime.now(tz=pytz.UTC).timestamp()
+        ):
+            raise HTTPException(status_code=409, detail="Whitelabel is active")
+
+        guild, member = await self._resolve_whitelabel_guild(guild_id)
+        user_data = instance.get("UserData") or {}
+
+        fields = {"avatar": None, "banner": None, "bio": None}
+        if user_data.get("Nickname"):
+            fields["nick"] = None
+
+        try:
+            await member.edit(**fields)
+        except discord.HTTPException as e:
+            raise HTTPException(
+                status_code=502, detail=f"Failed to reset whitelabel profile: {e}"
+            )
+
+        logging.info(f"Reset whitelabel profile in guild {guild.id}")
+
+        if json_data.get("notify"):
+            try:
+                owner = await guild.fetch_member(int(instance["DiscordID"]))
+                await owner.send(
+                    embed=discord.Embed(
+                        title="Whitelabel Subscription Expired",
+                        description="Your whitelabel subscription has expired, therefore, the custom profile settings in the applied server will be reset. Please renew your subscription through the web dashboard or open a ticket if you need assistance.",
+                        color=BLANK_COLOR,
                     )
-        except:
-            response = await call_next(request)
-            return response
+                )
+            except (discord.HTTPException, KeyError, ValueError) as e:
+                logging.warning(f"Failed to notify whitelabel owner: {e}")
+
+        return {"cancelled": True}
+
+
+api = FastAPI()
 
 
 class ServerAPI(commands.Cog):
@@ -2108,8 +2560,6 @@ class ServerAPI(commands.Cog):
 
     async def start_server(self):
         try:
-            middleware = MyMiddleware(bot=self.bot)
-            api.add_middleware(BaseHTTPMiddleware, dispatch=middleware)
             api.include_router(APIRoutes(self.bot).router)
             self.config = uvicorn.Config(
                 "utils.api:api", port=int(config("BIND_PORT", default=5000)), log_level="debug", host="0.0.0.0"

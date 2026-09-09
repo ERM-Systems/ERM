@@ -10,20 +10,7 @@ import asyncio
 
 from datamodels.MapleKeys import MapleKeys
 from datamodels.Whitelabel import Whitelabel
-from tasks.iterate_ics import iterate_ics
-from tasks.check_loa import check_loa
-from tasks.check_reminders import check_reminders
-from tasks.check_infractions import check_infractions
-from tasks.iterate_prc_logs import iterate_prc_logs
-from tasks.tempban_checks import tempban_checks
-from tasks.process_scheduled_pms import process_scheduled_pms
-from tasks.statistics_check import statistics_check
-from tasks.change_status import change_status
-from tasks.check_whitelisted_car import check_whitelisted_car
-from tasks.sync_weather import sync_weather
-from tasks.iterate_conditions import iterate_conditions
-from tasks.prc_automations import prc_automations
-from tasks.mc_discord_checks import mc_discord_checks
+
 from utils.accounts import Accounts
 from utils.emojis import EmojiController
 
@@ -34,7 +21,10 @@ from utils.mongo import Document
 import aiohttp
 import decouple
 import discord.mentions
-import motor.motor_asyncio
+
+from pymongo import AsyncMongoClient
+
+
 import asyncio
 import pytz
 import sentry_sdk
@@ -44,6 +34,9 @@ from discord.ext import tasks
 from roblox import client as roblox
 from sentry_sdk import push_scope, capture_exception
 from sentry_sdk.integrations.pymongo import PyMongoIntegration
+from utils.task_loader import start_tasks
+
+
 
 from datamodels.CustomFlags import CustomFlags
 from datamodels.ServerKeys import ServerKeys
@@ -65,12 +58,14 @@ from datamodels.Actions import Actions
 from datamodels.Warnings import Warnings
 from datamodels.ProhibitedUseKeys import ProhibitedUseKeys
 from datamodels.PendingOAuth2 import PendingOAuth2
+from datamodels.LogTimestamps import LogTimestamps
 from datamodels.OAuth2Users import OAuth2Users
 from datamodels.IntegrationCommandStorage import IntegrationCommandStorage
 from datamodels.SavedLogs import SavedLogs
+
 from menus import CompleteReminder, LOAMenu, RDMActions
 from utils.viewstatemanger import ViewStateManager
-from utils.bloxlink import Bloxlink
+from utils.linking import AccountLinking
 from utils.prc_api import PRCApiClient
 from utils.prc_api import ResponseFailure
 from utils.utils import *
@@ -99,15 +94,15 @@ async def rate_limited_fetch(coro, endpoint_type="default"):
             raise
 
 setup = False
+accepted_envs = ["PRODUCTION", "DEVELOPMENT", "ALPHA"]
 
-try:
-    sentry_url = config("SENTRY_URL")
-    bloxlink_api_key = config("BLOXLINK_API_KEY")
-except decouple.UndefinedValueError:
-    sentry_url = ""
-    bloxlink_api_key = ""
+
+sentry_url = config("SENTRY_URL", "")
+dbname = config("DB_NAME", "erm").replace("$", "").replace(".", "") # Note that $ and . are forbidden chars
 
 discord.utils.setup_logging(level=logging.INFO)
+discord.VoiceClient.warn_nacl = False
+discord.VoiceClient.warn_dave = False
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -146,10 +141,8 @@ class Bot(commands.AutoShardedBot):
         if user.id == 1394817794427846737:
             return True
 
-        if environment != "CUSTOM": # let's not allow custom bot owners to use jishaku lol
-            return await super().is_owner(user)
-        else:
-            return False
+        return await super().is_owner(user)
+        
 
     async def setup_hook(self) -> None:
         self.external_http_sessions: list[aiohttp.ClientSession] = []
@@ -162,21 +155,12 @@ class Bot(commands.AutoShardedBot):
                     self.user.name
                 )
             )
-            self.mongo = motor.motor_asyncio.AsyncIOMotorClient(str(mongo_url))
-            if environment == "DEVELOPMENT":
-                self.db = self.mongo["erm"]
-            elif environment == "PRODUCTION":
-                self.db = self.mongo["erm"]
-            elif environment == "ALPHA":
-                self.db = self.mongo["erm"]
-            elif environment == "CUSTOM":
-                self.db = self.mongo["erm"]
-            else:
-                raise Exception("Invalid environment")
-            
+            self.mongo = AsyncMongoClient(str(mongo_url))
 
+            # The checking for this is defined just before the run method - approx line 649
+            self.db = self.mongo[dbname]
 
-            self.panel_db = self.mongo["UserIdentity"]
+            self.panel_db = self.mongo[f"{f"{dbname}_" if dbname != "erm" else ""}UserIdentity"]
             self.priority_settings = Document(self.panel_db, "PrioritySettings")
             self.staff_requests = Document(self.panel_db, "StaffRequests")
 
@@ -189,6 +173,7 @@ class Bot(commands.AutoShardedBot):
                 {}
             )  # Guild ID => [ { Username: Count } ]
 
+            self.log_timestamps = LogTimestamps(self.db, "log_timestamps")
             self.shift_management = ShiftManagement(self.db, "shift_management")
             self.errors = Errors(self.db, "errors")
             self.loas = ActivityNotices(self.db, "leave_of_absences")
@@ -205,47 +190,42 @@ class Bot(commands.AutoShardedBot):
             self.punishments = Warnings(self)
             self.settings = Settings(self.db, "settings")
             self.server_keys = ServerKeys(self.db, "server_keys")
-
-            self.maple_county = self.mongo["MapleCounty"]
+            self.maple_county = self.mongo[f"{f"{dbname}_" if dbname != "erm" else ""}MapleCounty"]
             self.mc_keys = MapleKeys(self.maple_county, "Auth")
-
+            self.sessions = Document(self.db, "sessions")
+            self.session_history = Document(self.db, "session_history")
+            
             self.staff_connections = StaffConnections(self.db, "staff_connections")
             self.ics = IntegrationCommandStorage(self.db, "logged_command_data")
             self.actions = Actions(self.db, "actions")
             self.prohibited = ProhibitedUseKeys(self.db, "prohibited_keys")
             self.saved_logs = SavedLogs(self.db, "saved_logs")
-            self.whitelabel = Whitelabel(self.mongo["ERMProcessing"], "Instances")
+            self.whitelabel = Whitelabel(self.mongo[f"{dbname.upper()}Processing"], "Instances")
 
             self.pending_oauth2 = PendingOAuth2(self.db, "pending_oauth2")
             self.oauth2_users = OAuth2Users(self.db, "oauth2")
 
+            self.linking = AccountLinking(self)
             self.accounts = Accounts(self)
-
-            if environment == "CUSTOM":
-                doc = await self.whitelabel.db.find_one({"GuildID": config("CUSTOM_GUILD_ID", default="0")})
-                if not doc:
-                    raise Exception(
-                        "Custom guild ID not found in the database. This means the whitelabel subscription is overdue."
-                    )
 
             self.roblox = roblox.Client()
             self.prc_api = PRCApiClient(
                 self,
                 base_url=config(
-                    "PRC_API_URL", default="https://api.policeroleplay.community/v1"
+                    "PRC_API_URL", default="https://api.erlc.gg/v2"
                 ),
-                api_key=config("PRC_API_KEY", default="default_api_key"),
+                api_key=config("PRC_API_KEY", default=None),
             )
             self.mc_api = MCApiClient(
                 self, base_url=config("MC_API_URL"), api_key=config("MC_API_KEY")
             )
-            self.bloxlink = Bloxlink(self, config("BLOXLINK_API_KEY"))
 
             Extensions = [m.name for m in iter_modules(["cogs"], prefix="cogs.")]
             Events = [m.name for m in iter_modules(["events"], prefix="events.")]
             BETA_EXT = ["cogs.StaffConduct"]
             EXTERNAL_EXT = ["utils.api"]
             [Extensions.append(i) for i in EXTERNAL_EXT]
+            self.reminders_enabled, self.actions_enabled = True, True
             if config("ACTIONS_ENABLED", default="TRUE").upper() != "TRUE":
                 self.actions_enabled = False
                 Extensions.remove("cogs.Actions")
@@ -266,18 +246,18 @@ class Bot(commands.AutoShardedBot):
                     if extension not in BETA_EXT:
                         await self.load_extension(extension)
                         logging.info(f"Loaded {extension}")
-                    elif environment == "DEVELOPMENT" or environment == "ALPHA":
+                    elif environment in ["DEVELOPMENT", "ALPHA"]:
                         await self.load_extension(extension)
                         logging.info(f"Loaded {extension}")
                 except Exception as e:
-                    logging.error(f"Failed to load extension {extension}.", exc_info=e)
+                    logging.critical(f"Failed to load extension {extension}.", exc_info=e)
 
             for extension in Events:
                 try:
                     await self.load_extension(extension)
                     logging.info(f"Loaded {extension}")
                 except Exception as e:
-                    logging.error(f"Failed to load extension {extension}.", exc_info=e)
+                    logging.critical(f"Failed to load extension {extension}.", exc_info=e)
 
             bot.error_list = []
             logging.info("Connected to MongoDB!")
@@ -291,16 +271,15 @@ class Bot(commands.AutoShardedBot):
             if environment == "DEVELOPMENT":
                 pass
                 # await bot.tree.sync(guild=discord.Object(id=987798554972143728))
-            elif environment == "CUSTOM":
-                await self.tree.sync()
-                # Prevent auto syncing
-                # await bot.tree.sync()
-                # guild specific: leave blank if global (global registration can take 1-24 hours)
-            bot.is_synced = True
 
-            # we do this so the bot can get a cache of things before we spam discord with fetches
-            asyncio.create_task(self.start_tasks())
+            bot.is_synced = True
+            self.saved_latencies = {
+                "shards": [],
+                "rest": [],
+                "db": []
+            }
             
+            asyncio.create_task(start_tasks(self))
             async for document in self.views.db.find({}):
                 if document["view_type"] == "LOAMenu":
                     for index, item in enumerate(document["args"]):
@@ -317,61 +296,7 @@ class Bot(commands.AutoShardedBot):
                     )
             self.setup_status = True
 
-    async def start_tasks(self):
-        logging.info("Starting tasks...")
-        if self.reminders_enabled:
-            check_reminders.start(bot)
-            logging.info("Starting the Check Reminders task...")
-        else:
-            logging.warn("Reminders disabled. Not running check reminders task")
-        await asyncio.sleep(30)
-        check_loa.start(bot)
-        logging.info("Starting the Check LOA task...")
-        await asyncio.sleep(30)
-        iterate_ics.start(bot)
-        logging.info("Starting the Iterate ICS task...")
-        await asyncio.sleep(30)
-        iterate_prc_logs.start(bot)
-        logging.info("Starting the Iterate PRC Logs task...")
-        await asyncio.sleep(30)
-        statistics_check.start(bot)
-        logging.info("Starting the Statistics Check task...")
-        await asyncio.sleep(30)
-        tempban_checks.start(bot)
-        logging.info("Starting the Tempban Checks task...")
-        await asyncio.sleep(30)
-        check_whitelisted_car.start(bot)
-        logging.info("Starting the Check Whitelisted Car task...")
-        if self.environment != "CUSTOM":
-            await asyncio.sleep(30)
-            change_status.start(bot)
-        logging.info("Starting the Change Status task...")
-        await asyncio.sleep(30)
-        process_scheduled_pms.start(bot)
-        logging.info("Starting the Process Scheduled PMs task...")
-        await asyncio.sleep(30)
-        sync_weather.start(bot)
-        logging.info("Starting the Sync Weather task...")
-        await asyncio.sleep(30)
-        if self.actions_enabled:
-            iterate_conditions.start(bot)
-            logging.info("Starting the Iterate Conditions task...")
-        else:
-            logging.info("Actions task is disabled (ACTIONS_ENABLED=FALSE)")
-        await asyncio.sleep(30)
-        check_infractions.start(bot)
-        logging.info("Starting the Check Infractions task...")
-        await asyncio.sleep(30)
-        prc_automations.start(bot)
-        logging.info("Starting the ER:LC Discord Checks task...")
-        await asyncio.sleep(30)
-        mc_discord_checks.start(bot)
-        logging.info("Starting the MC Discord Checks task...")
-        logging.info("All tasks are now running!")
 
-
-if config("ENVIRONMENT") == "CUSTOM":
-    Bot.__bases__ = (commands.Bot,)
 
 bot = Bot(
     command_prefix=get_prefix,
@@ -385,7 +310,6 @@ bot = Bot(
 bot.is_synced = False
 bot.shift_management_disabled = False
 bot.punishments_disabled = False
-bot.bloxlink_api_key = bloxlink_api_key
 environment = config("ENVIRONMENT", default="DEVELOPMENT")
 bot.internal_command_storage = {}
 
@@ -402,39 +326,9 @@ def running():
 
 @bot.before_invoke
 async def AutoDefer(ctx: commands.Context):
-    if (
-        environment == "CUSTOM"
-        and config("CUSTOM_GUILD_ID", default="0") != "0"
-        and not getattr(ctx.bot, "whitelist_disabled", False)
-    ):
-        if ctx.guild.id != int(config("CUSTOM_GUILD_ID")):
-            if ctx.interaction:
-                await ctx.interaction.response.send_message(
-                    embed=discord.Embed(
-                        title="Not Permitted",
-                        description="This bot is not permitted to be used in this server. You can change this in the **Whitelabel Bot Dashboard**.",
-                        color=BLANK_COLOR,
-                    ),
-                    ephemeral=True,
-                )
-                raise Exception(f"Guild not permitted to use this bot: {ctx.guild.id}")
-
     guild_id = ctx.guild.id
-    if (environment != "CUSTOM" or int(config("CUSTOM_GUILD_ID", default="0")) != guild_id) and await has_whitelabel(bot, guild_id):
-        if "jishaku" in ctx.command.qualified_name:
-            return
-        if ctx.interaction:
-            await ctx.interaction.response.send_message(
-                embed=discord.Embed(
-                    title="Not Permitted",
-                    description="There is a whitelabel bot already in this server.",
-                    color=BLANK_COLOR,
-                ),
-                ephemeral=True,
-            )
-        raise Exception("Whitelabel bot already in use")
-
-    bot.internal_command_storage[ctx] = datetime.datetime.now(tz=pytz.UTC).timestamp()
+    utils.prc_api.command_actor.set(ctx.author)
+    bot.internal_command_storage[ctx.message.id] = datetime.datetime.now(tz=pytz.UTC).timestamp()
     if ctx.command:
         if ctx.command.extras.get("ephemeral") is True:
             if ctx.interaction:
@@ -446,12 +340,12 @@ async def AutoDefer(ctx: commands.Context):
 
 @bot.after_invoke
 async def loggingCommandExecution(ctx: commands.Context):
-    if ctx in bot.internal_command_storage:
+    if ctx.message.id in bot.internal_command_storage:
         command_name = ctx.command.qualified_name
 
         duration = float(
             datetime.datetime.now(tz=pytz.UTC).timestamp()
-            - bot.internal_command_storage[ctx]
+            - bot.internal_command_storage[ctx.message.id]
         )
         logging.info(
             f"Command {command_name} was run by {ctx.author.name} ({ctx.author.id}) and lasted {duration} seconds"
@@ -462,46 +356,11 @@ async def loggingCommandExecution(ctx: commands.Context):
             else "Shard ID ::: -1, Direct Messages"
         )
         logging.info(shard_info)
-        del bot.internal_command_storage[ctx]
+        del bot.internal_command_storage[ctx.message.id]
     else:
         logging.info(
             "Command could not be found in internal context storage. Please report."
         )
-
-
-@bot.event
-async def on_message(
-    message,
-):  # DO NOT COG
-
-    if not message.guild:
-        return await bot.process_commands(message)
-
-    if (
-        environment == "CUSTOM"
-        and config("CUSTOM_GUILD_ID", default=None) != 0
-        and not getattr(bot, "whitelist_disabled", False)
-    ):
-        if message.guild.id != int(config("CUSTOM_GUILD_ID")):
-            ctx = await bot.get_context(message)
-            if ctx.command is not None:
-                await message.reply(
-                    embed=discord.Embed(
-                        title="Not Permitted",
-                        description="This bot is not permitted to be used in this server. You can change this in the **Whitelabel Bot Dashboard**.",
-                        color=BLANK_COLOR,
-                    )
-                )
-                return
-
-    if environment == "PRODUCTION" and await bot.whitelabel.db.find_one({"GuildID": str(message.guild.id)}) is not None:
-        return
-
-    await bot.process_commands(message)
-
-
-client = roblox.Client()
-
 
 async def staff_check(bot_obj, guild, member):
     guild_settings = await bot_obj.settings.find_by_id(guild.id)
@@ -651,31 +510,18 @@ async def warning_json_to_mongo(jsonName: str, guildId: int):
             await bot.warnings.update(structure)
 bot.warning_json_to_mongo = warning_json_to_mongo
 
-# include environment variables
-if environment == "PRODUCTION":
-    bot_token = config("PRODUCTION_BOT_TOKEN")
-    logging.info("Using production token...")
-elif environment == "DEVELOPMENT":
-    try:
-        bot_token = config("DEVELOPMENT_BOT_TOKEN")
-    except decouple.UndefinedValueError:
-        bot_token = ""
-    logging.info("Using development token...")
-elif environment == "ALPHA":
-    try:
-        bot_token = config("ALPHA_BOT_TOKEN")
-    except decouple.UndefinedValueError:
-        bot_token = ""
-    logging.info("Using ERM V4 Alpha token...")
-elif environment == "CUSTOM":
-    bot_token = config("CUSTOM_BOT_TOKEN")
-    logging.info("Using custom bot token...")
+# Note: Changed to not use hardcoded types as if something does change then you don't need to append to an if chain
+if environment in accepted_envs:
+    bot_token = config(f"{environment}_BOT_TOKEN", None)
+    logging.info(f"Using {environment.lower()} bot token")
+    if not bot_token:
+        raise Exception("The environment specified does not have a token associated with it")
 else:
-    raise Exception("Invalid environment")
-try:
-    mongo_url = config("MONGO_URL", default=None)
-except decouple.UndefinedValueError:
-    mongo_url = ""
+    raise Exception("Invalid Environment")
+# Mongo is critical for bot function so it should most definitely error
+mongo_url = config("MONGO_URL", default=None)
+if not mongo_url:
+    raise Exception("Missing MongoDB URL")
 
 
 credentials_dict = {

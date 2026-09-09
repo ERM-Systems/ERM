@@ -20,12 +20,18 @@ base_configuration = {
         "loa_role": [],
         "ra_role": [],
     },
+    "reduced_activity": {
+        "enabled": False,
+        "channel": None,
+    },
     "punishments": {
         "enabled": False,
         "channel": None,
         "kick_channel": None,
         "ban_channel": None,
         "bolo_channel": None,
+        "staff_alert_channel": None,
+        "staff_alert_roles": [],
     },
     "shift_management": {
         "enabled": False,
@@ -55,6 +61,8 @@ base_configuration = {
         "elevation_required": None,
         "rdm_mentionables": [],
         "rdm_channel": None,
+        "rdm_threshold": 4,
+        "rdm_window": 20,
         "automatic_shifts": {"enabled": False, "shift_type": None},
     },
 }
@@ -70,6 +78,20 @@ blank_color = BLANK_COLOR  # Redundancy
 GREEN_COLOR = discord.Colour.brand_green()
 RED_COLOR = 0xD12F32
 ORANGE_COLOR = discord.Colour.orange()
+
+"""
+    Time constants
+"""
+
+ONE_WEEK = 7 * 24 * 60 * 60
+
+"""
+    Day name mapping (MongoDB $dayOfWeek returns 1=Sunday, 7=Saturday)
+"""
+
+DAY_NAMES = {1: "Sunday", 2: "Monday", 3: "Tuesday", 4: "Wednesday", 5: "Thursday", 6: "Friday", 7: "Saturday"}
+
+ERLC_TEAMS = ("Police", "Sheriff", "Fire", "DOT", "Civilian", "Jail")
 
 SERVER_CONDITIONS = {
     "In-Game Players": "ERLC_Players",
@@ -126,3 +148,51 @@ OPTION_DESCRIPTIONS = [
     "If the value is more than the specified value.",
     "If the value is more than or equal to the specified value.",
 ]
+
+WMO_TO_ERLC = {
+    0:  "Clear",        # Clear sky
+    1:  "Clear",        # Mainly clear
+    2:  "Clouds",       # Partly cloudy
+    3:  "Clouds",       # Overcast
+    45: "Fog",          # Foggy
+    48: "Fog",          # Icy fog
+    51: "Drizzle",      # Light drizzle
+    53: "Drizzle",      # Moderate drizzle
+    55: "Drizzle",      # Dense drizzle
+    61: "Rain",         # Slight rain
+    63: "Rain",         # Moderate rain
+    65: "Rain",         # Heavy rain
+    71: "Snow",         # Slight snow
+    73: "Snow",         # Moderate snow
+    75: "Snow",         # Heavy snow
+    77: "Snow",         # Snow grains
+    80: "Rain",         # Slight rain showers
+    81: "Rain",         # Moderate rain showers
+    82: "Rain",         # Violent rain showers
+    85: "Snow",         # Slight snow showers
+    86: "Snow",         # Heavy snow showers
+    95: "Thunderstorm", # Thunderstorm
+    96: "Thunderstorm", # Thunderstorm with hail
+    99: "Thunderstorm", # Thunderstorm with heavy hail
+}
+
+base_infraction_type = {
+    "name": "",
+    "notifications": {
+        "dm": {},
+        "public": {}
+    },
+    "role_changes": {
+        "add": {
+            "roles": [],
+        },
+        "remove": {
+            "roles": [],
+        }
+    },
+    "remove_ingame_perms": False,
+    "end_shift": False
+}
+
+CUSTOM_IDS_FOR_SESSIONS = ["vote_button", "view_votes_button"]
+SESSION_VIEW_TYPES = ["vote", "staff_vote", "start", "boost", "full", "shutdown"]

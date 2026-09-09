@@ -6,6 +6,9 @@ from datamodels.Warnings import WarningItem
 from utils.constants import BLANK_COLOR
 import roblox
 import logging
+from collections import deque
+
+handled = deque(maxlen=500)
 
 
 class OnPunishment(commands.Cog):
@@ -14,15 +17,20 @@ class OnPunishment(commands.Cog):
 
     @commands.Cog.listener()
     async def on_punishment(self, objectid: ObjectId):
+        if objectid in handled:
+            logging.info(f"ignoring duplicate punishment dispatch for {objectid}")
+            return
+        handled.append(objectid)
+
         warning: WarningItem = await self.bot.punishments.fetch_warning(objectid)
         guild = self.bot.get_guild(warning.guild_id)
         if guild is None:
-            logging.error(f"Guild with ID {warning.guild_id} not found.")
+            logging.warning(f"Guild with ID {warning.guild_id} not found.")
             return
 
         guild_settings = await self.bot.settings.find_by_id(guild.id)
         if not guild_settings:
-            logging.error(f"Settings for guild ID {guild.id} not found.")
+            logging.warning(f"Settings for guild ID {guild.id} not found.")
             return
 
         punishment_types = await self.bot.punishment_types.get_punishment_types(
@@ -38,21 +46,19 @@ class OnPunishment(commands.Cog):
                         custom_warning_type = item
 
         if custom_warning_type is None:
+            default_channel = guild_settings.get("punishments", {}).get("channel")
             associations = {
-                "warning": guild_settings.get("punishments").get("channel"),
-                "kick": guild_settings.get("punishments").get("kick_channel"),
-                "ban": guild_settings.get("punishments").get("ban_channel"),
-                "temporary ban": guild_settings.get("punishments").get("ban_channel"),
-                "bolo": guild_settings.get("punishments").get("bolo_channel"),
+                "warning": default_channel,
+                "kick": guild_settings.get("punishments", {}).get("kick_channel"),
+                "ban": guild_settings.get("punishments", {}).get("ban_channel"),
+                "temporary ban": guild_settings.get("punishments", {}).get("ban_channel"),
+                "bolo": guild_settings.get("punishments", {}).get("bolo_channel"),
             }
+            channel_id = associations.get(warning_type.lower().strip()) or default_channel
             try:
-                channel = await guild.fetch_channel(
-                    associations[warning_type.lower().strip()]
-                )
-            except discord.HTTPException:
-                channel = await guild.fetch_channel(
-                    guild_settings.get("punishments").get("channel", 0)
-                )
+                channel = await guild.fetch_channel(channel_id)
+            except (discord.HTTPException, TypeError):
+                channel = None
         else:
             try:
                 channel = await guild.fetch_channel(
@@ -68,11 +74,11 @@ class OnPunishment(commands.Cog):
         try:
             moderator: discord.Member = guild.get_member(warning.moderator_id)
         except discord.NotFound:
-            logging.error(f"Moderator with ID {warning.moderator_id} not found.")
+            logging.warning(f"Moderator with ID {warning.moderator_id} not found.")
             return
 
         if not moderator:
-            logging.error(
+            logging.warning(
                 f"Moderator with ID {warning.moderator_id} not found in guild {guild.id}."
             )
             return
@@ -84,21 +90,13 @@ class OnPunishment(commands.Cog):
         )
         thumbnail = thumbnails[0].image_url
 
-        async def get_discord_id_by_roblox_id(self, roblox_id):
-            linked_account = await self.bot.oauth2_users.db.find_one(
-                {"roblox_id": roblox_id}
-            )
-            if linked_account:
-                return linked_account["discord_id"]
-            return None
-
         if channel is not None:
             try:
-                warned_discord_id = await get_discord_id_by_roblox_id(
-                    self, warning.user_id
+                warned_discord_id = await self.bot.linking.get_discord_id(
+                    warning.user_id
                 )
             except Exception as e:
-                logging.error(f"Error getting warned discord ID: {e}")
+                logging.warning(f"Error getting warned discord ID: {e}")
 
             try:
                 document = await self.bot.consent.db.find_one(
@@ -163,6 +161,51 @@ class OnPunishment(commands.Cog):
 
             await channel.send(embed=embed)
             logging.info(f"Sent punishment embed to channel {channel.id}")
+
+        staff_alert_channel_id = guild_settings.get("punishments", {}).get("staff_alert_channel")
+        if staff_alert_channel_id:
+            try:
+                warned_discord_id = await self.bot.linking.get_discord_id(warning.user_id)
+                if warned_discord_id:
+                    member = guild.get_member(warned_discord_id)
+                    if member:
+                        staff_roles = set(guild_settings.get("staff_management", {}).get("role") or [])
+                        member_role_ids = {r.id for r in member.roles}
+                        if staff_roles & member_role_ids:
+                            alert_channel = await guild.fetch_channel(staff_alert_channel_id)
+                            alert_roles = guild_settings.get("punishments", {}).get("staff_alert_roles") or []
+                            pings = " ".join(f"<@&{r}>" for r in alert_roles)
+                            alert_embed = (
+                                discord.Embed(
+                                    title="Staff Member Punished",
+                                    color=BLANK_COLOR,
+                                )
+                                .add_field(
+                                    name="Staff Member",
+                                    value=(
+                                        f"> **Discord:** {member.mention}\n"
+                                        f"> **Username:** {warning.username}\n"
+                                    ),
+                                    inline=False,
+                                )
+                                .add_field(
+                                    name="Punishment Details",
+                                    value=(
+                                        f"> **Type:** {warning.warning_type}\n"
+                                        f"> **Reason:** {warning.reason}\n"
+                                        f"> **Moderator:** {moderator.mention}\n"
+                                        f"> **Warning ID:** `{warning.snowflake}`\n"
+                                    ),
+                                    inline=False,
+                                )
+                                .set_author(
+                                    name=guild.name, icon_url=guild.icon.url if guild.icon else ""
+                                )
+                                .set_thumbnail(url=thumbnail)
+                            )
+                            await alert_channel.send(content=pings or None, embed=alert_embed)
+            except Exception as e:
+                logging.warning(f"Failed to send staff punishment alert: {e}")
 
 
 async def setup(bot):

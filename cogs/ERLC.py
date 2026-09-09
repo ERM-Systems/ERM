@@ -13,6 +13,7 @@ from typing import List
 from erm import admin_check, is_staff, is_management, management_predicate
 from utils.paginators import CustomPage, SelectPagination
 from menus import CustomModal, ReloadView, RefreshConfirmation, RiskyUsersMenu, CustomExecutionButton
+from ui.ERLC import PMTargetMenu
 import copy
 from utils.constants import *
 from utils.prc_api import (
@@ -34,23 +35,22 @@ class ERLC(commands.Cog):
         self.bot = bot
 
     @staticmethod
-    def is_server_linked():
+    def is_erlc_server_linked():
         async def predicate(ctx: commands.Context):
+            if ctx.guild is None:
+                return False
             guild_id = ctx.guild.id
-            command_group = ctx.command.full_parent_name
 
             try:
-                if command_group == "erlc":
-                    await ctx.bot.prc_api.get_server_status(guild_id)
-                elif command_group == "mc":
-                    await ctx.bot.mc_api.get_server_status(guild_id)
+                await ctx.bot.prc_api.get_server_status(guild_id)
             except prc_api.ResponseFailure as exc:
-                error = prc_api.ServerLinkNotFound(platform=command_group)
+                error = prc_api.ServerLinkNotFound(platform="erlc")
                 try:
                     error.code = exc.json_data.get("code") or exc.status_code
                 except json.JSONDecodeError:
                     pass
                 raise error
+
             return True
 
         return commands.check(predicate)
@@ -71,288 +71,6 @@ class ERLC(commands.Cog):
     async def server(self, ctx: commands.Context):
         pass
 
-    @commands.hybrid_group(name="mc")  # hmmmm...
-    async def mc(self, ctx: commands.Context):
-        pass
-
-    @mc.command(name="link", description="Link your Maple County server with ERM!")
-    @is_management()
-    async def mc_link(self, ctx: commands.Context, *, server_name: str):
-        # get the linked roblox user
-        roblox_id = 0
-        oauth2_user = (
-            await self.bot.oauth2_users.db.find_one({"discord_id": ctx.author.id}) or {}
-        )
-        if not oauth2_user.get("roblox_id"):
-            # go to fallback
-            roblox_user = await self.bot.bloxlink.find_roblox(ctx.author.id)
-            if not roblox_user.get("robloxID"):
-                return await ctx.send(
-                    embed=discord.Embed(
-                        title="Not Linked",
-                        description="You are not linked to any ROBLOX account.",
-                        color=BLANK_COLOR,
-                    )
-                )
-            roblox_id = roblox_user["robloxID"]
-        else:
-            roblox_id = oauth2_user["roblox_id"]
-
-        try:
-            server_token = await self.bot.mc_api.authorize(
-                roblox_id, server_name, ctx.guild.id
-            )
-        except prc_api.ResponseFailure:  # yes, this is correct.
-            return await ctx.send(
-                embed=discord.Embed(
-                    title="Server Not Found",
-                    description="We could not find a server you own under the server name provided. Make sure you are linked with ERM by running `/link` in any server.",
-                    color=BLANK_COLOR,
-                )
-            )
-
-        await ctx.send(
-            embed=discord.Embed(
-                title=f"{self.bot.emoji_controller.get_emoji('success')} Server Linked",
-                description=f"Your server has been linked with the name `{server_name}`.",
-                color=GREEN_COLOR,
-            )
-        )
-
-    @mc.command(
-        name="info",
-        description="Get information about the current players in your Maple County server.",
-    )
-    @is_server_linked()
-    async def mc_info(self, ctx: commands.Context):
-        guild_id = ctx.guild.id
-
-        async def operate_and_reload_serverinfo(
-            msg: discord.Message | None, guild_id: str
-        ):
-            guild_id = int(guild_id)
-            status: ServerStatus = await self.bot.mc_api.get_server_status(guild_id)
-            players: list[Player] = await self.bot.mc_api.get_server_players(guild_id)
-            client = roblox.Client()
-
-            embed1 = discord.Embed(title=f"{status.name}", color=BLANK_COLOR)
-            embed1.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon)
-            embed1.add_field(
-                name="Basic Info",
-                value=(
-                    f"> **Join Code:** [{status.join_key}](https://www.roblox.com/games/start?placeId=8416011646&launchData=psjoincode%3D{status.join_key}&deep_link_value=roblox%3A%2F%2FplaceId%3D8416011646)\n"
-                    f"> **Current Players:** {status.current_players}/{status.max_players}\n"
-                ),
-                inline=False,
-            )
-            embed1.add_field(
-                name="Server Ownership",
-                value=(
-                    f"> **Owner:** [{(await client.get_user(status.owner_id)).name}](https://roblox.com/users/{status.owner_id}/profile)\n"
-                    f"> **Co-Owners:** {f', '.join([f'[{user.name}](https://roblox.com/users/{user.id}/profile)' for user in await client.get_users(status.co_owner_ids, expand=False)])}"
-                ),
-                inline=False,
-            )
-
-            embed1.add_field(
-                name="Staff Statistics",
-                value=(
-                    f"> **Moderators:** {len(list(filter(lambda x: x.permission == 'Server Moderator', players)))}\n"
-                    f"> **Administrators:** {len(list(filter(lambda x: x.permission == 'Server Administrator', players)))}\n"
-                    f"> **Staff In-Game:** {len(list(filter(lambda x: x.permission != 'Normal', players)))}\n"
-                    f"> **Staff Clocked In:** {await self.bot.shift_management.shifts.db.count_documents({'Guild': guild_id, 'EndEpoch': 0})}"
-                ),
-                inline=False,
-            )
-
-            if msg is None:
-                view = ReloadView(
-                    self.bot,
-                    ctx.author.id,
-                    operate_and_reload_serverinfo,
-                    [None, guild_id],
-                )
-                msg = await ctx.send(embed=embed1, view=view)
-                view.message = msg
-                view.callback_args[0] = msg
-            else:
-                await msg.edit(embed=embed1)
-
-        await operate_and_reload_serverinfo(None, guild_id)
-
-    @mc.command(name="logs", description="See the Command Logs of your server.")
-    @is_staff()
-    @is_server_linked()
-    async def mc_logs(self, ctx: commands.Context):
-        guild_id = ctx.guild.id
-
-        async def operate_and_reload_commandlogs(msg, guild_id: str):
-            guild_id = int(guild_id)
-            # status: ServerStatus = await self.bot.prc_api.get_server_status(guild_id)
-            command_logs: list[CommandLog] = await self.bot.mc_api.fetch_server_logs(
-                guild_id
-            )
-            embed = discord.Embed(
-                color=BLANK_COLOR, title="Command Logs", description=""
-            )
-
-            sorted_logs = sorted(
-                command_logs, key=lambda log: log.timestamp, reverse=True
-            )
-            for log in sorted_logs:
-                if len(embed.description) > 3800:
-                    break
-                embed.description += f"> [{log.username}](https://roblox.com/users/{log.user_id}/profile) ran the command `{log.command}` • <t:{int(log.timestamp)}:R>\n"
-
-            if embed.description in ["", "\n"]:
-                embed.description = "> No player logs found."
-
-            embed.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon)
-
-            if msg is None:
-                view = ReloadView(
-                    self.bot,
-                    ctx.author.id,
-                    operate_and_reload_commandlogs,
-                    [None, guild_id],
-                )
-                msg = await ctx.send(embed=embed, view=view)
-                view.message = msg
-                view.callback_args[0] = msg
-            else:
-                await msg.edit(embed=embed)
-
-        await operate_and_reload_commandlogs(None, guild_id)
-
-    @mc.command(name="bans", description="Filter the bans of your server.")
-    @is_staff()
-    @is_server_linked()
-    async def mc_bans(
-        self,
-        ctx: commands.Context,
-        username: typing.Optional[str],
-        user_id: typing.Optional[int],
-    ):
-        guild_id = ctx.guild.id
-        # status: ServerStatus = await self.bot.prc_api.get_server_status(guild_id)
-        try:
-            bans: list[prc_api.BanItem] = await self.bot.mc_api.fetch_bans(guild_id)
-        except prc_api.ResponseFailure:
-            return await ctx.send(
-                embed=discord.Embed(
-                    title="MC API Error",
-                    description="There were no bans, or your API key is incorrect.",
-                    color=BLANK_COLOR,
-                )
-            )
-        embed = discord.Embed(color=BLANK_COLOR, title="Bans", description="")
-        status = username or user_id
-
-        if not username and user_id:
-            username = "[PLACEHOLDER]"
-
-        if not user_id and username:
-            user_id = "99999"
-        old_embed = copy.copy(embed)
-        embeds = [embed]
-        for log in bans:
-            if str(username or "") in str(log.username).lower() or str(
-                user_id or ""
-            ) in str(log.user_id):
-                embed = embeds[-1]
-                if len(embed.description) > 3800:
-                    new = copy.copy(old_embed)
-                    embeds.append(new)
-                embeds[
-                    -1
-                ].description += f"> [{log.username}:{log.user_id}](https://roblox.com/users/{log.user_id}/profile)\n"
-
-        if embeds[0].description in ["", "\n"]:
-            embeds[0].description = (
-                "> This ban was not found."
-                if status
-                else "> Bans were not found in your server."
-            )
-
-        embeds[0].set_author(name=ctx.guild.name, icon_url=ctx.guild.icon)
-
-        if len(embeds) > 1:
-            pages = [
-                CustomPage(embeds=[embeds[i]], identifier=str(i + 1))
-                for i in range(0, len(embeds) - 1)
-            ]
-            paginator = SelectPagination(self.bot, ctx.author.id, pages)
-            await ctx.send(embed=embeds[0], view=paginator.get_current_view())
-            return
-        else:
-            await ctx.send(embed=embed)
-
-    @mc.command(name="players", description="See all players in the server.")
-    @is_server_linked()
-    async def mc_players(
-        self, ctx: commands.Context, filter: typing.Optional[str] = None
-    ):
-        guild_id = int(ctx.guild.id)
-        players: list[Player] = await self.bot.mc_api.get_server_players(guild_id)
-        embed2 = discord.Embed(
-            title=f"Server Players [{len(players)}]", color=BLANK_COLOR, description=""
-        )
-        actual_players = []
-        key_maps = {}
-        staff = []
-        for item in players:
-            if item.permission == "Normal":
-                actual_players.append(item)
-            else:
-                staff.append(item)
-
-        if filter not in [None, ""]:
-            actual_players_copy = []
-            for item in actual_players:
-                if item.username.lower().startswith(filter.lower()):
-                    actual_players_copy.append(item)
-            actual_players = actual_players_copy
-            staff_copy = []
-            for item in staff:
-                if item.username.lower().startswith(filter.lower()):
-                    staff_copy.append(item)
-            staff = staff_copy
-
-        embed2.description += f"**Server Staff [{len(staff)}]**\n" + (
-            ", ".join(
-                [
-                    f"[{plr.username}](https://roblox.com/users/{plr.id}/profile)"
-                    for plr in staff
-                ]
-            )
-            or "> No players in this category."
-        )
-
-        embed2.description += f"\n\n**Online Players [{len(actual_players)}]**\n" + (
-            ", ".join(
-                [
-                    f"[{plr.username}](https://roblox.com/users/{plr.id}/profile)"
-                    for plr in actual_players
-                ]
-            )
-            or "> No players in this category."
-        )
-
-        embed2.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon)
-        if len(embed2.description) > 3999:
-            embed2.description = ""
-            embed2.description += f"**Server Staff [{len(staff)}]**\n" + ", ".join(
-                [f"{plr.username}" for plr in staff]
-            )
-
-            embed2.description += (
-                f"\n\n**Online Players [{len(actual_players)}]**\n"
-                + ", ".join([f"{plr.username}" for plr in actual_players])
-            )
-
-        await ctx.send(embed=embed2)
-
-
     @server.command(
         name="panel",
         description="Open a panel that allows you to manage a player in your server.",
@@ -361,7 +79,7 @@ class ERLC(commands.Cog):
     @app_commands.autocomplete(target=erlc_players_autocomplete)
     @app_commands.describe(target="Who would you like to manage?")
     @is_staff()
-    @is_server_linked()
+    @is_erlc_server_linked()
     async def erlc_panel(self, ctx: commands.Context, target: str):
         target = await get_roblox_by_username(target, self.bot, ctx)
         if not target or target.get("errors") is not None:
@@ -373,7 +91,7 @@ class ERLC(commands.Cog):
                 )
             )
         target = target.get("username", target.get("name", ""))
-    
+
         client = roblox.Client()
         roblox_player = await client.get_user_by_username(target)
 
@@ -381,15 +99,26 @@ class ERLC(commands.Cog):
             [roblox_player], type=AvatarThumbnailType.full_body, size="720x720"
         )
 
-        server_staff = await self.bot.prc_api.get_server_staff(ctx.guild.id)
+        info = await self.bot.prc_api.get_server_info(
+            ctx.guild.id,
+            "staff",
+            "players",
+            "player_logs",
+            "vehicles",
+            "kill_logs",
+            "mod_calls",
+            "command_logs",
+        )
+
+        server_staff = info["staff"]
         player_item = list(filter(lambda x: x.username.lower() == roblox_player.name.lower(), server_staff))
         player_permission = ""
         if len(player_item) == 0:
             player_permission = "Normal"
         else:
             player_permission = player_item[0].permission
-        
-        server_players = await self.bot.prc_api.get_server_players(ctx.guild.id)
+
+        server_players = info["players"]
         matched_players = list(filter(lambda x: x.username.lower() == roblox_player.name.lower(), server_players))
         disable_online_buttons = False
         erlc_player = None
@@ -398,9 +127,9 @@ class ERLC(commands.Cog):
         else:
             erlc_player = matched_players[0]
 
-        server_join_logs = await self.bot.prc_api.fetch_player_logs(ctx.guild.id)
+        server_join_logs = info["player_logs"]
         matching_player_logs = list(filter(lambda x: x.username.lower() == roblox_player.name.lower(), server_join_logs))
-        vehicle_information = await self.bot.prc_api.get_server_vehicles(ctx.guild.id)
+        vehicle_information = info["vehicles"]
         if len(vehicle_information) > 0:
             vehicle_information = list(
                 filter(lambda x: x.username.lower() == roblox_player.name.lower(), vehicle_information)
@@ -408,19 +137,19 @@ class ERLC(commands.Cog):
         else:
             vehicle_information = []
 
-        kill_logs = await self.bot.prc_api.fetch_kill_logs(ctx.guild.id)
+        kill_logs = info["kill_logs"]
         matching_kill_logs = list(
             filter(lambda x: x.killer_username.lower() == roblox_player.name.lower() or x.killed_username.lower() == roblox_player.name.lower(), kill_logs)
         )
-        
-        modcalls = await self.bot.prc_api.get_mod_calls(ctx.guild.id)
+
+        modcalls = info["mod_calls"]
         matching_modcalls = list(
             filter(
                 lambda x: x.caller_username.lower() == roblox_player.name.lower() or (x.moderator_username and x.moderator_username.lower() == roblox_player.name.lower()), modcalls
             )
         )
 
-        command_logs = await self.bot.prc_api.fetch_server_logs(ctx.guild.id)
+        command_logs = info["command_logs"]
         matching_command_logs = list(
             filter(lambda x: x.username.lower() == roblox_player.name.lower(), command_logs)
         )
@@ -496,7 +225,7 @@ class ERLC(commands.Cog):
                 discord.ui.TextDisplay(
                     "\n".join(
                         [
-                            f"> Caller: {call.caller} • Moderator: {call.moderator} • <t:{call.timestamp}:F>"
+                            f"> Caller: [{call.caller_username}](https://roblox.com/users/{call.caller_id}/profile) • Moderator: {'[{}](https://roblox.com/users/{}/profile)'.format(call.moderator_username, call.moderator_id) if call.moderator_id else 'n/a'} • <t:{call.timestamp}:F>"
                             for call in matching_modcalls
                         ]
                     )
@@ -511,7 +240,7 @@ class ERLC(commands.Cog):
         async def refresh_player_callback(interaction: discord.Interaction, button: discord.ui.Button):
             if ctx.author != interaction.user:
                 return
-            
+
             command_response = await self.bot.prc_api.run_command(
                 ctx.guild.id, f":refresh {roblox_player.name}"
             )
@@ -537,7 +266,7 @@ class ERLC(commands.Cog):
         async def respawn_player_callback(interaction: discord.Interaction, button: discord.ui.Button):
             if ctx.author != interaction.user:
                 return
-            
+
             command_response = await self.bot.prc_api.run_command(
                 ctx.guild.id, f":respawn {roblox_player.name}"
             )
@@ -583,7 +312,7 @@ class ERLC(commands.Cog):
             username = modal.value.value
             if not username:
                 return
-            
+
             command_response = await self.bot.prc_api.run_command(
                 ctx.guild.id, (command := f":tp {username} {roblox_player.name}")
             )
@@ -615,7 +344,7 @@ class ERLC(commands.Cog):
         async def pm_player_callback(interaction: discord.Interaction, button: discord.ui.Button):
             if ctx.author != interaction.user:
                 return
-            
+
             modal = CustomModal(
                 f"PM Player",
                 [
@@ -635,7 +364,7 @@ class ERLC(commands.Cog):
             message = modal.value.value
             if not message:
                 return
-            
+
             command_response = await self.bot.prc_api.run_command(
                 ctx.guild.id, (command := f":pm {target} {message}")
             )
@@ -664,12 +393,12 @@ class ERLC(commands.Cog):
                     ctx.guild.id, ctx.author.id, "Command", command
                 )
 
-        
-        async def kick_player_callback(interaction: discord.Interaction, button: discord.ui.Button):            
+
+        async def kick_player_callback(interaction: discord.Interaction, button: discord.ui.Button):
             if ctx.author != interaction.user:
                 return
-            
-            command_response = self.bot.prc_api.run_command(
+
+            command_response = await self.bot.prc_api.run_command(
                 ctx.guild.id, (command := f":kick {roblox_player.name}")
             )
             await self.secure_logging(
@@ -694,11 +423,11 @@ class ERLC(commands.Cog):
                         ),
                         ephemeral=True,
                     )
-            
+
         async def ban_player_callback(interaction: discord.Interaction, button: discord.ui.Button):
             if ctx.author != interaction.user:
                 return
-            
+
             if not await admin_check(self.bot, ctx.guild, ctx.author) and not await management_predicate(ctx):
                 return await interaction.response.send_message(
                     embed=discord.Embed(
@@ -709,7 +438,7 @@ class ERLC(commands.Cog):
                     ephemeral=True,
                 )
 
-            command_response = self.bot.prc_api.run_command(
+            command_response = await self.bot.prc_api.run_command(
                 ctx.guild.id, (command := f":ban {roblox_player.id}")
             )
             await self.secure_logging(
@@ -734,7 +463,7 @@ class ERLC(commands.Cog):
                         ),
                         ephemeral=True,
                     )
-        
+
 
         class PanelContainer(discord.ui.Container):
 
@@ -749,7 +478,7 @@ class ERLC(commands.Cog):
                     f"### Timeline Information\n" + '\n'.join([f"> {'Joined' if log.type == 'join' else 'Left'} at <t:{log.timestamp}:F>" for log in matching_player_logs]))
             else:
                 section.add_item("### Timeline Information\n> No activity logs found for this player.")
-            
+
             if len(vehicle_information) > 0:
                 section.add_item(
                     f"### Vehicle Information\n> **Vehicle:** {vehicle_information[0].vehicle}\n> **Livery:** {vehicle_information[0].texture}"
@@ -779,13 +508,13 @@ class ERLC(commands.Cog):
             container = PanelContainer(id=1)
 
         await ctx.send(view=TestView(timeout=None))
-    
+
 
     @server.command(
         name="modcalls",
         description="View all modcalls in your ER:LC server!",
     )
-    @is_server_linked()
+    @is_erlc_server_linked()
     @is_staff()
     @app_commands.describe(
         filter="Filter the modcalls by a specific username or user ID."
@@ -820,25 +549,25 @@ class ERLC(commands.Cog):
                     title="Moderator Calls", color=BLANK_COLOR, description=""
                 )
                 embed.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon or "")
-        
+
         if len(pages) == 0:
             if embed.description == "":
                 embed.description = "> No modcalls found."
             await ctx.send(embed=embed)
             return
-    
+
         paginator = SelectPagination(self.bot, ctx.author.id, pages)
         await ctx.send(
             embed=pages[0].embeds[0],
             view=paginator.get_current_view(),
         )
-        
+
     @server.command(
         name="permissions",
         description="View the permissions of players in your ER:LC server!",
         aliases=["perm", "playerpermissions", "playerperms"],
     )
-    @is_server_linked()
+    @is_erlc_server_linked()
     @is_staff()
     @app_commands.describe(
         filter="Filter the permissions by a specific role, username or user ID."
@@ -863,7 +592,7 @@ class ERLC(commands.Cog):
                     title="Server Permissions", color=BLANK_COLOR, description=""
                 )
                 embed.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon or "")
-            
+
         if len(pages) == 0:
             if embed.description == "":
                 embed.description = "> No permissions found."
@@ -877,7 +606,7 @@ class ERLC(commands.Cog):
             embed=pages[0].embeds[0],
             view=paginator.get_current_view(),
         )
-    
+
     @server.command(
         name="pm",
         description="Send a PM to players in your ER:LC server!",
@@ -889,6 +618,7 @@ class ERLC(commands.Cog):
         message="What would you like to send?",
     )
     @is_staff()
+    @is_erlc_server_linked()
     async def erlc_pm(self, ctx: commands.Context, target: str, *, message: str):
         guild_id = ctx.guild.id
         special_selections = ["moderators", "admins", "players", "staff"]
@@ -911,10 +641,66 @@ class ERLC(commands.Cog):
                 ):
                     selected.append(item.username)
         else:
-            selected = [target]
+            normalised = target.lower().removesuffix("s")
+            team = next(
+                (name for name in ERLC_TEAMS if name.lower() == normalised), None
+            )
+            players = await self.bot.prc_api.get_server_players(guild_id)
+            matches = [
+                item.username
+                for item in players
+                if item.username.lower().startswith(target.lower())
+            ]
+            if team is not None:
+                selected = [item.username for item in players if item.team == team]
+            elif len(matches) == 1:
+                selected = matches
+            if matches and (team is not None or len(matches) > 1):
+                listed = min(len(matches), 24)
+                omitted = (
+                    ""
+                    if listed == len(matches)
+                    else f" Only the first {listed} are listed."
+                )
+                summary = (
+                    f"`{target}` matches the {team} team and "
+                    f"{len(matches)} player(s) currently in your server."
+                    if team is not None
+                    else (
+                        f"`{target}` matches {len(matches)} players "
+                        "currently in your server."
+                    )
+                )
+                view = PMTargetMenu(ctx.author.id, team, matches, len(selected))
+                view.message = await ctx.send(
+                    embed=discord.Embed(
+                        title="Multiple Targets Found",
+                        description=(
+                            f"{summary}{omitted} "
+                            "Select who should receive this PM."
+                        ),
+                        color=BLANK_COLOR,
+                    ),
+                    view=view,
+                )
+                await view.wait()
+                if view.value is None:
+                    return
+                if view.value != "team":
+                    selected = [view.value.split(":", 1)[1]]
 
+        if not selected:
+            return await ctx.send(
+                embed=discord.Embed(
+                    title="No Players Found",
+                    description="There are no players in-game matching this target.",
+                    color=BLANK_COLOR,
+                )
+            )
+
+        command_string = f":pm {','.join(selected)} {message}"
         command_response = await self.bot.prc_api.run_command(
-            guild_id, f":pm {','.join(selected)} {message}"
+            guild_id, command_string
         )
         if command_response[0] == 200:
             await ctx.send(
@@ -925,7 +711,7 @@ class ERLC(commands.Cog):
                 )
             )
             await self.secure_logging(
-                guild_id, ctx.author.id, "Private Message", message
+                guild_id, ctx.author.id, "Command", command_string
             )
         else:
             await ctx.send(
@@ -936,14 +722,14 @@ class ERLC(commands.Cog):
                 )
             )
             await self.secure_logging(
-                guild_id, ctx.author.id, "Private Message", message
+                guild_id, ctx.author.id, "Command", command_string, True
             )
 
     @server.command(
         name="message", description="Send a Message to your ER:LC server with ERM!"
     )
     @is_staff()
-    @is_server_linked()
+    @is_erlc_server_linked()
     async def erlc_message(self, ctx: commands.Context, *, message: str):
         guild_id = ctx.guild.id
 
@@ -965,20 +751,19 @@ class ERLC(commands.Cog):
                     color=BLANK_COLOR,
                 )
             )
-            await self.secure_logging(guild_id, ctx.author.id, "Message", message)
+            await self.secure_logging(guild_id, ctx.author.id, "Message", message, True)
 
     @server.command(
         name="hint", description="Send a Hint to your ER:LC server with ERM!"
     )
     @is_staff()
-    @is_server_linked()
+    @is_erlc_server_linked()
     async def erlc_hint(self, ctx: commands.Context, *, hint: str):
         guild_id = ctx.guild.id
 
-        await self.secure_logging(guild_id, ctx.author.id, "Hint", hint)
-
         command_response = await self.bot.prc_api.run_command(guild_id, f":h {hint}")
         if command_response[0] == 200:
+            await self.secure_logging(guild_id, ctx.author.id, "Hint", hint)
             return await ctx.send(
                 embed=discord.Embed(
                     title=f"{self.bot.emoji_controller.get_emoji('success')} Successfully Sent",
@@ -987,6 +772,7 @@ class ERLC(commands.Cog):
                 )
             )
         else:
+            await self.secure_logging(guild_id, ctx.author.id, "Hint", hint, True)
             return await ctx.send(
                 embed=discord.Embed(
                     title="Not Executed",
@@ -1041,10 +827,10 @@ class ERLC(commands.Cog):
         description="Unlink your ER:LC server from ERM!",
     )
     @is_management()
-    @is_server_linked()
+    @is_erlc_server_linked()
     async def server_unlink(self, ctx: commands.Context):
         await log_command_usage(self.bot, ctx.guild, ctx.author, f"ER:LC Unlink")
-        await self.bot.server_keys.delete_one({"_id": ctx.guild.id})
+        await self.bot.server_keys.delete_by_id(ctx.guild.id)
         await ctx.send(
             embed=discord.Embed(
                 title=f"{self.bot.emoji_controller.get_emoji('success')} Successfully Unlinked",
@@ -1060,23 +846,16 @@ class ERLC(commands.Cog):
     )
     @app_commands.describe(command="The command to send to your ER:LC server")
     @is_management()
-    @is_server_linked()
+    @is_erlc_server_linked()
     async def server_send_command(self, ctx: commands.Context, *, command: str):
         if command[0] != ":":
             command = ":" + command
-        elevated_privileges = None
         status: ServerStatus = await self.bot.prc_api.get_server_status(ctx.guild.id)
-        for item in status.co_owner_ids + [status.owner_id]:
-            if int(item) == int(
-                (await self.bot.bloxlink.find_roblox(ctx.author.id) or {}).get(
-                    "robloxID"
-                )
-                or 0
-            ):
-                elevated_privileges = True
-                break
-        else:
-            elevated_privileges = False
+        author_roblox_id = await self.bot.linking.get_roblox_id(ctx.author.id)
+        elevated_privileges = bool(author_roblox_id) and any(
+            int(item) == author_roblox_id
+            for item in status.co_owner_ids + [status.owner_id]
+        )
 
         if (
             any([i in command for i in [":admin", ":unadmin"]])
@@ -1138,7 +917,7 @@ class ERLC(commands.Cog):
         name="info",
         description="Get information about the current players in your ER:LC server.",
     )
-    @is_server_linked()
+    @is_erlc_server_linked()
     async def server_info(self, ctx: commands.Context):
         guild_id = ctx.guild.id
 
@@ -1146,28 +925,31 @@ class ERLC(commands.Cog):
             msg: discord.Message | None, guild_id: str
         ):
             guild_id = int(guild_id)
-            status: ServerStatus = await self.bot.prc_api.get_server_status(guild_id)
-            players: list[Player] = await self.bot.prc_api.get_server_players(guild_id)
-            queue: int = await self.bot.prc_api.get_server_queue(
-                guild_id, minimal=True
-            )  # this only returns the count
-            client = roblox.Client()
+            info = await self.bot.prc_api.get_server_info(guild_id, "players", "queue")
+            status: ServerStatus = info["status"]
+            players: list[Player] = info["players"]
+            queue: int = len(info["queue"])
+            client = self.bot.roblox
 
             embed1 = discord.Embed(title=f"{status.name}", color=BLANK_COLOR)
             embed1.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon)
             embed1.add_field(
                 name="Basic Info",
                 value=(
-                    f"> **Join Code:** [{status.join_key}](https://policeroleplay.community/join/{status.join_key})\n"
+                    f"> **Join Code:** [{status.join_key}](https://erlc.gg/join/{status.join_key})\n"
                     f"> **Current Players:** {status.current_players}/{status.max_players}\n"
                     f"> **Queue:** {queue}\n"
                 ),
                 inline=False,
             )
+            try:
+                owner_name = (await client.get_user(status.owner_id)).name
+            except:
+                owner_name = "Unknown"
             embed1.add_field(
                 name="Server Ownership",
                 value=(
-                    f"> **Owner:** [{(await client.get_user(status.owner_id)).name}](https://roblox.com/users/{status.owner_id}/profile)\n"
+                    f"> **Owner:** [{owner_name}](https://roblox.com/users/{status.owner_id}/profile)\n"
                     f"> **Co-Owners:** {f', '.join([f'[{user.name}](https://roblox.com/users/{user.id}/profile)' for user in await client.get_users(status.co_owner_ids, expand=False)])}"
                 ),
                 inline=False,
@@ -1203,10 +985,9 @@ class ERLC(commands.Cog):
         name="staff", description="See the online staff members in your ER:LC server!"
     )
     @is_staff()
-    @is_server_linked()
+    @is_erlc_server_linked()
     async def server_staff(self, ctx: commands.Context):
         guild_id = int(ctx.guild.id)
-        status: ServerStatus = await self.bot.prc_api.get_server_status(guild_id)
         players: list[Player] = await self.bot.prc_api.get_server_players(guild_id)
         embed2 = discord.Embed(color=BLANK_COLOR)
         embed2.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon)
@@ -1221,11 +1002,12 @@ class ERLC(commands.Cog):
                 else:
                     key_maps[item.permission].append(item)
 
-        new_maps = ["Server Owners", "Server Administrator", "Server Moderator"]
+        new_maps = ["Server Owners", "Server Administrator", "Server Moderator", "Server Helper"]
         new_vals = [
             key_maps.get("Server Owner", []) + key_maps.get("Server Co-Owner", []),
             key_maps.get("Server Administrator", []),
             key_maps.get("Server Moderator", []),
+            key_maps.get("Server Helper", []),
         ]
         new_keymap = dict(zip(new_maps, new_vals))
         embed2.title = f"Online Staff Members [{sum([len(i) for i in new_vals])}]"
@@ -1248,7 +1030,7 @@ class ERLC(commands.Cog):
 
     @server.command(name="kills", description="See the Kill Logs of your server.")
     @is_staff()
-    @is_server_linked()
+    @is_erlc_server_linked()
     async def kills(self, ctx: commands.Context):
         guild_id = ctx.guild.id
 
@@ -1291,7 +1073,7 @@ class ERLC(commands.Cog):
         name="playerlogs", description="See the Join and Leave logs of your server."
     )
     @is_staff()
-    @is_server_linked()
+    @is_erlc_server_linked()
     async def playerlogs(self, ctx: commands.Context):
         guild_id = ctx.guild.id
 
@@ -1337,7 +1119,7 @@ class ERLC(commands.Cog):
 
     @server.command(name="logs", description="See the Command Logs of your server.")
     @is_staff()
-    @is_server_linked()
+    @is_erlc_server_linked()
     async def commandlogs(self, ctx: commands.Context):
         guild_id = ctx.guild.id
 
@@ -1383,7 +1165,7 @@ class ERLC(commands.Cog):
 
     @server.command(name="bans", description="Filter the bans of your server.")
     @is_staff()
-    @is_server_linked()
+    @is_erlc_server_linked()
     async def bans(
         self,
         ctx: commands.Context,
@@ -1443,16 +1225,19 @@ class ERLC(commands.Cog):
             return
         else:
             await ctx.send(embed=embeds[0])
-            
+
     @server.command(name="players", description="See all players in the server.")
-    @is_server_linked()
+    @is_erlc_server_linked()
     async def server_players(
         self, ctx: commands.Context, filter: typing.Optional[str] = None
     ):
         guild_id = int(ctx.guild.id)
-        # status: ServerStatus = await self.bot.prc_api.get_server_status(guild_id)
-        players: list[Player] = await self.bot.prc_api.get_server_players(guild_id)
-        queue: list[Player] = await self.bot.prc_api.get_server_queue(guild_id)
+        info = await self.bot.prc_api.get_server_info(guild_id, "players", "queue")
+        players: list[Player] = info["players"]
+        queue: list[Player] = [
+            Player(username=user.name, id=user.id)
+            for user in await self.bot.roblox.get_users(info["queue"], expand=False)
+        ]
         embed2 = discord.Embed(
             title=f"Server Players [{len(players)}]", color=BLANK_COLOR, description=""
         )
@@ -1529,7 +1314,7 @@ class ERLC(commands.Cog):
         name="teams", description="See all players in the server, grouped by team."
     )
     @is_staff()
-    @is_server_linked()
+    @is_erlc_server_linked()
     async def server_teams(
         self, ctx: commands.Context, filter: typing.Optional[str] = None
     ):
@@ -1578,13 +1363,12 @@ class ERLC(commands.Cog):
         name="vehicles", description="See all vehicles of players in the server."
     )
     @is_staff()
-    @is_server_linked()
+    @is_erlc_server_linked()
     async def server_vehicles(self, ctx: commands.Context):
         guild_id = int(ctx.guild.id)
-        players: list[Player] = await self.bot.prc_api.get_server_players(guild_id)
-        vehicles: list[prc_api.ActiveVehicle] = (
-            await self.bot.prc_api.get_server_vehicles(guild_id)
-        )
+        info = await self.bot.prc_api.get_server_info(guild_id, "players", "vehicles")
+        players: list[Player] = info["players"]
+        vehicles: list[prc_api.ActiveVehicle] = info["vehicles"]
 
         if len(vehicles) <= 0:
             emb = discord.Embed(
@@ -1592,8 +1376,11 @@ class ERLC(commands.Cog):
                 description="> There are no active vehicles in your server.",
                 color=BLANK_COLOR,
             )
-            emb.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon.url)
-            return ctx.send(embed=emb)
+            emb.set_author(
+                name=ctx.guild.name,
+                icon_url=ctx.guild.icon.url if ctx.guild.icon else None,
+            )
+            return await ctx.send(embed=emb)
 
         matched = {}
         for item in vehicles:
@@ -1627,7 +1414,10 @@ class ERLC(commands.Cog):
                 color=BLANK_COLOR,
                 description=description,
             )
-            embed.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon.url)
+            embed.set_author(
+                name=ctx.guild.name,
+                icon_url=ctx.guild.icon.url if ctx.guild.icon else None,
+            )
 
             page = CustomPage(embeds=[embed], identifier=embed.title, view=None)
             pages.append(page)
@@ -1640,7 +1430,7 @@ class ERLC(commands.Cog):
         description="Perform a Discord check on your server to see if all players are in the Discord server.",
     )
     @is_staff()
-    @is_server_linked()
+    @is_erlc_server_linked()
     async def check(self, ctx: commands.Context):
         guild_id = ctx.guild.id
         try:
@@ -1705,7 +1495,8 @@ class ERLC(commands.Cog):
     @server.command(
         name="refresh", description="Refresh the author in the ER:LC server."
     )
-    @is_server_linked()
+    @is_erlc_server_linked()
+    @commands.cooldown(2, 30, commands.BucketType.user)
     async def refresh(self, ctx: commands.Context):
         settings = await self.bot.settings.find_by_id(ctx.guild.id) or {}
         erlc_settings = settings.get("ERLC", {})
@@ -1721,17 +1512,17 @@ class ERLC(commands.Cog):
         user = ctx.author
 
         guild_id = ctx.guild.id
-        roblox_user = await self.bot.bloxlink.find_roblox(user.id)
-        if not roblox_user or not (roblox_user or {}).get("robloxID"):
+        roblox_user_id = await self.bot.linking.get_roblox_id(user.id)
+        if not roblox_user_id:
             return await ctx.send(
                 embed=discord.Embed(
                     title="Could not find user",
-                    description="I couldn't find your ROBLOX user. Please make sure that you're verified with Bloxlink.",
+                    description="I couldn't find your ROBLOX user. Please make sure that you're linked by running `/link`.",
                     color=BLANK_COLOR,
                 )
             )
 
-        roblox_info = await self.bot.bloxlink.get_roblox_info(roblox_user["robloxID"])
+        roblox_info = await self.bot.linking.get_roblox_info(roblox_user_id)
         username = roblox_info.get("name")
 
         if not username:
@@ -1752,7 +1543,7 @@ class ERLC(commands.Cog):
 
         embed = discord.Embed(
             title="Confirm Refresh",
-            description=f"Is this your account? If not, be sure to set a new primary account with Bloxlink.",
+            description="Is this your account? If not, relink your Roblox account by running `/link`.",
             color=BLANK_COLOR,
         )
         embed.set_thumbnail(url=thumbnail_url)
@@ -1760,7 +1551,7 @@ class ERLC(commands.Cog):
             name="Account Information",
             value=(
                 f"> **Username:** {username}\n"
-                f"> **User ID:** {roblox_user['robloxID']}\n"
+                f"> **User ID:** {roblox_user_id}\n"
                 f"> **Discord:** {user.mention}\n"
             ),
         )

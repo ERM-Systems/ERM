@@ -3,11 +3,9 @@ import datetime
 import logging
 import string
 
-import aiohttp
 import discord
 import num2words
 import roblox
-from decouple import config
 from discord.ext import commands
 from reactionmenu import Page, ViewButton, ViewMenu, ViewSelect
 
@@ -24,6 +22,7 @@ from utils.utils import get_guild_icon, get_prefix, invis_embed
 class OnMessage(commands.Cog):
     def __init__(self, bot):
         self.bot: Bot = bot
+        self._mention_cooldowns: dict[int, datetime.datetime] = {}
 
     @commands.Cog.listener("on_message")
     async def on_message(self, message: discord.Message):
@@ -51,18 +50,47 @@ class OnMessage(commands.Cog):
                 message.content = f"{prefix}punish " + args[1] + " " + command + " " + " ".join(args[2:])
                 await bot.process_commands(message)
                 return
-            
+
 
         if not message.guild:
             return
 
-        if await has_whitelabel(bot, message.guild.id) and (bot.environment != "CUSTOM" or int(config("CUSTOM_GUILD_ID", default="0")) != message.guild.id):
-            return
-       
+
         if not hasattr(bot, "settings"):
             return
 
         if message.author == bot.user:
+            return
+
+        if message.content.strip() in [f"<@{bot.user.id}>", f"<@!{bot.user.id}>"]:
+            now = datetime.datetime.utcnow()
+            last = self._mention_cooldowns.get(message.author.id)
+            if last and (now - last).total_seconds() < 5:
+                return
+            self._mention_cooldowns[message.author.id] = now
+
+            container = discord.ui.Container()
+            section = discord.ui.Section(
+                accessory=discord.ui.Thumbnail(
+                    media=bot.user.display_avatar.with_format("png").url
+                )
+            )
+            section.add_item(discord.ui.TextDisplay(
+                f"### ERM\n"
+                f"The all-in-one staff management bot for ER:LC communities.\n\n"
+                f"**Prefix** — `{prefix}` or `/`\n"
+                f"**Commands** — `{prefix}help`\n"
+                f"**Servers** — {len(bot.guilds):,}\n"
+                f"**Uptime** — <t:{int(bot.start_time)}:R>"
+            ))
+            container.add_item(section)
+            container.add_item(discord.ui.Separator())
+            container.add_item(discord.ui.ActionRow(
+                discord.ui.Button(label="Website", url="https://ermbot.xyz"),
+                discord.ui.Button(label="Support", url="https://discord.gg/uAfU26VRa8"),
+                discord.ui.Button(label="Documentation", url="https://docs.ermbot.xyz"),
+            ))
+            await message.reply(view=discord.ui.LayoutView().add_item(container))
             return
 
         if not message.guild:
@@ -300,11 +328,7 @@ class OnMessage(commands.Cog):
                 except (IndexError, ValueError):
                     continue
 
-                discord_user = 0
-                async for document in bot.oauth2_users.db.find(
-                    {"roblox_id": roblox_id}
-                ):
-                    discord_user = document["discord_id"]
+                discord_user = await bot.linking.get_discord_id(roblox_id) or 0
 
                 if discord_user == 0:
                     await message.add_reaction("❌")
@@ -352,34 +376,6 @@ class OnMessage(commands.Cog):
                 if embed.description in ["", None] and embed.title in ["", None]:
                     break
 
-                if (
-                    ":bring" in embed.description.lower()
-                    or ":tp" in embed.description.lower()
-                    or ":kick" in embed.description.lower()
-                    or ":ban" in embed.description.lower()
-                ):
-                    async with aiohttp.ClientSession(
-                        headers={
-                            "Content-Type": "application/json",
-                            "X-Static-Token": config("PANEL_STATIC_AUTH"),
-                        }
-                    ) as session:
-                        async with session.post(
-                            url=f"{config('PANEL_API_URL')}/Internal/{message.guild.id}/SyncWebhookLogs",
-                            data={"content": embed.description.split("`")[1].strip()},
-                        ) as resp:
-                            if resp.status != 200:
-                                pass
-
-        if (
-            remote_commands
-            and remote_command_channel is not None
-            and message.channel.id in [remote_command_channel]
-        ):
-            for embed in message.embeds:
-                if embed.description in ["", None] and embed.title in ["", None]:
-                    break
-
                 if not ":log" in embed.description:
                     break
 
@@ -394,7 +390,7 @@ class OnMessage(commands.Cog):
                 try:
                     person = command.split(" ")[1]
                 except IndexError:
-                    logging.error("IndexError in remote command usage embed")
+                    logging.warning("IndexError in remote command usage embed")
                     break
                 # Adding check for the command to see if only admin is using the ban command
 
@@ -439,7 +435,7 @@ class OnMessage(commands.Cog):
                         await message.add_reaction("⛔")
                         return
                 except Exception as e:
-                    logging.error(f"Error checking command permissions: {e}")
+                    logging.warning(f"Error checking command permissions: {e}")
                     continue
 
                 combined = ""
@@ -458,11 +454,9 @@ class OnMessage(commands.Cog):
                 invoked_command = " ".join(combined.replace("`", "").split(" ")[:-1])
                 _cmd = command
 
-                discord_user = 0
-                async for document in bot.oauth2_users.db.find(
-                    {"roblox_id": int(profile_link.split("/")[4])}
-                ):
-                    discord_user = document["discord_id"]
+                discord_user = await bot.linking.get_discord_id(
+                    int(profile_link.split("/")[4])
+                ) or 0
 
                 if discord_user == 0:
                     await message.add_reaction("❌")

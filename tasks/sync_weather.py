@@ -8,53 +8,18 @@ from utils.prc_api import ResponseFailure
 
 # Open-Meteo WMO weather code -> ERLC :weather command value
 # https://open-meteo.com/en/docs (WMO Weather interpretation codes)
-WMO_TO_ERLC = {
-    0:  "Clear",        # Clear sky
-    1:  "Clear",        # Mainly clear
-    2:  "Clouds",       # Partly cloudy
-    3:  "Clouds",       # Overcast
-    45: "Fog",          # Foggy
-    48: "Fog",          # Icy fog
-    51: "Drizzle",      # Light drizzle
-    53: "Drizzle",      # Moderate drizzle
-    55: "Drizzle",      # Dense drizzle
-    61: "Rain",         # Slight rain
-    63: "Rain",         # Moderate rain
-    65: "Rain",         # Heavy rain
-    71: "Snow",         # Slight snow
-    73: "Snow",         # Moderate snow
-    75: "Snow",         # Heavy snow
-    77: "Snow",         # Snow grains
-    80: "Rain",         # Slight rain showers
-    81: "Rain",         # Moderate rain showers
-    82: "Rain",         # Violent rain showers
-    85: "Snow",         # Slight snow showers
-    86: "Snow",         # Heavy snow showers
-    95: "Thunderstorm", # Thunderstorm
-    96: "Thunderstorm", # Thunderstorm with hail
-    99: "Thunderstorm", # Thunderstorm with heavy hail
-}
-
+from utils.constants import WMO_TO_ERLC
 # Open-Meteo hour (0-23) -> ERLC :time command value
 def hour_to_erlc_time(hour: int) -> str:
-    if 5 <= hour < 7:
-        return "Morning"
-    elif 7 <= hour < 12:
-        return "Noon"
-    elif 12 <= hour < 17:
-        return "Afternoon"
-    elif 17 <= hour < 20:
-        return "Evening"
-    else:
-        return "Night"
+    return hour
 
 
 async def geocode_location(session: aiohttp.ClientSession, location: str) -> tuple[float, float, str] | None:
     """Convert a location name to lat/lon + timezone using Open-Meteo geocoding API."""
     try:
         async with session.get(
-            "https://geocoding-api.open-meteo.com/v1/search",
-            params={"name": location, "count": 1, "language": "en", "format": "json"},
+            config("WEATHER_SEARCH_URL"),
+            params={"location": location, "count": 1, "language": "en"},
         ) as resp:
             if resp.status != 200:
                 return None
@@ -65,7 +30,7 @@ async def geocode_location(session: aiohttp.ClientSession, location: str) -> tup
             r = results[0]
             return r["latitude"], r["longitude"], r.get("timezone", "UTC")
     except Exception as e:
-        logging.error(f"Geocoding failed for location '{location}': {e}")
+        logging.warning(f"Geocoding failed for location '{location}': {e}")
         return None
 
 
@@ -73,7 +38,7 @@ async def fetch_weather(session: aiohttp.ClientSession, lat: float, lon: float, 
     """Fetch current weather code and local hour from Open-Meteo."""
     try:
         async with session.get(
-            "https://api.open-meteo.com/v1/forecast",
+            config("WEATHER_FORECAST_URL"),
             params={
                 "latitude": lat,
                 "longitude": lon,
@@ -84,6 +49,7 @@ async def fetch_weather(session: aiohttp.ClientSession, lat: float, lon: float, 
             },
         ) as resp:
             if resp.status != 200:
+                logging.warning(f"Weather API returned status {resp.status} for ({lat}, {lon})")
                 return None
             data = await resp.json()
 
@@ -102,23 +68,12 @@ async def fetch_weather(session: aiohttp.ClientSession, lat: float, lon: float, 
                 "time": hour_to_erlc_time(hour),
             }
     except Exception as e:
-        logging.error(f"Weather fetch failed for ({lat}, {lon}): {e}")
+        logging.warning(f"Weather fetch failed for ({lat}, {lon}): {e}")
         return None
 
 
 @tasks.loop(minutes=2, reconnect=True)
 async def sync_weather(bot):
-    chosen_filter = {
-        "CUSTOM": {"_id": int(config("CUSTOM_GUILD_ID", default=0))},
-        "_": {
-            "_id": {
-                "$nin": [
-                    int(item["GuildID"] or 0)
-                    async for item in bot.whitelabel.db.find({})
-                ]
-            }
-        },
-    }["CUSTOM" if config("ENVIRONMENT") == "CUSTOM" else "_"]
 
     try:
         logging.info("Starting weather sync task...")
@@ -132,7 +87,6 @@ async def sync_weather(bot):
                         {"ERLC.weather.sync_weather": True},
                     ],
                     "ERLC.weather.location": {"$exists": True, "$ne": ""},
-                    **chosen_filter,
                 }
             },
             {
@@ -158,18 +112,17 @@ async def sync_weather(bot):
         )
         logging.info(f"Found {server_count} servers with weather sync enabled")
 
-        # Cache geocoding results within this run to avoid duplicate lookups
+        # Cache geocoding and weather results within this run to avoid duplicate lookups
         geocode_cache: dict[str, tuple[float, float, str] | None] = {}
+        weather_cache: dict[tuple[float, float], dict | None] = {}
 
         processed = 0
         async with aiohttp.ClientSession() as session:
-            async for guild_data in bot.settings.db.aggregate(pipeline):
+            async for guild_data in await bot.settings.db.aggregate(pipeline):
                 processed += 1
                 guild_id = guild_data["_id"]
 
-                if config("ENVIRONMENT") == "CUSTOM":
-                    if guild_id != int(config("CUSTOM_GUILD_ID", default=0)):
-                        continue
+
 
                 weather_settings = guild_data["ERLC"]["weather"]
                 location = weather_settings["location"]
@@ -183,14 +136,17 @@ async def sync_weather(bot):
 
                     geo = geocode_cache[location]
                     if geo is None:
-                        logging.error(f"Could not geocode location '{location}' for guild {guild_id}")
+                        logging.warning(f"Could not geocode location '{location}' for guild {guild_id}")
                         continue
 
                     lat, lon, timezone = geo
-                    weather_data = await fetch_weather(session, lat, lon, timezone)
+                    cache_key = (lat, lon)
+                    if cache_key not in weather_cache:
+                        weather_cache[cache_key] = await fetch_weather(session, lat, lon, timezone)
+                    weather_data = weather_cache[cache_key]
 
                     if weather_data is None:
-                        logging.error(f"Could not fetch weather for guild {guild_id}")
+                        logging.warning(f"Could not fetch weather for guild {guild_id}")
                         continue
 
                     logging.info(f"Weather data for guild {guild_id}: {weather_data}")
@@ -200,19 +156,21 @@ async def sync_weather(bot):
                             await bot.prc_api.run_command(guild_id, f":weather {weather_data['weatherType']}")
                             logging.info(f"Set weather to {weather_data['weatherType']} for guild {guild_id}")
                         except ResponseFailure as e:
-                            logging.error(f"Failed to sync weather for guild {guild_id}: {str(e)}")
+                            if e.status_code != 422:
+                                logging.warning(f"Failed to sync weather for guild {guild_id}: {str(e)}")
 
                     if weather_settings.get("sync_time"):
                         try:
                             await bot.prc_api.run_command(guild_id, f":time {weather_data['time']}")
                             logging.info(f"Set time to {weather_data['time']} for guild {guild_id}")
                         except ResponseFailure as e:
-                            logging.error(f"Failed to sync time for guild {guild_id}: {str(e)}")
+                            if e.status_code != 422:
+                                logging.warning(f"Failed to sync time for guild {guild_id}: {str(e)}")
 
                 except Exception as e:
-                    logging.error(f"Error syncing weather for guild {guild_id}: {str(e)}", exc_info=True)
+                    logging.warning(f"Error syncing weather for guild {guild_id}: {str(e)}", exc_info=True)
 
         logging.info(f"Weather sync task completed. Processed {processed}/{server_count} servers")
 
     except Exception as e:
-        logging.error(f"Critical error in weather sync task: {str(e)}", exc_info=True)
+        logging.warning(f"Critical error in weather sync task: {str(e)}", exc_info=True)

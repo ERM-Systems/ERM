@@ -7,8 +7,9 @@ from discord import app_commands
 from discord.ext import commands
 from discord.ext.commands import Context
 import utils.prc_api
+from utils.constants import ERLC_TEAMS
 from erm import Bot
-
+import asyncio
 
 async def shift_type_autocomplete(
     interaction: discord.Interaction, _: str
@@ -66,28 +67,26 @@ async def erlc_group_autocomplete(
         discord.app_commands.Choice(name="Moderators", value="moderators"),
         discord.app_commands.Choice(name="Admins", value="admins"),
         discord.app_commands.Choice(name="Players", value="players"),
+        *(discord.app_commands.Choice(name=f"{team} Team", value=team.lower()) for team in ERLC_TEAMS),
+    ]
+    defaults = [
+        choice for choice in defaults if choice.value.startswith(incomplete.lower())
     ]
     try:
         data = await bot.prc_api.get_server_players(interaction.guild.id)
     except utils.prc_api.ResponseFailure:
-        return defaults
+        return defaults[:25]
 
-    for player in data:
-        if len(incomplete) > 2:
-            if incomplete.lower() in player.username.lower():
-                defaults.append(
-                    discord.app_commands.Choice(
-                        name=player.username, value=player.username
-                    )
-                )
-                continue
-            else:
-                continue
-        defaults.append(
+    players = sorted(
+        (
             discord.app_commands.Choice(name=player.username, value=player.username)
-        )
+            for player in data
+            if len(incomplete) <= 2 or incomplete.lower() in player.username.lower()
+        ),
+        key=lambda choice: choice.name.lower(),
+    )
 
-    return defaults[:25]
+    return (defaults + players)[:25]
 
 
 async def all_shift_type_autocomplete(
@@ -201,7 +200,7 @@ async def punishment_autocomplete(
     else:
         enabled_punishments = Data.get("default_punishments", [])
         ndt = []
-        for item in Data["types"]:
+        for item in Data.get("types", []):
             if item not in default_punishments:
                 ndt.append(item)
         enabled_defaults = {
@@ -210,7 +209,9 @@ async def punishment_autocomplete(
             if p.get("enabled", False)
         }
         filtered_punishments = [
-            name.capitalize() for name in ["warning", "kick", "ban", "bolo"] if name in enabled_defaults
+            item
+            for item in default_punishments
+            if not enabled_punishments or item.lower() in enabled_defaults
         ]
         return [
             app_commands.Choice(
@@ -270,7 +271,6 @@ async def user_autocomplete(
         )
     return choices
 
-
 async def infraction_type_autocomplete(
     interaction: discord.Interaction, current: str
 ) -> typing.List[app_commands.Choice[str]]:
@@ -284,5 +284,22 @@ async def infraction_type_autocomplete(
         name = infraction.get("name")
         if name:
             infraction_types.append(app_commands.Choice(name=name, value=name))
+
+    return infraction_types[:25]  # Discord limits to max 25 choices
+
+
+async def infraction_type_autocomplete_special(
+    guild, client
+):
+    """Get all infraction types configured for the server"""
+    settings = await client.settings.find_by_id(guild)
+    if not settings or "infractions" not in settings:
+        return []
+
+    infraction_types = []
+    for infraction in settings["infractions"].get("infractions", []):
+        name = infraction.get("name")
+        if name:
+            infraction_types.append(discord.SelectOption(label=name, value=name, emoji="<:ERMArrow:1120534523181027358>"))
 
     return infraction_types[:25]  # Discord limits to max 25 choices

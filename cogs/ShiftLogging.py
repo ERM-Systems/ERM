@@ -42,7 +42,10 @@ class ShiftLogging(commands.Cog):
         self.bot = bot
 
     @commands.hybrid_group(
-        name="duty"
+        name="duty",
+        aliases=[
+            "shifts"
+        ]
     ) # hey, maybe dont delete this next time noagonzales.
     async def duty(self, ctx):
         pass
@@ -202,14 +205,11 @@ class ShiftLogging(commands.Cog):
                     view=(
                         view := CustomSelectMenu(
                             ctx.author.id,
-                            [
-                                discord.SelectOption(
+                            list({i["name"]: discord.SelectOption(
                                     label=i["name"],
                                     value=i["name"],
                                     description=i["name"],
-                                )
-                                for i in shift_types
-                            ],
+                                ) for i in shift_types}.values()),
                         )
                     ),
                 )
@@ -405,14 +405,11 @@ class ShiftLogging(commands.Cog):
                     view=(
                         view := CustomSelectMenu(
                             ctx.author.id,
-                            [
-                                discord.SelectOption(
+                            list({i["name"]: discord.SelectOption(
                                     label=i["name"],
                                     value=i["name"],
                                     description=i["name"],
-                                )
-                                for i in shift_types
-                            ],
+                                ) for i in shift_types}.values()),
                         )
                     ),
                 )
@@ -640,24 +637,27 @@ class ShiftLogging(commands.Cog):
             if len(shift_types.get("types")) > 1:
                 shift_types = shift_types.get("types")
 
-                view = CustomSelectMenu(
-                    ctx.author.id,
-                    [
-                        discord.SelectOption(
-                            label=i["name"],
-                            value=i["name"],
-                            description=i["name"],
+                seen_names = set()
+                unique_options = []
+                for i in shift_types:
+                    if i["name"] not in seen_names:
+                        seen_names.add(i["name"])
+                        unique_options.append(
+                            discord.SelectOption(
+                                label=i["name"],
+                                value=i["name"],
+                                description=i["name"],
+                            )
                         )
-                        for i in shift_types
-                    ]
-                    + [
-                        discord.SelectOption(
-                            label="All",
-                            value="all",
-                            description="Data from all shift types",
-                        )
-                    ],
+                unique_options.append(
+                    discord.SelectOption(
+                        label="All",
+                        value="all",
+                        description="Data from all shift types",
+                    )
                 )
+
+                view = CustomSelectMenu(ctx.author.id, unique_options)
                 type_value = (type or "").lower()
                 if (
                     type_value not in [i["name"].lower() for i in shift_types]
@@ -693,7 +693,7 @@ class ShiftLogging(commands.Cog):
                         if shift_list:
                             shift_type = shift_list[0]
                         else:
-                            shift_type = None # default to None - instead of error
+                            shift_type = None
 
                 else:
                     return
@@ -837,8 +837,11 @@ class ShiftLogging(commands.Cog):
     )
     @require_settings()
     @app_commands.autocomplete(type=all_shift_type_autocomplete)
+    @app_commands.describe(
+        role="Filter the leaderboard to only show members with this role.",
+    )
     @is_staff()
-    async def shift_leaderboard(self, ctx: commands.Context, *, type: str = None):
+    async def shift_leaderboard(self, ctx: commands.Context, role: typing.Optional[discord.Role] = None, *, type: str = None):
         if self.bot.shift_management_disabled is True:
             return await new_failure_embed(
                 ctx,
@@ -865,14 +868,11 @@ class ShiftLogging(commands.Cog):
 
                 view = CustomSelectMenu(
                     ctx.author.id,
-                    [
-                        discord.SelectOption(
-                            label=i["name"],
-                            value=i["name"],
-                            description=i["name"],
-                        )
-                        for i in shift_types
-                    ]
+                    list({i["name"]: discord.SelectOption(
+                        label=i["name"],
+                        value=i["name"],
+                        description=i["name"],
+                    ) for i in shift_types}.values())
                     + [
                         discord.SelectOption(
                             label="All",
@@ -950,7 +950,7 @@ class ShiftLogging(commands.Cog):
             pipeline[0]["$match"]["Type"] = shift_type["name"]
 
         all_staff = {}
-        async for doc in bot.shift_management.shifts.db.aggregate(pipeline):
+        async for doc in await bot.shift_management.shifts.db.aggregate(pipeline):
             total_seconds = doc["total_seconds"]
 
             # Calculate total break time for the shift
@@ -981,7 +981,7 @@ class ShiftLogging(commands.Cog):
                 {"$match": {"ModeratorID": {"$in": mod_ids}, "Guild": ctx.guild.id}},
                 {"$group": {"_id": "$ModeratorID", "mod_count": {"$sum": 1}}},
             ]
-            async for doc in bot.punishments.db.aggregate(mod_pipeline):
+            async for doc in await bot.punishments.db.aggregate(mod_pipeline):
                 if doc["_id"] in all_staff:
                     all_staff[doc["_id"]]["moderations"] = doc["mod_count"]
 
@@ -1001,7 +1001,10 @@ class ShiftLogging(commands.Cog):
         buffer = None
         embeds = []
 
-        embed = discord.Embed(color=BLANK_COLOR, title="Shift Leaderboard")
+        title = "Shift Leaderboard"
+        if role:
+            title += f" — {role.name}"
+        embed = discord.Embed(color=BLANK_COLOR, title=title)
         embed.set_author(
             name=f"{ctx.guild.name}",
             icon_url=ctx.guild.icon,
@@ -1047,8 +1050,15 @@ class ShiftLogging(commands.Cog):
                     )
 
         my_data = None
-        member_list = await ctx.guild.chunk()
+        if not ctx.guild.chunked:
+            await ctx.guild.chunk()
+        member_list = ctx.guild.members
         members = {m.id: m for m in member_list}  # Cache guild members
+
+        if role:
+            role_member_ids = {m.id for m in role.members}
+            sorted_staff = [s for s in sorted_staff if s["id"] in role_member_ids]
+
         total_seconds = 0
 
         for index, i in enumerate(sorted_staff):
@@ -1250,8 +1260,8 @@ class ShiftLogging(commands.Cog):
         for list_item in data:
             for item in list_item:
                 combined.append(item)
-        if buffer == "":
-            buffer += "No data to display."
+        if not buffer:
+            buffer = "No data to display."
 
         bbytes = buffer.encode("utf-8", "ignore")
 
@@ -1336,7 +1346,7 @@ class ShiftLogging(commands.Cog):
     )
     @require_settings()
     @app_commands.autocomplete(type=shift_type_autocomplete)
-    @is_management()
+    @is_admin()
     async def duty_shifts(
         self, ctx: commands.Context, user: discord.User, type: str = "Default"
     ):
@@ -1371,14 +1381,11 @@ class ShiftLogging(commands.Cog):
                     view=(
                         view := CustomSelectMenu(
                             ctx.author.id,
-                            [
-                                discord.SelectOption(
+                            list({i["name"]: discord.SelectOption(
                                     label=i["name"],
                                     value=i["name"],
                                     description=i["name"],
-                                )
-                                for i in shift_types
-                            ],
+                                ) for i in shift_types}.values()),
                         )
                     ),
                 )

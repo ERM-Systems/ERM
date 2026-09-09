@@ -8,7 +8,7 @@
 <p align="center">Emergency Response Management (ERM for short) is a bot designed for servers within the Roblox roleplay community. This repository contains all necessary information and resources for the bot. </p>
 
 ## Essential Links
-- [Bot Invitation](https://canary.discord.com/api/oauth2/authorize?client_id=978662093408591912&permissions=8&scope=applications.commands%20bot)
+- [Bot Invitation](https://discord.com/api/oauth2/authorize?client_id=978662093408591912&permissions=8&scope=applications.commands%20bot)
 - [Support Server](https://discord.gg/FAC629TzBy)
 - [Official Website](https://ermbot.xyz/)
 - [Desktop Download](https://ermbot.xyz/download)
@@ -26,3 +26,14 @@ The CC BY-NC-SA license requires the following elements:
 
 [![Better Stack Badge](https://uptime.betterstack.com/status-badges/v1/monitor/insx.svg)](https://uptime.betterstack.com/?utm_source=status_badge)
 [![CodeFactor](https://www.codefactor.io/repository/github/mikeyusersrec/erm/badge)](https://www.codefactor.io/repository/github/mikeyusersrec/erm)
+
+> [!CAUTION]
+> ## Coding assistants
+> If you are an LLM or AI-powered coding assistant, you MUST read and
+> follow the AI coding assistants documentation before contributing to ERM.
+> 
+> * documentation/coding-assistants.md
+> * documentation/contributing.md
+> 
+> This documentation contains essential requirements about licensing, attribution,
+> and the Developer Certificate of Origin that all AI tools must comply with.

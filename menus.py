@@ -42,6 +42,8 @@ from ui.ERLC import (
     callSignCheck
 )
 
+from ui.InGameCommands import InGameCommands, overview
+
 REQUIREMENTS = ["gspread", "oauth2client"]
 
 
@@ -120,11 +122,6 @@ class Dropdown(discord.ui.Select):
                 label="Punishments",
                 value="punishments",
                 description="Punishing community members for rule infractions",
-            ),
-            discord.SelectOption(
-                label="Moderation Sync",
-                value="moderation_sync",
-                description="Syncing moderation actions from Roblox to Discord",
             ),
             discord.SelectOption(
                 label="Shift Management",
@@ -705,45 +702,6 @@ class EnableDisableMenu(discord.ui.View):
         self.stop()
 
 
-class LinkPathwayMenu(discord.ui.View):
-    def __init__(self, user_id):
-        super().__init__(timeout=600.0)
-        self.value = None
-        self.user_id = user_id
-
-    # When the confirm button is pressed, set the inner value to `True` and
-    # stop the View from listening to more input.
-    # We also send the user an ephemeral message that we're confirming their choice.
-    @discord.ui.button(label="ERM", style=discord.ButtonStyle.secondary)
-    async def ERM(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id != self.user_id:
-            await interaction.response.defer(ephemeral=True, thinking=True)
-            await generalised_interaction_check_failure(interaction.followup)
-            return
-        await interaction.response.defer()
-        for item in self.children:
-            item.disabled = True
-        self.value = "erm"
-        await interaction.edit_original_response(view=self)
-        self.stop()
-
-    # This one is similar to the confirmation button except sets the inner value to `False`
-    @discord.ui.button(label="Bloxlink", style=discord.ButtonStyle.danger)
-    async def Bloxlink(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ):
-        if interaction.user.id != self.user_id:
-            await interaction.response.defer(ephemeral=True, thinking=True)
-            await generalised_interaction_check_failure(interaction.followup)
-            return
-        await interaction.response.defer()
-        for item in self.children:
-            item.disabled = True
-        self.value = "bloxlink"
-        await interaction.edit_original_response(view=self)
-        self.stop()
-
-
 class ShiftModify(discord.ui.View):
     def __init__(self, user_id):
         super().__init__(timeout=600.0)
@@ -943,14 +901,10 @@ class LOAMenu(discord.ui.View):
                 item.label = "Accepted"
             else:
                 self.remove_item(item)
-        s_loa = None
-
-        for loa in await self.bot.loas.get_all():
-            if (
-                loa["message_id"] == interaction.message.id
-                and loa["guild_id"] == interaction.guild.id
-            ):
-                s_loa = loa
+        s_loa = await self.bot.loas.db.find_one({
+            "message_id": interaction.message.id,
+            "guild_id": interaction.guild.id
+        })
 
         s_loa["accepted"] = True
         guild = self.bot.get_guild(s_loa["guild_id"])
@@ -3335,11 +3289,14 @@ class GoogleSpreadsheetModification(discord.ui.View):
 
         email = modal.email.value
 
-        client = gspread.service_account_from_dict(self.config)
-        sheet = client.open_by_url(self.url)
-        client.insert_permission(sheet.id, value=email, perm_type="user", role="writer")
-        permission_id = (sheet.list_permissions())[0]["id"]
-        sheet.transfer_ownership(permission_id)
+        def run_gspread_transfer():
+            client = gspread.service_account_from_dict(self.config)
+            sheet = client.open_by_url(self.url)
+            permission = client.insert_permission(sheet.id, value=email, perm_type="user", role="writer").json()
+            sheet.transfer_ownership(permission["id"])
+            
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, run_gspread_transfer)
 
         self.remove_item(button)
 
@@ -3498,12 +3455,10 @@ class ConditionCreationToolkit(discord.ui.View):
             select.options = list(filter(set_default, select.options))
 
             if select.values[0] in condition_options.values():
-                print("op")
                 condition_data["Operation"] = select.values[0]
                 continue
 
             if select.values[0] in ["and", "or"]:
-                print("logic")
                 condition_data["LogicGate"] = select.values[0]
                 continue
 
@@ -3516,7 +3471,6 @@ class ConditionCreationToolkit(discord.ui.View):
                         select.values[0] + f" {self.select_data.get(select)}"
                     )
                     continue
-                print("var")
                 condition_data["Variable"] = select.values[0]
                 continue
             else:
@@ -3528,7 +3482,6 @@ class ConditionCreationToolkit(discord.ui.View):
                             select.values[0] + f" {self.select_data.get(select)}"
                         )
                         continue
-                    print("val")
                     condition_data["Value"] = select.values[0]
                     continue
 
@@ -4264,48 +4217,60 @@ class RequestGoogleSpreadsheet(discord.ui.View):
             )
         )
 
-        client = gspread.service_account_from_dict(self.config)
+        guild_name = interaction.guild.name
+        guild_icon_url = interaction.guild.icon.url if interaction.guild.icon else None
 
-        sheet: gspread.Spreadsheet = client.copy(
-            self.template, interaction.guild.name, copy_permissions=True
-        )
-        new_sheet = sheet.get_worksheet(0)
-        try:
-            new_sheet.update_cell(4, 2, f'=IMAGE("{interaction.guild.icon.url}")')
-        except AttributeError:
-            pass
+        def generate_worksheet():
+            client = gspread.service_account_from_dict(self.config)
 
-        if self.type == "lb":
-            cell_list = new_sheet.range("D13:H999")
-        elif self.type == "ar":
-            cell_list = new_sheet.range("D13:I999")
-
-        try:
-            new_sheet.update_cell(
-                12, 1, td_format(datetime.timedelta(seconds=self.total_seconds))
+            sheet: gspread.Spreadsheet = client.copy(
+                self.template, guild_name, copy_permissions=True
             )
-        except OverflowError:
-            pass
-
-        for c, n_v in zip(cell_list, self.data):
-            c.value = str(n_v)
-
-        new_sheet.update_cells(cell_list, "USER_ENTERED")
-        if self.type == "ar":
-            LoAs = sheet.get_worksheet(1)
-            LoAs.update_cell(4, 2, f'=IMAGE("{interaction.guild.icon.url}")')
-            cell_list = LoAs.range("D13:H999")
-
-            for cell, new_value in zip(cell_list, self.additional_data):
-                if isinstance(new_value, int):
-                    cell.value = f"=({new_value}/ 86400 + DATE(1970, 1, 1))"
+            new_sheet = sheet.get_worksheet(0)
+            try:
+                if guild_icon_url:
+                    new_sheet.update_cell(4, 2, f'=IMAGE("{guild_icon_url}")')
                 else:
-                    cell.value = str(new_value)
-            LoAs.update_cells(cell_list, "USER_ENTERED")
+                    new_sheet.update_cell(4, 2, "No server icon available.")
+            except AttributeError:
+                pass
 
-        client.insert_permission(
-            sheet.id, value=None, perm_type="anyone", role="writer"
-        )
+            if self.type == "lb":
+                cell_list = new_sheet.range("D13:H999")
+            elif self.type == "ar":
+                cell_list = new_sheet.range("D13:I999")
+
+            try:
+                new_sheet.update_cell(
+                    12, 1, td_format(datetime.timedelta(seconds=self.total_seconds))
+                )
+            except OverflowError:
+                pass
+
+            for c, n_v in zip(cell_list, self.data):
+                c.value = str(n_v)
+
+            new_sheet.update_cells(cell_list, "USER_ENTERED")
+            if self.type == "ar":
+                LoAs = sheet.get_worksheet(1)
+                if guild_icon_url:
+                    LoAs.update_cell(4, 2, f'=IMAGE("{guild_icon_url}")')
+                cell_list = LoAs.range("D13:H999")
+
+                for cell, new_value in zip(cell_list, self.additional_data):
+                    if isinstance(new_value, int):
+                        cell.value = f"=({new_value}/ 86400 + DATE(1970, 1, 1))"
+                    else:
+                        cell.value = str(new_value)
+                LoAs.update_cells(cell_list, "USER_ENTERED")
+
+            client.insert_permission(
+                sheet.id, value=None, perm_type="anyone", role="writer"
+            )
+            return sheet
+
+        loop = asyncio.get_running_loop()
+        sheet = await loop.run_in_executor(None, generate_worksheet)
 
         view = GoogleSpreadsheetModification(
             self.bot, self.config, self.scopes, "Open Google Spreadsheet", sheet.url
@@ -5202,7 +5167,10 @@ class AssociationConfigurationView(discord.ui.View):
             i.disabled = True
         if not hasattr(self, "message") or not self.message:
             return
-        await self.message.edit(view=self)
+        try:
+            await self.message.edit(view=self)
+        except discord.HTTPException:
+            pass
 
     async def interaction_check(self, interaction: discord.Interaction, /) -> bool:
         if interaction.user.id == self.user_id:
@@ -6663,6 +6631,76 @@ class RAConfiguration(AssociationConfigurationView):
             f"RA Role Set: {', '.join([f'<@&{i.id}>' for i in select.values])}.",
         )
 
+    @discord.ui.select(
+        cls=discord.ui.ChannelSelect,
+        placeholder="RA Channel",
+        row=1,
+        max_values=1,
+        channel_types=[discord.ChannelType.text],
+    )
+    async def ra_channel_select(
+        self, interaction: discord.Interaction, select: discord.ui.ChannelSelect
+    ):
+        value = await self.interaction_check(interaction)
+        if not value:
+            return
+
+        await interaction.response.defer()
+        guild_id = interaction.guild.id
+
+        bot = self.bot
+        sett = await bot.settings.find_by_id(guild_id)
+        sett.setdefault("reduced_activity", {})["channel"] = select.values[0].id
+        await bot.settings.update_by_id(sett)
+        await config_change_log(
+            self.bot,
+            interaction.guild,
+            interaction.user,
+            f"RA Channel has been set to <#{select.values[0].id}>.",
+        )
+
+    @discord.ui.select(
+        placeholder="RA Requests",
+        row=0,
+        options=[
+            discord.SelectOption(
+                label="Enabled",
+                value="enabled",
+                description="RA Requests are enabled.",
+            ),
+            discord.SelectOption(
+                label="Disabled",
+                value="disabled",
+                description="RA Requests are disabled.",
+            ),
+        ],
+        max_values=1,
+    )
+    async def ra_enabled_select(
+        self, interaction: discord.Interaction, select: discord.ui.Select
+    ):
+        value = await self.interaction_check(interaction)
+        if not value:
+            return
+
+        await interaction.response.defer()
+        guild_id = interaction.guild.id
+
+        bot = self.bot
+        sett = await bot.settings.find_by_id(guild_id)
+        sett.setdefault("reduced_activity", {})["enabled"] = bool(
+            select.values[0] == "enabled"
+        )
+        await bot.settings.update_by_id(sett)
+        await config_change_log(
+            self.bot,
+            interaction.guild,
+            interaction.user,
+            f"RA Requests have been {'enabled' if select.values[0] == 'enabled' else 'disabled'}.",
+        )
+        for i in select.options:
+            i.default = False
+
 
 class ExtendedPunishmentConfiguration(AssociationConfigurationView):
     def __init__(self, *args, **kwargs):
@@ -6883,10 +6921,100 @@ class PunishmentsConfiguration(AssociationConfigurationView):
         if val is False:
             return
 
-        sett = await self.bot.punishment_types.find_by_id(interaction.guild.id)
+        sett = await self.bot.punishment_types.find_by_id(interaction.guild.id) or {
+            "_id": interaction.guild.id
+        }
 
         view = defaultPunishments(self.bot, sett, interaction.user.id)
         await interaction.response.send_message(view=view, ephemeral=True)
+
+    @discord.ui.button(label="Staff Alerts", row=2)
+    async def staff_alerts(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+        val = await self.interaction_check(interaction)
+        if val is False:
+            return
+        sett = await self.bot.settings.find_by_id(interaction.guild.id)
+        new_view = StaffAlertConfiguration(
+            self.bot,
+            interaction.user.id,
+            [
+                (
+                    "Staff Alert Channel",
+                    [
+                        discord.utils.get(
+                            interaction.guild.channels,
+                            id=sett.get("punishments", {}).get("staff_alert_channel", 0),
+                        )
+                    ],
+                ),
+                (
+                    "Staff Alert Ping Roles",
+                    [
+                        discord.utils.get(interaction.guild.roles, id=role)
+                        for role in (sett.get("punishments", {}).get("staff_alert_roles") or [0])
+                    ],
+                ),
+            ],
+        )
+        await interaction.response.send_message(view=new_view, ephemeral=True)
+
+class StaffAlertConfiguration(AssociationConfigurationView):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    @discord.ui.select(
+        cls=discord.ui.ChannelSelect,
+        placeholder="Staff Alert Channel",
+        row=0,
+        max_values=1,
+        min_values=0,
+        channel_types=[discord.ChannelType.text],
+    )
+    async def staff_alert_channel(
+        self, interaction: discord.Interaction, select: discord.ui.ChannelSelect
+    ):
+        value = await self.interaction_check(interaction)
+        if not value:
+            return
+
+        await interaction.response.defer()
+        sett = await self.bot.settings.find_by_id(interaction.guild.id)
+        sett["punishments"]["staff_alert_channel"] = int(select.values[0].id) if select.values else None
+        await self.bot.settings.update_by_id(sett)
+        await config_change_log(
+            self.bot,
+            interaction.guild,
+            interaction.user,
+            f"Staff Alert Channel Set: <#{select.values[0].id}>",
+        )
+
+    @discord.ui.select(
+        cls=discord.ui.RoleSelect,
+        placeholder="Staff Alert Ping Roles",
+        row=1,
+        max_values=5,
+        min_values=0,
+    )
+    async def staff_alert_roles(
+        self, interaction: discord.Interaction, select: discord.ui.RoleSelect
+    ):
+        value = await self.interaction_check(interaction)
+        if not value:
+            return
+
+        await interaction.response.defer()
+        sett = await self.bot.settings.find_by_id(interaction.guild.id)
+        sett["punishments"]["staff_alert_roles"] = [role.id for role in select.values]
+        await self.bot.settings.update_by_id(sett)
+        await config_change_log(
+            self.bot,
+            interaction.guild,
+            interaction.user,
+            f"Staff Alert Roles Set: {', '.join(role.mention for role in select.values)}",
+        )
+
 
 class defaultPunishments(discord.ui.View):
     def __init__(self, bot, sett, user_id):
@@ -6932,9 +7060,7 @@ class defaultPunishments(discord.ui.View):
             for name in self.default_punishments
         ]
 
-        await self.bot.punishment_types.update_by_id(
-            self.sett
-        )
+        await self.bot.punishment_types.upsert(self.sett)
 
         await interaction.response.send_message(
             embed=discord.Embed(
@@ -7123,112 +7249,74 @@ class RDMActions(discord.ui.View):
             view=self.clear_items(),
         )
 
+    def get_username(self, interaction: discord.Interaction) -> str:
+        field = interaction.message.embeds[0].fields[0]
+        return field.value.split("**Username:** ")[1].splitlines()[0].strip()
+
+    def get_user_id(self, interaction: discord.Interaction) -> str:
+        field = interaction.message.embeds[0].fields[0]
+        return field.value.split("**User ID:** ")[1].splitlines()[0].strip()
+
+    async def run_action(
+        self,
+        interaction: discord.Interaction,
+        command: str,
+        title: str,
+        description: str,
+    ):
+        await interaction.response.defer(ephemeral=True, thinking=False)
+        status_code, _ = await self.bot.prc_api.run_command(
+            interaction.guild.id, command
+        )
+
+        if status_code == 200:
+            embed = discord.Embed(
+                title=f"{self.bot.emoji_controller.get_emoji('success')} {title}",
+                description=description,
+                color=GREEN_COLOR,
+            )
+        else:
+            embed = discord.Embed(
+                title=f"Not Executed ({status_code})",
+                description="These commands have not been executed successfully. Try again.",
+                color=BLANK_COLOR,
+            )
+
+        return await interaction.followup.send(embed=embed, ephemeral=True)
+
     @discord.ui.button(label="Jail Player", style=discord.ButtonStyle.secondary)
     async def jail_player(
-        self, interaction: discord.Interaction, button: discord.ui.View
+        self, interaction: discord.Interaction, button: discord.ui.Button
     ):
-        bot = self.bot
-        guild = interaction.guild
-        field1 = interaction.message.embeds[0].fields[0]
-        user_id = field1.value.split("**User ID:** ")[1].split("\n")
-        user_id = "".join([i if i in "1234567890" else "" for i in user_id])
-        await interaction.response.defer(ephemeral=True, thinking=False)
-
-        command_response = await bot.prc_api.run_command(
-            interaction.guild.id, f":kick {user_id}"
+        await self.run_action(
+            interaction,
+            f":jail {self.get_username(interaction)}",
+            "Jailed Abuser",
+            "This command has been sent to the server. They should now be jailed in the server.",
         )
 
-        if command_response[0] == 200:
-            return await interaction.followup.send(
-                embed=discord.Embed(
-                    title=f"{self.bot.emoji_controller.get_emoji('success')} Jailed Abuser",
-                    description="This command has been sent to the server. They should now be jailed in the server.",
-                    color=GREEN_COLOR,
-                ),
-                ephemeral=True,
-            )
-        else:
-            return await interaction.followup.send(
-                embed=discord.Embed(
-                    title=f"Not Executed ({command_response[0]})",
-                    description="These commands have not been executed successfully. Try again.",
-                    color=BLANK_COLOR,
-                ),
-                ephemeral=True,
-            )
-
-    @discord.ui.button(
-        label="Kick Player",
-        style=discord.ButtonStyle.secondary,
-    )
+    @discord.ui.button(label="Kick Player", style=discord.ButtonStyle.secondary)
     async def kick_abuser(
-        self, interaction: discord.Interaction, button: discord.ui.View
+        self, interaction: discord.Interaction, button: discord.ui.Button
     ):
-        bot = self.bot
-        guild = interaction.guild
-        field1 = interaction.message.embeds[0].fields[0]
-        user_id = field1.value.split("**User ID:** ")[1].split("\n")
-        user_id = "".join([i if i in "1234567890" else "" for i in user_id])
-        await interaction.response.defer(ephemeral=True, thinking=False)
-
-        command_response = await bot.prc_api.run_command(
-            interaction.guild.id, f":kick {user_id}"
+        await self.run_action(
+            interaction,
+            f":kick {self.get_username(interaction)}",
+            "Kicked Player",
+            "This command has been sent to the server. They should now be removed from the server.",
         )
 
-        if command_response[0] == 200:
-            return await interaction.followup.send(
-                embed=discord.Embed(
-                    title=f"{self.bot.emoji_controller.get_emoji('success')} Kicked Player",
-                    description="This command has been sent to the server. They should now be removed from the server.",
-                    color=GREEN_COLOR,
-                ),
-                ephemeral=True,
-            )
-        else:
-            return await interaction.followup.send(
-                embed=discord.Embed(
-                    title=f"Not Executed ({command_response[0]})",
-                    description="These commands have not been executed successfully. Try again.",
-                    color=BLANK_COLOR,
-                ),
-                ephemeral=True,
-            )
-
-    @discord.ui.button(
-        label="Ban Player",
-        style=discord.ButtonStyle.secondary,
-    )
+    @discord.ui.button(label="Ban Player", style=discord.ButtonStyle.secondary)
     async def ban_abuser(
-        self, interaction: discord.Interaction, button: discord.ui.View
+        self, interaction: discord.Interaction, button: discord.ui.Button
     ):
-        bot = self.bot
-        guild = interaction.guild
-        field1 = interaction.message.embeds[0].fields[0]
-        user_id = field1.value.split("**User ID:** ")[1].split("\n")
-        user_id = "".join([i if i in "1234567890" else "" for i in user_id])
-        await interaction.response.defer(ephemeral=True, thinking=False)
-        command_response = await bot.prc_api.run_command(
-            interaction.guild.id, f":ban {user_id}"
+        await self.run_action(
+            interaction,
+            f":ban {self.get_user_id(interaction)}",
+            "Banned Player",
+            "This command has been sent to the server. They should now be removed from the server.",
         )
 
-        if command_response[0] == 200:
-            return await interaction.followup.send(
-                embed=discord.Embed(
-                    title=f"{self.bot.emoji_controller.get_emoji('success')} Banned Player",
-                    description="This command has been sent to the server. They should now be removed from the server.",
-                    color=GREEN_COLOR,
-                ),
-                ephemeral=True,
-            )
-        else:
-            return await interaction.followup.send(
-                embed=discord.Embed(
-                    title=f"Not Executed ({command_response[0]})",
-                    description="These commands have not been executed successfully. Try again.",
-                    color=BLANK_COLOR,
-                ),
-                ephemeral=True,
-            )
 
 
 class GameSecurityActions(discord.ui.View):
@@ -7336,11 +7424,9 @@ class GameSecurityActions(discord.ui.View):
         affected_players = [
             i.strip() for i in field1.value.split("]:**")[1].split("\n")[0].split(", ")
         ]
-        print(affected_players)
         users = [
             await bot.roblox.get_user_by_username(item) for item in affected_players
         ]
-        print(users)
         for item in users:
             if item is not None:
                 users_ids.append(str(item.id))
@@ -7940,6 +8026,75 @@ class RDMERLCConfiguration(AssociationConfigurationView):
             interaction.user,
             f"RDM Alert Channel Set: <#{select.values[0].id}>",
         )
+
+    @discord.ui.button(label="Detection Threshold", row=2)
+    async def rdm_detection_threshold(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+        value = await self.interaction_check(interaction)
+        if not value:
+            return
+
+        bot = self.bot
+        sett = await bot.settings.find_by_id(interaction.guild.id)
+        erlc_settings = sett.get("ERLC", {})
+
+        modal = CustomModal(
+            "Detection Threshold",
+            [
+                (
+                    "kills",
+                    discord.ui.TextInput(
+                        label="Players Killed",
+                        placeholder="e.g. 4",
+                        default=str(erlc_settings.get("rdm_threshold") or 4),
+                        min_length=1,
+                        max_length=2,
+                    ),
+                ),
+                (
+                    "window",
+                    discord.ui.TextInput(
+                        label="Within (seconds)",
+                        placeholder="e.g. 20",
+                        default=str(erlc_settings.get("rdm_window") or 20),
+                        min_length=1,
+                        max_length=4,
+                    ),
+                ),
+            ],
+            {"ephemeral": True},
+        )
+        await interaction.response.send_modal(modal)
+        timeout = await modal.wait()
+        if timeout:
+            return
+
+        kills = modal.kills.value.strip()
+        window = modal.window.value.strip()
+        if not (kills.isdigit() and window.isdigit()) or int(kills) < 2 or int(window) < 1:
+            return await modal.interaction.followup.send(
+                embed=discord.Embed(
+                    title="Invalid Threshold",
+                    description="The amount of players killed must be at least 2, and the time window must be at least 1 second.",
+                    color=BLANK_COLOR,
+                ),
+                ephemeral=True,
+            )
+
+        if not sett.get("ERLC"):
+            sett["ERLC"] = {}
+        sett["ERLC"]["rdm_threshold"] = int(kills)
+        sett["ERLC"]["rdm_window"] = int(window)
+        await bot.settings.update_by_id(sett)
+        await config_change_log(
+            self.bot,
+            interaction.guild,
+            interaction.user,
+            f"RDM Detection Threshold Set: {kills} players killed within {window} seconds.",
+        )
+
+
 class AutomaticShiftConfiguration(discord.ui.View):
     def __init__(
         self,
@@ -8089,7 +8244,6 @@ class RemoteCommandConfiguration(discord.ui.View):
             self.auto_data["webhook_channel"] = None
         else:
             self.auto_data["webhook_channel"] = select.values[0].id
-        print(self.auto_data)
         embed = discord.Embed(
             title="Remote Commands", description="", color=BLANK_COLOR
         )
@@ -8699,6 +8853,25 @@ class ERLCIntegrationConfiguration(AssociationConfigurationView):
 
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
+    @discord.ui.button(label="In-Game Commands", row=3)
+    async def ingame_commands(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+        val = await self.interaction_check(interaction)
+        if val is False:
+            return
+
+        settings = await self.bot.settings.find_by_id(interaction.guild.id)
+        configuration = settings.get("ERLC", {}).get("ingame_commands", {}) or {}
+        view = InGameCommands(self.bot, interaction.user.id)
+
+        await interaction.response.send_message(
+            embed=overview(interaction.guild, configuration.get("commands") or []),
+            view=view,
+            ephemeral=True,
+        )
+        view.message = await interaction.original_response()
+
     @discord.ui.button(label="More Options", row=3)
     async def more_options(self, interaction: discord.Interaction, button: discord.ui.Button):
         val = await self.interaction_check(interaction)
@@ -8983,7 +9156,7 @@ class MoreERLCConfiguration(discord.ui.View):
         else:
             embed.description = "No Statistics Channels Set"
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-    
+
     @discord.ui.button(label="Automatic Discord Checks", row=2)
     async def automatic_discord_checks(
         self, interaction: discord.Interaction, button: discord.ui.Button
@@ -9014,7 +9187,7 @@ class MoreERLCConfiguration(discord.ui.View):
             "**Alert Message:** This is the message that will be sent to the user if they are not in the Discord server.\n\n" \
             "**Maximum Warnings:** After a certain amount of warnings, the user will be kicked from the server.\n\n"
         )
-        
+
         await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
 
     @discord.ui.button(label="Permission Sync", row=2)
@@ -9301,7 +9474,7 @@ class PriorityRequestConfiguration(AssociationConfigurationView):
         )
         await interaction.response.send_modal(self.modal)
         await self.modal.wait()
-        
+
         cooldown = self.modal.cooldown.value
         cooldown = int(cooldown.strip())
 
@@ -10034,16 +10207,25 @@ class ReloadView(discord.ui.View):
     async def on_timeout(self) -> None:
         for item in self.children:
             item.disabled = True
-        await self.message.edit(view=self)
+        try:
+            await self.message.edit(view=self)
+        except discord.HTTPException:
+            pass
 
     async def _temp_disable(self, timer: int):
         for item in self.children:
             item.disabled = True
-        await self.message.edit(view=self)
+        try:
+            await self.message.edit(view=self)
+        except discord.HTTPException:
+            return
         await asyncio.sleep(timer)
         for item in self.children:
             item.disabled = False
-        await self.message.edit(view=self)
+        try:
+            await self.message.edit(view=self)
+        except discord.HTTPException:
+            pass
 
     async def interaction_check(self, interaction: discord.Interaction, /) -> bool:
         if interaction.user.id == self.user_id:
@@ -11635,8 +11817,11 @@ class ShiftLoggingManagement(discord.ui.View):
             {"Guild": interaction.guild.id, "EndEpoch": 0}
         ):
             user_id = shift["UserID"]
-            member = interaction.guild.get_member(user_id) or await interaction.guild.fetch_member(user_id)
-            if member and member not in active_shift_users:
+            try:
+                member = interaction.guild.get_member(user_id) or await interaction.guild.fetch_member(user_id)
+            except discord.NotFound:
+                continue
+            if member not in active_shift_users:
                 active_shift_users.append(member)
 
         async for item in self.bot.shift_management.shifts.db.find(
@@ -11654,7 +11839,7 @@ class ShiftLoggingManagement(discord.ui.View):
                     )
                 )
             except discord.Forbidden:
-                print(f"Could not send DM to {member.name}")
+                logging.warning(f"Could not send DM to {member.name}")
 
     @discord.ui.button(
         label="Erase Past Shifts", style=discord.ButtonStyle.danger, row=1
@@ -12573,14 +12758,14 @@ class ERLCDiscordChecksConfiguration(discord.ui.View):
         self.bot = bot
         self.sett = sett
         self.user_id = user_id
-        
+
         self.discord_checks = sett.get("ERLC", {}).get("discord_checks", {})
         enabled = self.discord_checks.get("enabled", False)
         channel_id = self.discord_checks.get("channel_id")
         kick_after = self.discord_checks.get("kick_after", 0)
-        
+
         self._setup_components(enabled, channel_id, kick_after)
-    
+
     def _setup_components(self, enabled: bool, channel_id: int, kick_after: int):
         self.enable_button = discord.ui.Select(
             placeholder="Automatic Discord Checks",
@@ -12615,7 +12800,7 @@ class ERLCDiscordChecksConfiguration(discord.ui.View):
                 )
             ] + [
                 discord.SelectOption(
-                    label=f"{i} warning{'s' if i > 1 else ''}", 
+                    label=f"{i} warning{'s' if i > 1 else ''}",
                     value=str(i),
                     default=(i == kick_after)
                 ) for i in range(1, 11)
@@ -12626,7 +12811,7 @@ class ERLCDiscordChecksConfiguration(discord.ui.View):
         self.add_item(self.kick_after)
 
         self.alert_message = discord.ui.Button(
-            label="Set Alert Message", 
+            label="Set Alert Message",
             style=discord.ButtonStyle.secondary,
             row=3
         )
@@ -12645,19 +12830,19 @@ class ERLCDiscordChecksConfiguration(discord.ui.View):
             )
             return False
         return True
-    
+
     async def _ensure_settings_structure(self, sett: dict) -> None:
         """Ensure the nested dictionary structure exists"""
         if "ERLC" not in sett:
             sett["ERLC"] = {}
         if "discord_checks" not in sett["ERLC"]:
             sett["ERLC"]["discord_checks"] = {"enabled": False}
-    
+
     async def _update_settings_and_log(self, interaction: discord.Interaction, sett: dict, message: str) -> None:
         """Update settings and log the change"""
         await self.bot.settings.update_by_id(sett)
         await config_change_log(self.bot, interaction.guild, interaction.user, message)
-    
+
     async def _update_embed_field(self, interaction: discord.Interaction, field_index: int, name: str, value: str) -> None:
         """Update a specific field in the embed"""
         embed = interaction.message.embeds[0]
@@ -12667,49 +12852,49 @@ class ERLCDiscordChecksConfiguration(discord.ui.View):
     async def enable_button_callback(self, interaction: discord.Interaction):
         if not await self._check_permissions(interaction):
             return
-        
+
         await interaction.response.defer()
-        
+
         sett = await self.bot.settings.find_by_id(interaction.guild.id)
         await self._ensure_settings_structure(sett)
-        
+
         enabled = self.enable_button.values[0] == "enabled"
         sett["ERLC"]["discord_checks"]["enabled"] = enabled
-        
+
         if enabled and "channel_id" not in sett["ERLC"]["discord_checks"]:
             sett["ERLC"]["discord_checks"]["channel_id"] = None
-        
+
         await self._update_settings_and_log(
-            interaction, sett, 
+            interaction, sett,
             f"Discord Checks have been {'enabled' if enabled else 'disabled'}."
         )
 
         for option in self.enable_button.options:
             option.default = False
-        
+
         await self._update_embed_field(
-            interaction, 0, 
-            "Enabled/Disabled Discord Checks", 
+            interaction, 0,
+            "Enabled/Disabled Discord Checks",
             f"**Current Status:** {'Enabled' if enabled else 'Disabled'}"
         )
 
     async def alert_channel_select_callback(self, interaction: discord.Interaction):
         if not await self._check_permissions(interaction):
             return
-        
+
         await interaction.response.defer()
-        
+
         sett = await self.bot.settings.find_by_id(interaction.guild.id)
         await self._ensure_settings_structure(sett)
-        
+
         channel_id = self.alert_channel_select.values[0].id if self.alert_channel_select.values else None
         sett["ERLC"]["discord_checks"]["channel_id"] = channel_id
-        
+
         await self._update_settings_and_log(
             interaction, sett,
             f"Discord Checks Channel has been set to <#{channel_id}>."
         )
-        
+
         await self._update_embed_field(
             interaction, 1,
             "Discord Check Channel",
@@ -12719,20 +12904,20 @@ class ERLCDiscordChecksConfiguration(discord.ui.View):
     async def kick_after_callback(self, interaction: discord.Interaction):
         if not await self._check_permissions(interaction):
             return
-        
+
         await interaction.response.defer()
-        
+
         sett = await self.bot.settings.find_by_id(interaction.guild.id)
         await self._ensure_settings_structure(sett)
-        
+
         kick_after = int(self.kick_after.values[0]) if self.kick_after.values else 4
         sett["ERLC"]["discord_checks"]["kick_after"] = kick_after
-        
+
         await self._update_settings_and_log(
             interaction, sett,
             f"Discord Checks Kick After has been set to {kick_after} warnings."
         )
-        
+
         await self._update_embed_field(
             interaction, 2,
             "Kick After",
@@ -12758,9 +12943,9 @@ class ERLCDiscordChecksConfiguration(discord.ui.View):
                 )
             ],
         )
-        
+
         await interaction.response.send_modal(modal)
-        
+
         if await modal.wait():
             return
 
@@ -12778,7 +12963,7 @@ class ERLCDiscordChecksConfiguration(discord.ui.View):
         sett = await self.bot.settings.find_by_id(interaction.guild.id)
         await self._ensure_settings_structure(sett)
         sett["ERLC"]["discord_checks"]["message"] = alert_message
-        
+
         await self._update_settings_and_log(
             interaction, sett,
             f"Discord Checks Alert Message has been set to: {alert_message}"
@@ -12791,7 +12976,7 @@ class ERLCDiscordChecksConfiguration(discord.ui.View):
                 color=BLANK_COLOR
             ), ephemeral=True
         )
-        
+
         # Update the embed
         embed = interaction.message.embeds[0]
         embed.set_field_at(3, name="Alert Message", value=f"**Current Message:** {alert_message}", inline=False)
@@ -12804,14 +12989,14 @@ class ERLCPermissionSync(discord.ui.View):
         self.bot = bot
         self.sett = sett
         self.user_id = user_id
-        
+
         self.permission_sync = sett.get("ERLC", {}).get("permission_sync", {})
         enabled = self.permission_sync.get("enabled", False)
         mod_roles = self.permission_sync.get("moderator_roles", [])
         admin_roles = self.permission_sync.get("administrator_roles", [])
 
         self._setup_components(enabled, mod_roles, admin_roles)
-    
+
     def _setup_components(self, enabled: bool, mod_roles: list[int], admin_roles: list[int]):
         self.enable_button = discord.ui.Select(
             placeholder="Permission Sync",
@@ -12826,7 +13011,7 @@ class ERLCPermissionSync(discord.ui.View):
         self.add_item(self.enable_button)
 
         default_values = [discord.Object(id=role_id) for role_id in mod_roles] if mod_roles else None
-        self.mod_roles_select = discord.ui.ChannelSelect(
+        self.mod_roles_select = discord.ui.RoleSelect(
             placeholder="Server Moderator Roles",
             default_values=default_values,
             row=1,
@@ -12836,7 +13021,7 @@ class ERLCPermissionSync(discord.ui.View):
         self.add_item(self.mod_roles_select)
 
         default_values = [discord.Object(id=role_id) for role_id in admin_roles] if admin_roles else None
-        self.admin_roles_select = discord.ui.ChannelSelect(
+        self.admin_roles_select = discord.ui.RoleSelect(
             placeholder="Server Administrator Roles",
             default_values=default_values,
             row=2,
@@ -12845,7 +13030,7 @@ class ERLCPermissionSync(discord.ui.View):
         self.admin_roles_select.callback = self.admin_roles_select_callback
         self.add_item(self.admin_roles_select)
 
-        
+
     async def _check_permissions(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.user_id:
             await interaction.response.send_message(
@@ -12857,52 +13042,56 @@ class ERLCPermissionSync(discord.ui.View):
             )
             return False
         return True
-    
+
     async def _update_settings_and_log(self, interaction: discord.Interaction, sett: dict, message: str) -> None:
         await self.bot.settings.update_by_id(sett)
         await config_change_log(self.bot, interaction.guild, interaction.user, message)
-    
+
     async def enable_button_callback(self, interaction: discord.Interaction):
         if not await self._check_permissions(interaction):
             return
-        
+
         await interaction.response.defer()
-        
-        sett = await self.bot.settings.find_by_id(interaction.guild.id)        
+
+        sett = await self.bot.settings.find_by_id(interaction.guild.id)
         enabled = self.enable_button.values[0] == "enabled"
         if not sett.get("ERLC"):
             sett["ERLC"] = {}
         if "permission_sync" not in sett["ERLC"]:
             sett["ERLC"]["permission_sync"] = {"enabled": False, "moderator_roles": [], "administrator_roles": []}
         sett["ERLC"]["permission_sync"]["enabled"] = enabled
-        
+
         await self._update_settings_and_log(
-            interaction, sett, 
+            interaction, sett,
             f"Permission Sync has been {'enabled' if enabled else 'disabled'}."
         )
-        
+
     async def mod_roles_select_callback(self, interaction: discord.Interaction):
         if not await self._check_permissions(interaction):
             return
-        
+
         await interaction.response.defer()
-        
+
         sett = await self.bot.settings.find_by_id(interaction.guild.id)
-        
+
         mod_roles = [role.id for role in self.mod_roles_select.values]
         if "ERLC" not in sett:
             sett["ERLC"] = {}
         if "permission_sync" not in sett["ERLC"]:
             sett["ERLC"]["permission_sync"] = {"enabled": False, "moderator_roles": [], "administrator_roles": []}
         sett["ERLC"]["permission_sync"]["moderator_roles"] = mod_roles
-        
+
+        await self._update_settings_and_log(
+            interaction, sett,
+            "Server Moderator Roles have been updated."
+        )
 
     async def admin_roles_select_callback(self, interaction: discord.Interaction):
         if not await self._check_permissions(interaction):
             return
-        
+
         await interaction.response.defer()
-        
+
         sett = await self.bot.settings.find_by_id(interaction.guild.id)
 
         administrator_roles = [role.id for role in self.admin_roles_select.values]
@@ -12912,3 +13101,7 @@ class ERLCPermissionSync(discord.ui.View):
             sett["ERLC"]["permission_sync"] = {"enabled": False, "moderator_roles": [], "administrator_roles": []}
         sett["ERLC"]["permission_sync"]["administrator_roles"] = administrator_roles
 
+        await self._update_settings_and_log(
+            interaction, sett,
+            "Server Administrator Roles have been updated."
+        )

@@ -119,7 +119,7 @@ class ShiftManagement:
                 if url_var not in ["", None]:
                     tasks.append(
                         session.get(
-                            f"{url_var}/Internal/SyncStartShift/{data['_id']}",
+                            f"{url_var}/{guild}/SyncStartShift?ID={data['_id']}",
                             headers={"Authorization": config("INTERNAL_API_AUTH")},
                             raise_for_status=True,
                         )

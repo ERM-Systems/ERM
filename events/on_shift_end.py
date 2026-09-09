@@ -8,8 +8,9 @@ from discord.ext import commands
 from datamodels.ShiftManagement import ShiftItem
 from utils.constants import BLANK_COLOR
 from utils.timestamp import td_format
+from utils.utils import sync_ingame_permission
 from decouple import config
-
+import logging
 
 class OnShiftEnd(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -54,16 +55,16 @@ class OnShiftEnd(commands.Cog):
                     responses = await asyncio.gather(*tasks, return_exceptions=True)
                     for response in responses:
                         if isinstance(response, Exception):
-                            self.logger.error(
+                            logging.warning(
                                 f"End shift API sync failed: {str(response)}"
                             )
 
         try:
             await sync_end_with_apis()
         except aiohttp.ClientError as e:
-            self.logger.error(f"Failed to sync shift end with APIs: {str(e)}")
+            logging.warning(f"Failed to sync shift end with APIs: {str(e)}")
         except Exception as e:
-            self.logger.error(f"Unexpected error during end shift API sync: {str(e)}")
+            logging.warning(f"Unexpected error during end shift API sync: {str(e)}")
 
         guild: discord.Guild = self.bot.get_guild(shift.guild)
         if guild is None:
@@ -116,6 +117,9 @@ class OnShiftEnd(commands.Cog):
 
         if not staff_member:
             return
+
+        await sync_ingame_permission(self.bot, guild, staff_member, guild_settings, grant=False)
+
         for role in assigned_roles or []:
             discord_role: discord.Role = guild.get_role(role)
             if discord_role is None:

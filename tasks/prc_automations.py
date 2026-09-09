@@ -47,6 +47,8 @@ async def get_cached_guild(bot, guild_id):
     if not guild:
         try:
             guild = await bot.fetch_guild(guild_id)
+        except discord.NotFound:
+            guild = None
         except discord.HTTPException:
             guild = None
 
@@ -82,7 +84,7 @@ async def handle_callsign_check(guild, callsign, settings, member):
     try:
         callsign_settings = settings.get("ERLC", {}).get("callsign_check", {})
         if not isinstance(callsign_settings, dict):
-            logging.error("callsign_check is not a dictionary in settings['ERLC']")
+            logging.warning("callsign_check is not a dictionary in settings['ERLC']")
             return True
 
         if not callsign_settings.get("enabled", False):
@@ -112,13 +114,13 @@ async def handle_callsign_check(guild, callsign, settings, member):
                     return True
 
                 except (ValueError, TypeError):
-                    logging.error(f"Invalid role ID {role_id} for prefix {prefix} in guild {guild.id}")
+                    logging.warning(f"Invalid role ID {role_id} for prefix {prefix} in guild {guild.id}")
                     continue
 
         return True
 
     except Exception as e:
-        logging.error(f"Error in handle_callsign_check: {e}", exc_info=True)
+        logging.warning(f"Error in handle_callsign_check: {e}", exc_info=True)
         return True
 
 async def process_discord_checks(bot, items, guild_id):
@@ -139,7 +141,7 @@ async def process_discord_checks(bot, items, guild_id):
         if channel_id != 0:
             channel = await get_cached_channel(bot, channel_id)
             if not channel:
-                logging.error(f"Channel {channel_id} not found in guild {guild_id}.")
+                logging.warning(f"Channel {channel_id} not found in guild {guild_id}.")
                 return
             
         guild = await get_cached_guild(bot, guild_id)
@@ -153,7 +155,7 @@ async def process_discord_checks(bot, items, guild_id):
                 return
 
         except Exception as e:
-            logging.error(f"Failed to fetch server data for guild {guild_id}: {e}")
+            logging.warning(f"Failed to fetch server data for guild {guild_id}: {e}")
             return
         
         not_in_discord = []
@@ -171,7 +173,7 @@ async def process_discord_checks(bot, items, guild_id):
         try:
             kick_after = settings.get("kick_after", 0)
         except Exception as e:
-            logging.error(f"Error getting kick_after setting for guild {guild_id}: {e}")
+            logging.warning(f"Error getting kick_after setting for guild {guild_id}: {e}")
             kick_after = 0
 
         if not_in_discord:
@@ -186,12 +188,12 @@ async def process_discord_checks(bot, items, guild_id):
             if callsign_alert_channel_id != 0:
                 callsign_channel = await get_cached_channel(bot, callsign_alert_channel_id)
                 if not callsign_channel:
-                    logging.error(f"Callsign alert channel {callsign_alert_channel_id} not found in guild {guild_id}.")
+                    logging.warning(f"Callsign alert channel {callsign_alert_channel_id} not found in guild {guild_id}.")
                     return
             await handle_callsign_violations_batch(bot, guild, callsign_violations, callsign_channel)
 
     except Exception as e:
-        logging.error(f"Error processing guild {guild_id}: {e}", exc_info=True)
+        logging.warning(f"Error processing guild {guild_id}: {e}", exc_info=True)
         return
 
 @tasks.loop(minutes=10, reconnect=True)
@@ -223,7 +225,7 @@ async def prc_automations(bot):
             await process_discord_checks(bot, items, guild_id)
 
     guild_tasks = []
-    async for items in bot.settings.db.aggregate(pipeline):
+    async for items in await bot.settings.db.aggregate(pipeline):
         guild_tasks.append(process_guild(items))
 
         if len(guild_tasks) >= 5:
@@ -268,7 +270,7 @@ async def handle_discord_check_batch(bot, guild, players_not_in_discord, alert_c
             await send_batch_warning_embed(players_to_kick, alert_channel)
 
     except Exception as e:
-        logging.error(f"Error in handle_discord_check_batch: {e}")
+        logging.warning(f"Error in handle_discord_check_batch: {e}")
 
 
 async def send_batch_warning_embed(players, alert_channel):
@@ -291,9 +293,9 @@ async def send_batch_warning_embed(players, alert_channel):
 
         await alert_channel.send(embed=embed)
     except discord.HTTPException as e:
-        logging.error(f"Failed to send batch embed: {e}")
+        logging.warning(f"Failed to send batch embed: {e}")
     except Exception as e:
-        logging.error(f"Error in send_batch_warning_embed: {e}", exc_info=True)
+        logging.warning(f"Error in send_batch_warning_embed: {e}", exc_info=True)
 
 
 async def handle_callsign_violations_batch(bot, guild, players_with_violations, alert_channel):
@@ -314,7 +316,7 @@ async def handle_callsign_violations_batch(bot, guild, players_with_violations, 
         logging.info(f"Processed {len(players_with_violations)} callsign violations in guild {guild.id}")
 
     except Exception as e:
-        logging.error(f"Error in handle_callsign_violations_batch: {e}")
+        logging.warning(f"Error in handle_callsign_violations_batch: {e}")
 
 
 async def send_callsign_violation_embed(players, alert_channel):
@@ -336,6 +338,6 @@ async def send_callsign_violation_embed(players, alert_channel):
 
         await alert_channel.send(embed=embed)
     except discord.HTTPException as e:
-        logging.error(f"Failed to send callsign violation embed: {e}")
+        logging.warning(f"Failed to send callsign violation embed: {e}")
     except Exception as e:
-        logging.error(f"Error in send_callsign_violation_embed: {e}", exc_info=True)
+        logging.warning(f"Error in send_callsign_violation_embed: {e}", exc_info=True)

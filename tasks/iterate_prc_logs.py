@@ -1,4 +1,5 @@
 import re
+from collections import Counter, defaultdict
 from typing import List
 import discord
 from discord.ext import commands, tasks
@@ -15,7 +16,7 @@ from utils.prc_api import JoinLeaveLog, Player
 from utils.utils import fetch_get_channel, has_whitelabel, staff_check
 from utils import prc_api
 from utils.constants import BLANK_COLOR, GREEN_COLOR, RED_COLOR
-from menus import AvatarCheckView
+from menus import AvatarCheckView, RDMActions
 from utils.username_check import UsernameChecker
 
 global_aggregate = [
@@ -45,11 +46,11 @@ global_aggregate = [
 
 count_aggregate = global_aggregate + [{"$count": "total"}]
 
-
-async def iterate_prc_logs_global(bot):
+@tasks.loop(minutes=5, reconnect=True)
+async def iterate_prc_logs(bot):
     try:
-        server_count = await bot.settings.db.aggregate(count_aggregate).to_list(1)
-        server_count = server_count[0]["total"] if server_count else 0
+        server_count_list = [i async for i in await bot.settings.db.aggregate(count_aggregate)]
+        server_count = server_count_list[0]["total"] if server_count_list else 0
 
         logging.warning(f"[ITERATE] Starting iteration for {server_count} servers")
         processed = 0
@@ -58,51 +59,47 @@ async def iterate_prc_logs_global(bot):
         pipeline = global_aggregate
 
         semaphore = asyncio.Semaphore(10)
-        tasks = []
 
-
-        async for items in bot.settings.db.aggregate(pipeline):
-            tasks.append(process_guild(bot, items, semaphore))
+        batch = []
+        async for items in await bot.settings.db.aggregate(pipeline):
+            batch.append(process_guild(bot, items, semaphore))
             processed += 1
             if processed % 10 == 0:
                 logging.warning(f"[ITERATE] Queued {processed}/{server_count} servers")
+            if len(batch) == 100:
+                await asyncio.gather(*batch, return_exceptions=True)
+                logging.warning(f"[ITERATE] Executed {processed}/{server_count} servers")
+                batch.clear()
 
-        await asyncio.gather(*tasks, return_exceptions=True)
+        if batch:
+            await asyncio.gather(*batch, return_exceptions=True)
+
         end_time = time.time()
         logging.warning(
             f"[ITERATE] Completed task! Processed {processed} servers in {end_time - start_time:.2f} seconds"
         )
 
     except Exception as e:
-        logging.error(f"[ITERATE] Error in iteration: {str(e)}", exc_info=True)
+        logging.warning(f"[ITERATE] Error in iteration: {str(e)}", exc_info=True)
 
-
-
-async def iterate_prc_logs_custom(bot):
-    guild_id = config("CUSTOM_GUILD_ID")
-    if not guild_id:
-        logging.error("No custom guild ID provided for custom environment")
-        return
-
-    try:
-        await unprimitive_guild_process({"_id": int(guild_id)}, bot)
-    except Exception as e:
-        logging.error(f"error processing guild: {e}")
 
 async def unprimitive_guild_process(items, bot):
-    guild = bot.get_guild(items["_id"]) or await bot.fetch_guild(
-        items["_id"]
-    )
+    try:
+        guild = bot.get_guild(items["_id"]) or await bot.fetch_guild(
+            items["_id"]
+        )
+    except discord.NotFound:
+        return
+    if not guild:
+        return
     settings = await bot.settings.find_by_id(guild.id)
     erlc_settings = settings.get("ERLC", {})
 
-    if await has_whitelabel(bot, guild.id) and not config("CUSTOM_GUILD_ID") == str(guild.id):
-        logging.warning("Not handling {} due to whitelabel instance existing")
-        return
 
     channels = {
         "kill_logs": erlc_settings.get("kill_logs"),
         "player_logs": erlc_settings.get("player_logs"),
+        "rdm_channel": erlc_settings.get("rdm_channel"),
     }
 
     channels = {
@@ -115,7 +112,7 @@ async def unprimitive_guild_process(items, bot):
     )
     has_team_restrictions = bool(erlc_settings.get("team_restrictions"))
     has_automatic_shifts = bool(
-        erlc_settings.get("automatic_shifts", {})
+        (erlc_settings.get("automatic_shifts") or {}).get("enabled")
     )
 
     if (
@@ -126,10 +123,16 @@ async def unprimitive_guild_process(items, bot):
     ):
         return
 
-    kill_logs, player_logs, command_logs = await fetch_logs_with_retry(
-        guild.id, bot
+    kill_logs, player_logs, command_logs, info = await fetch_logs_with_retry(
+        guild.id,
+        bot,
+        extra_resources=(
+            ("players",) if has_team_restrictions or has_automatic_shifts else ()
+        ),
     )
     current_time = int(time.time())
+
+    await bot.log_tracker.load_guild(guild.id)
 
     if command_logs:
         await save_new_logs(bot, guild.id, command_logs, current_time)
@@ -152,7 +155,7 @@ async def unprimitive_guild_process(items, bot):
             bot,
             settings,
             guild.id,
-            await bot.prc_api.get_server_players(guild.id),
+            info.get("players", []),
         )
 
     if has_automatic_shifts:
@@ -160,7 +163,7 @@ async def unprimitive_guild_process(items, bot):
             guild.id, "automatic_shifts"
         )
         latest_timestamp = await check_automatic_shifts(
-            bot, settings, guild.id, player_logs, last_timestamp
+            bot, settings, guild.id, player_logs, last_timestamp, players=info.get("players")
         )
         bot.log_tracker.update_timestamp(
             guild.id, "automatic_shifts", latest_timestamp
@@ -180,6 +183,26 @@ async def unprimitive_guild_process(items, bot):
             bot.log_tracker.update_timestamp(
                 guild.id, "kill_logs", latest_timestamp
             )
+
+    if channels.get("rdm_channel") and kill_logs:
+        last_timestamp = bot.log_tracker.get_last_timestamp(
+            guild.id, "rdm_alerts"
+        )
+        bursts, latest_timestamp = process_rdm_logs(
+            kill_logs,
+            last_timestamp,
+            erlc_settings.get("rdm_threshold") or 4,
+            erlc_settings.get("rdm_window") or 20,
+        )
+        if bursts:
+            subtasks.append(
+                send_rdm_alerts(
+                    bot, guild, channels["rdm_channel"], erlc_settings, bursts
+                )
+            )
+        bot.log_tracker.update_timestamp(
+            guild.id, "rdm_alerts", latest_timestamp
+        )
 
     if "player_logs" in channels and player_logs:
         last_timestamp = bot.log_tracker.get_last_timestamp(
@@ -204,42 +227,33 @@ async def unprimitive_guild_process(items, bot):
     if subtasks:
         await asyncio.gather(*subtasks, return_exceptions=True)
 
+    await bot.log_tracker.save_guild(guild.id)
+    await flush_pending_unbans(bot, guild.id)
+
 async def process_guild(bot, items, semaphore):
+    await asyncio.sleep(0.25)
     async with semaphore:
-        await asyncio.sleep(
-            0.25
-        )  # we need to slow things down a bit for discord
         try:
             await unprimitive_guild_process(items, bot)
         except Exception as e:
-            logging.warning(f"error processing guild: {e}")
+            logging.warning(f"error processing guild {items['_id']}: {e}", exc_info=True)
 
 
-@tasks.loop(minutes=7, reconnect=True)
-async def iterate_prc_logs(bot):
-    if bot.environment == "PRODUCTION":
-        await iterate_prc_logs_global(bot)
-    else:
-        await iterate_prc_logs_custom(
-            bot
-        )
-
-
-async def fetch_logs_with_retry(guild_id, bot, retries=3):
-    """Helper function to fetch logs with retry logic"""
+async def fetch_logs_with_retry(guild_id, bot, retries=3, extra_resources=()):
+    """Helper function to fetch logs (and any extra resources) with retry logic, in a single request"""
     for attempt in range(retries):
         try:
-            kill_logs = await bot.prc_api.fetch_kill_logs(guild_id)
-            player_logs = await bot.prc_api.fetch_player_logs(guild_id)
-            command_logs = await bot.prc_api.fetch_server_logs(guild_id)
-            return kill_logs, player_logs, command_logs
+            info = await bot.prc_api.get_server_info(
+                guild_id, "kill_logs", "player_logs", "command_logs", *extra_resources
+            )
+            return info["kill_logs"], info["player_logs"], info["command_logs"], info
         except prc_api.ResponseFailure as e:
             if e.status_code == 429 and attempt < retries - 1:
                 retry_after = float(e.json_data.get("retry_after", 5))
                 await asyncio.sleep(retry_after)
                 continue
             raise
-    return None, None, None
+    return None, None, None, {}
 
 
 async def save_new_logs(bot, guild_id, command_logs, current_time):
@@ -292,7 +306,7 @@ async def send_log_batch(channel, embeds):
         try:
             await channel.send(embeds=chunk)
         except discord.HTTPException as e:
-            logging.error(f"Failed to send log batch: {e}")
+            logging.waring(f"Failed to send log batch: {e}")
 
 
 def process_kill_logs(kill_logs, last_timestamp):
@@ -313,6 +327,99 @@ def process_kill_logs(kill_logs, last_timestamp):
         embeds.append(embed)
 
     return embeds, latest_timestamp
+
+
+def process_rdm_logs(kill_logs, last_timestamp, threshold, window):
+    """Process fresh kill logs that exceed set RDM threshold"""
+    latest_timestamp = last_timestamp
+    by_killer = defaultdict(list)
+
+    for log in sorted(kill_logs):
+        if log.timestamp <= last_timestamp:
+            continue
+
+        latest_timestamp = max(latest_timestamp, log.timestamp)
+        if log.killer_user_id == log.killed_user_id:
+            continue
+
+        by_killer[log.killer_user_id].append(log)
+
+    bursts = []
+    for kills in by_killer.values():
+        flagged = []
+        index = 0
+        while index < len(kills):
+            first = kills[index]
+            burst = [
+                log
+                for log in kills[index:]
+                if log.timestamp - first.timestamp <= window
+            ]
+            if len(burst) >= threshold:
+                flagged.extend(burst)
+                index += len(burst)
+            else:
+                index += 1
+
+        if flagged:
+            bursts.append(flagged)
+
+    return bursts, latest_timestamp
+
+
+async def send_rdm_alerts(bot, guild, channel, erlc_settings, bursts):
+    """Send alert once RDM threshold is exceeded"""
+    roles = [
+        guild.get_role(role_id)
+        for role_id in (erlc_settings.get("rdm_mentionables") or [])
+    ]
+    pings = " ".join(role.mention for role in roles if role)
+
+    for burst in bursts:
+        first = burst[0]
+        victim_counts = Counter(log.killed_username for log in burst)
+        victims = [
+            name if count == 1 else f"{name} (x{count})"
+            for name, count in victim_counts.items()
+        ]
+        victim_names = ", ".join(victims)
+        if len(victim_names) > 900:
+            victim_names = victim_names[:900] + "..."
+
+        embed = (
+            discord.Embed(
+                title=f"{bot.emoji_controller.get_emoji('security')} RDM Detected",
+                color=BLANK_COLOR,
+            )
+            .add_field(
+                name="Player Information",
+                value=(
+                    f"> **Username:** {first.killer_username}\n"
+                    f"> **User ID:** {first.killer_user_id}\n"
+                    f"> **Profile Link:** [Click here](https://roblox.com/users/{first.killer_user_id}/profile)"
+                ),
+                inline=False,
+            )
+            .add_field(
+                name="Kill Information",
+                value=(
+                    f"> **Kills [{len(burst)}]:** {victim_names}\n"
+                    f"> **Started:** <t:{int(first.timestamp)}:T>\n"
+                    f"> **Ended:** <t:{int(burst[-1].timestamp)}:T>"
+                ),
+                inline=False,
+            )
+        )
+        embed.set_footer(
+            text="This alert may not reflect the current situation and is only an estimate."
+        )
+
+        try:
+            await channel.send(
+                content=pings or None, embed=embed, view=RDMActions(bot)
+            )
+        except discord.HTTPException as e:
+            logging.warning(f"Failed to send RDM alert: {e}")
 
 
 async def process_player_logs(bot, settings, guild_id, player_logs, last_timestamp):
@@ -336,6 +443,8 @@ async def process_player_logs(bot, settings, guild_id, player_logs, last_timesta
                         continue
 
                     guild = bot.get_guild(guild_id) or await bot.fetch_guild(guild_id)
+                    if not guild:
+                        continue
                     channel = await fetch_get_channel(guild, channel_id)
                     if not channel:
                         continue
@@ -370,7 +479,7 @@ async def process_player_logs(bot, settings, guild_id, player_logs, last_timesta
                         allowed_mentions=discord.AllowedMentions.all(),
                     )
                 except Exception as e:
-                    logging.error(f"Error processing unrealistic username alert: {e}")
+                    logging.warning(f"Error processing unrealistic username alert: {e}")
 
     for log in sorted(player_logs):
         if log.timestamp <= last_timestamp:
@@ -460,6 +569,8 @@ async def process_player_logs(bot, settings, guild_id, player_logs, last_timesta
                                     guild = bot.get_guild(
                                         guild_id
                                     ) or await bot.fetch_guild(guild_id)
+                                    if not guild:
+                                        continue
                                     channel = await fetch_get_channel(guild, channel_id)
                                     if channel:
                                         try:
@@ -472,7 +583,7 @@ async def process_player_logs(bot, settings, guild_id, player_logs, last_timesta
                                             )
                                             avatar_url = avatar[0].image_url
                                         except Exception as e:
-                                            logging.error(
+                                            logging.warning(
                                                 f"Error fetching user data: {e}"
                                             )
                                             return embeds, latest_timestamp
@@ -520,9 +631,28 @@ async def process_player_logs(bot, settings, guild_id, player_logs, last_timesta
                                                 )
                                             )
             except Exception as e:
-                logging.error(f"Error in avatar check: {e}")
+                logging.warning(f"Error in avatar check: {e}")
 
     return embeds, latest_timestamp
+
+
+async def flush_pending_unbans(bot, guild_id: int):
+    now = int(datetime.datetime.now(tz=pytz.UTC).timestamp())
+    pending = bot.punishments.db.find({
+        "Guild": guild_id,
+        "CheckExecuted": {"$exists": False},
+        "UntilEpoch": {"$lt": now},
+        "Type": "Temporary Ban",
+        "Epoch": {"$gt": 1709164800},
+    })
+    async for item in pending:
+        try:
+            await bot.prc_api.unban_user(guild_id, item["UserID"])
+            item["CheckExecuted"] = True
+            await bot.punishments.update_by_id(item)
+            await asyncio.sleep(1)
+        except Exception:
+            break
 
 
 async def is_username_found(username: str, members: list[discord.Member]) -> bool:
@@ -563,35 +693,39 @@ async def send_welcome_message(
                     del player_names[log.username]
     players = player_names.keys()
     if len(players) == 0:
-        return sorted(player_logs, key=lambda x: x.timestamp, reverse=True)[0].timestamp
+        return max((log.timestamp for log in player_logs), default=last_timestamp)
     try:
         await bot.prc_api.run_command(
             guild_id, f":pm {','.join(players)} {welcome_message}"
         )
     except prc_api.ResponseFailure:
         pass
-    return sorted(player_logs, key=lambda x: x.timestamp, reverse=True)[0].timestamp
+    return max((log.timestamp for log in player_logs), default=last_timestamp)
 
 
-async def check_automatic_shifts(bot, settings, guild_id, join_logs, ts: int) -> int:
+async def check_automatic_shifts(bot, settings, guild_id, join_logs, ts: int, players=None) -> int:
     logging.info(f"Checking automatic shifts for server {guild_id}")
     automatic_shifts = settings["ERLC"].get("automatic_shifts", {}) or {}
     try:
         guild = bot.get_guild(guild_id) or await bot.fetch_guild(guild_id)
     except:
-        return sorted(join_logs, key=lambda x: x.timestamp, reverse=True)[0].timestamp
+        return max((log.timestamp for log in join_logs), default=ts)
+
+    if not guild:
+        return max((log.timestamp for log in join_logs), default=ts)
 
     if automatic_shifts in [{}, None]:
-        return sorted(join_logs, key=lambda x: x.timestamp, reverse=True)[0].timestamp
+        return max((log.timestamp for log in join_logs), default=ts)
 
     if automatic_shifts["enabled"] is False:
-        return sorted(join_logs, key=lambda x: x.timestamp, reverse=True)[0].timestamp
+        return max((log.timestamp for log in join_logs), default=ts)
 
-    try:
-        players = await bot.prc_api.get_server_players(guild_id)
-    except Exception as e:
-        logging.info(f"Skipping {guild_id} (automatic shifts) because of exc: {e}")
-        return sorted(join_logs, key=lambda x: x.timestamp, reverse=True)[0].timestamp
+    if players is None:
+        try:
+            players = await bot.prc_api.get_server_players(guild_id)
+        except Exception as e:
+            logging.info(f"Skipping {guild_id} (automatic shifts) because of exc: {e}")
+            return max((log.timestamp for log in join_logs), default=ts)
 
     new_players: list[Player] = list(
         filter(lambda x: x.permission != "Normal", players)
@@ -601,17 +735,15 @@ async def check_automatic_shifts(bot, settings, guild_id, join_logs, ts: int) ->
     # quick check
     temp_linked = []
     for item in leaves:
-        oauth2_user = await bot.oauth2_users.db.find_one(
-            {"roblox_id": int(item.user_id)}
-        )
-        if oauth2_user:
-            temp_linked.append(oauth2_user["discord_id"])
+        discord_id = await bot.linking.get_discord_id(item.user_id)
+        if discord_id:
+            temp_linked.append(discord_id)
     discordid_to_shift = {
         x["UserID"]: x
         async for x in bot.shift_management.shifts.db.find(
             {
                 "Guild": guild.id,
-                "Type": automatic_shifts.get("type", "Default") or "Default",
+                "Type": automatic_shifts.get("shift_type", "Default") or "Default",
                 "EndEpoch": 0,
             }
         )
@@ -660,9 +792,8 @@ async def check_automatic_shifts(bot, settings, guild_id, join_logs, ts: int) ->
     linked_users = []
     for item in new_data:
         uid = item["UserID"]
-        doc = await bot.oauth2_users.db.find_one({"roblox_id": int(uid)})
-        if doc is not None:
-            discord_uid = doc["discord_id"]
+        discord_uid = await bot.linking.get_discord_id(uid)
+        if discord_uid is not None:
             consent_doc = await bot.consent.db.find_one({"_id": discord_uid}) or {
                 "automatic_shifts": True
             }
@@ -685,7 +816,7 @@ async def check_automatic_shifts(bot, settings, guild_id, join_logs, ts: int) ->
     for item in staff_members:
         if await bot.shift_management.get_current_shift(item, guild.id) is None:
             oid = await bot.shift_management.add_shift_by_user(
-                item, automatic_shifts.get("type", "Default") or "Default", [], guild.id
+                item, automatic_shifts.get("shift_type", "Default") or "Default", [], guild.id
             )
             bot.dispatch("shift_start", oid)
             try:
@@ -699,7 +830,7 @@ async def check_automatic_shifts(bot, settings, guild_id, join_logs, ts: int) ->
             except Exception as e:
                 pass
 
-    return sorted(join_logs, key=lambda x: x.timestamp, reverse=True)[0].timestamp
+    return max((log.timestamp for log in join_logs), default=ts)
 
 
 async def check_team_restrictions(bot, settings, guild_id, players):
@@ -728,8 +859,10 @@ async def check_team_restrictions(bot, settings, guild_id, players):
     if not enabled:
         return
 
-    guild = bot.get_guild(guild_id) or await bot.fetch_guild(guild_id)
-    all_roles = await guild.fetch_roles()
+    guild: discord.Guild = bot.get_guild(guild_id) or await bot.fetch_guild(guild_id)
+    if not guild:
+        return
+    all_roles = guild.roles or await guild.fetch_roles()
     for team_name, plrs in teams.items():
         if team_restrictions.get(team_name) is not None:
             restriction = team_restrictions.get(team_name)
@@ -914,7 +1047,7 @@ async def handle_kick_timer(bot, settings, guild_id, player_logs, command_logs):
     current_time = int(time.time())
     if guild_id in bot.kicked_users:
         bot.kicked_users[guild_id] = {
-            username: timestamp 
+            username: timestamp
             for username, timestamp in bot.kicked_users[guild_id].items()
             if (current_time - timestamp) <= time_limit
         }
@@ -939,12 +1072,12 @@ async def handle_kick_timer(bot, settings, guild_id, player_logs, command_logs):
             try:
                 await bot.prc_api.run_command(guild_id, f":ban {usernames_str}")
             except Exception as e:
-                logging.error(f"Failed to ban users: {e}")
+                logging.warning(f"Failed to ban users: {e}")
         else:
             try:
                 await bot.prc_api.run_command(guild_id, f":kick {usernames_str}")
             except Exception as e:
-                logging.error(f"Failed to kick users: {e}")
+                logging.warning(f"Failed to kick users: {e}")
 
         for username in rejoined_users:
             try:
@@ -968,4 +1101,4 @@ async def handle_kick_timer(bot, settings, guild_id, player_logs, command_logs):
                         time_epoch=current_time,
                     )
             except Exception as e:
-                logging.error(f"Failed to log punishment for {username}: {e}")
+                logging.warning(f"Failed to log punishment for {username}: {e}")

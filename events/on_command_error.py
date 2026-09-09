@@ -14,21 +14,33 @@ from aiohttp import ClientConnectorSSLError
 from decouple import config
 from utils.constants import BLANK_COLOR, RED_COLOR
 from utils.utils import error_gen, GuildCheckFailure
-from utils.prc_api import ServerLinkNotFound, ResponseFailure
+from utils.game_api_classes import ServerLinkNotFound, ResponseFailure
 
 
 class OnCommandError(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-
+    
     @commands.Cog.listener("on_command_error")
     async def on_command_error(self, ctx, error):
-        ctx.bot.internal_command_storage.pop(ctx, None)
+        ctx.bot.internal_command_storage.pop(ctx.message.id, None)
         do_not_send = getattr(ctx, "dnr", False)
         bot = self.bot
         error_id = error_gen()
 
-        if isinstance(error, commands.CommandInvokeError):
+        if isinstance(error, commands.CommandInvokeError) or isinstance(error, HybridCommandError):
+            if "RemoteProtocolError: Server disconnected without sending a response." in str(error):
+                return (
+                    await ctx.reply(
+                        embed=discord.Embed(
+                            title="Connection Error",
+                            description="The server disconnected without sending a response. Your issue should be fixed if you try again.",
+                            color=BLANK_COLOR,
+                        )
+                    )
+                    if not do_not_send
+                    else None
+                )
             error = error.original
             return await self.on_command_error(ctx, error)
 
@@ -53,23 +65,6 @@ class OnCommandError(commands.Cog):
         ):
             return
 
-        if isinstance(
-            error, HybridCommandError
-        ) and "RemoteProtocolError: Server disconnected without sending a response." in str(
-            error
-        ):
-            return (
-                await ctx.reply(
-                    embed=discord.Embed(
-                        title="Connection Error",
-                        description="The server disconnected without sending a response. Your issue will be fixed if you try again.",
-                        color=BLANK_COLOR,
-                    )
-                )
-                if not do_not_send
-                else None
-            )
-
         if isinstance(error, httpcore.ConnectTimeout):
             return (
                 await ctx.reply(
@@ -92,6 +87,7 @@ class OnCommandError(commands.Cog):
                             "Your server seems to be offline. If this is incorrect, PRC's API may be down."
                             if error.status_code == 422
                             else "There seems to be issues with the PRC API. Stand by and wait a few minutes before trying again."
+                            "If this error reoccurs even when the conditions are met, please open a ticket and send this error ID: `error_id`"
                         ),
                         color=BLANK_COLOR,
                     )
@@ -135,20 +131,7 @@ class OnCommandError(commands.Cog):
                 else None
             )
 
-        if "Invalid username" in str(error):
-            return (
-                await ctx.reply(
-                    embed=discord.Embed(
-                        title="Player not found",
-                        description="I could not find a ROBLOX player with that corresponding username.",
-                        color=BLANK_COLOR,
-                    )
-                )
-                if not do_not_send
-                else None
-            )
-
-        if isinstance(error, roblox.UserNotFound):
+        if isinstance(error, roblox.UserNotFound) or "Invalid username" in str(error):
             return (
                 await ctx.reply(
                     embed=discord.Embed(
@@ -222,26 +205,26 @@ class OnCommandError(commands.Cog):
                             color=BLANK_COLOR,
                         ).set_footer(text=f"{error.code} | {error_id}")
                     )
-            with push_scope() as scope:
-                scope.set_tag("error_id", error_id)
-                scope.set_tag("guild_id", ctx.guild.id)
-                scope.set_tag("user_id", ctx.author.id)
-                if isinstance(ctx.bot, commands.AutoShardedBot):
-                    scope.set_tag("shard_id", ctx.guild.shard_id)
-                scope.set_level("error")
-                await bot.errors.insert(
-                    {
-                        "_id": error_id,
-                        "error": str(error),
-                        "time": datetime.datetime.now(tz=pytz.UTC).strftime(
-                            "%m/%d/%Y, %H:%M:%S"
-                        ),
-                        "channel": ctx.channel.id,
-                        "guild": ctx.guild.id,
-                    }
-                )
+                with push_scope() as scope:
+                    scope.set_tag("error_id", error_id)
+                    scope.set_tag("guild_id", ctx.guild.id)
+                    scope.set_tag("user_id", ctx.author.id)
+                    if isinstance(ctx.bot, commands.AutoShardedBot):
+                        scope.set_tag("shard_id", ctx.guild.shard_id)
+                    scope.set_level("error")
+                    await bot.errors.insert(
+                        {
+                            "_id": error_id,
+                            "error": str(error),
+                            "time": datetime.datetime.now(tz=pytz.UTC).strftime(
+                                "%m/%d/%Y, %H:%M:%S"
+                            ),
+                            "channel": ctx.channel.id,
+                            "guild": ctx.guild.id,
+                        }
+                    )
 
-                capture_exception(error)
+                    capture_exception(error)
             return
 
         if isinstance(error, commands.CheckFailure):
@@ -273,7 +256,7 @@ class OnCommandError(commands.Cog):
                 await ctx.send(
                     embed=discord.Embed(
                         title="Missing Argument",
-                        description="You are missing a required argument to run this command.",
+                        description=f"You are missing a required argument to run this command.\n\n`{str(error).capitalize()}`",
                         color=BLANK_COLOR,
                     )
                 )
@@ -302,9 +285,8 @@ class OnCommandError(commands.Cog):
                     {
                         "_id": error_id,
                         "error": str(error),
-                        "time": datetime.datetime.now(tz=pytz.UTC).strftime(
-                            "%m/%d/%Y, %H:%M:%S"
-                        ),
+                        "type": type(error).__name__,
+                        "time": int(datetime.datetime.now(tz=pytz.UTC).timestamp()),
                         "channel": ctx.channel.id,
                         "guild": ctx.guild.id,
                     }
@@ -314,20 +296,54 @@ class OnCommandError(commands.Cog):
 
 
             if not do_not_send:
-                await ctx.send(
-                    embed=discord.Embed(
-                        title=f"{self.bot.emoji_controller.get_emoji('error')} Command Failure",
-                        description="The command you were attempting to run failed.\nContact ERM Support for assistance.",
-                        color=RED_COLOR,
-                    ).add_field(name="Error ID", value=f"[`{error_id}`]({config('SENTRY_BASE_URL') + error_link})", inline=False),
-                    view=View().add_item(
-                        Button(
-                            label="Contact ERM Support",
-                            style=discord.ButtonStyle.link,
-                            url="https://discord.gg/FAC629TzBy",
+                view = discord.ui.Container(accent_color=RED_COLOR)
+                view.add_item(
+                    discord.ui.TextDisplay(
+                        (
+                            f"### {self.bot.emoji_controller.get_emoji('error')} Command Failure\n"
+                            "An error has occured with ERM. Please contact ERM support for assistance and send them the error ID below.\n\n"
+                            f"**Error ID**\n`{error_id}`"
                         )
-                    ),
+                    )
+                ).add_item(discord.ui.Separator())
+                actionrow = discord.ui.ActionRow(
+                    discord.ui.Button(label = "Contact ERM Support", url="https://discord.gg/uAfU26VRa8")
                 )
+                view.add_item(actionrow)
+                await ctx.send(
+                    view=discord.ui.LayoutView().add_item(view)
+                )
+    @commands.Cog.listener("on_error")
+    async def on_error(self, error):
+        bot = self.bot
+        error_id = error_gen()
+
+        if isinstance(error, discord.Forbidden):
+            if "Cannot send messages to this user" in str(error):
+                return
+
+        if isinstance(error, commands.CommandNotFound):
+            return
+        if isinstance(error, commands.CheckFailure):
+            return
+        if isinstance(error, commands.MissingRequiredArgument):
+            return
+        # # print(error)
+        # # print(str(error))
+        with push_scope() as scope:
+            scope.set_tag("error_id", error_id)
+            scope.level = "error"
+            await bot.errors.insert(
+                {
+                    "_id": error_id,
+                    "error": str(error),
+                    "time": datetime.datetime.now(tz=pytz.UTC).strftime(
+                        "%m/%d/%Y, %H:%M:%S"
+                    ),
+                }
+            )
+
+            capture_exception(error)
 
 async def setup(bot):
     await bot.add_cog(OnCommandError(bot))

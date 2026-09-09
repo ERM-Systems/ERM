@@ -8,8 +8,8 @@ from discord import app_commands
 from discord.ext import commands
 from reactionmenu import ViewButton, ViewMenu, Page
 from reactionmenu.abc import _PageController
-from roblox import client as roblox
 import roblox as rbx_api
+from erm import Bot
 
 from datamodels.StaffConnections import StaffConnection
 from datamodels.Warnings import WarningItem
@@ -25,12 +25,9 @@ from utils.utils import (
 )
 from utils.paginators import SelectPagination, CustomPage
 
-client = roblox.Client()
-
-
 class Search(commands.Cog):
     def __init__(self, bot):
-        self.bot = bot
+        self.bot: Bot = bot
 
     @commands.guild_only()
     @commands.hybrid_command(
@@ -56,19 +53,17 @@ class Search(commands.Cog):
             )
 
         bot = self.bot
-        roblox_user = await bot.bloxlink.find_roblox(user.id)
-        if not roblox_user or not (roblox_user or {}).get("robloxID"):
+        roblox_user = await bot.linking.get_roblox_id(user.id)
+        if not roblox_user:
             return await ctx.send(
                 embed=discord.Embed(
                     title="Could not find user",
-                    description="I could not find this user's ROBLOX account. Ensure that they are linked with Bloxlink and try again.",
+                    description="I could not find this user's ROBLOX account. Ensure that they have linked their account with `/link` and try again.",
                     color=BLANK_COLOR,
                 )
             )
-        roblox_user = roblox_user["robloxID"]
 
-        client = roblox.Client()
-        roblox_player = await client.get_user(roblox_user)
+        roblox_player = await self.bot.roblox.get_user(roblox_user)
 
         warnings: list[WarningItem] = (
             await bot.punishments.get_warnings(roblox_player.id, guild_id) or []
@@ -86,7 +81,7 @@ class Search(commands.Cog):
 
         magic_flags = {
             "ERM Team": 1001972346661384302,
-            "ERM Developer": 1046204873496068176,
+            "ERM Developer": 1420925542848528436,
             "ERM Management": 1038597868023447552,
             "ERM Senior Support": 1028848687927013396,
             "ERM Support": 1053417531278364713,
@@ -105,7 +100,7 @@ class Search(commands.Cog):
             roblox_id=roblox_player.id
         )
 
-        if member and bot.environment != "CUSTOM":
+        if member:
             try:
                 discord_member = await guild.fetch_member(member.discord_id)
             except discord.NotFound:
@@ -117,8 +112,7 @@ class Search(commands.Cog):
                     for role in discord_member.roles
                     if role.id in magic_flags_reverse
                 )
-        elif member and bot.environment == "CUSTOM":
-            applied_flags.update(["ERM Staff"])
+
 
         applied_flags = list(applied_flags)
         if (
@@ -138,7 +132,7 @@ class Search(commands.Cog):
         embed_list[0].add_field(
             name="Player Information",
             value=(
-                f"> **Username:** {roblox_player.name}\n"
+                f"> **Username:** [{roblox_player.name}](https://www.roblox.com/users/{roblox_player.id}/profile)\n"
                 f"> **Display Name:** {roblox_player.display_name}\n"
                 f"> **User ID:** `{roblox_player.id}`\n"
                 f"> **Friend Count:** {await roblox_player.get_friend_count()}\n"
@@ -204,13 +198,20 @@ class Search(commands.Cog):
 
         def add_warning_field(warning):
             new_line = "\n"
+            until_epoch = None
+            try:
+                # someone messed up bad - 2026-04-25
+                until_epoch = warning.until_epoch
+            except KeyError:
+                until_epoch = None # don't raise
+            
             embed_list[-1].add_field(
                 name=f"{warning['Type']}",
                 inline=False,
                 value=(
                     f"> **Reason:** {warning.reason}\n"
                     f"> **At:** <t:{int(warning.time_epoch)}>\n"
-                    f'{"> **Until:** <t:{}>{}".format(int(warning.until_epoch), new_line) if warning.until_epoch is not None else ""}'
+                    f'{"> **Until:** <t:{}>{}".format(int(until_epoch), new_line) if until_epoch is not None else ""}'
                     f"> **ID:** `{warning.snowflake}`"
                 ),
             )
@@ -225,7 +226,7 @@ class Search(commands.Cog):
                 embed_list.append(new_embed)
                 add_warning_field(warning)
 
-        thumbnails = await client.thumbnails.get_user_avatar_thumbnails(
+        thumbnails = await self.bot.roblox.thumbnails.get_user_avatar_thumbnails(
             [roblox_player], type=rbx_api.thumbnails.AvatarThumbnailType.headshot
         )
         thumbnail_url = thumbnails[0].image_url
@@ -302,8 +303,7 @@ class Search(commands.Cog):
                 )
             )
 
-        client = roblox.Client()
-        roblox_player = await client.get_user_by_username(roblox_user["name"])
+        roblox_player = await self.bot.roblox.get_user_by_username(roblox_user["name"])
 
         warnings: list[WarningItem] = (
             await bot.punishments.get_warnings(roblox_player.id, ctx.guild.id) or []
@@ -335,7 +335,7 @@ class Search(commands.Cog):
 
         magic_flags = {
             "ERM Team": 1001972346661384302,
-            "ERM Developer": 1046204873496068176,
+            "ERM Developer": 1420925542848528436,
             "ERM Management": 1038597868023447552,
             "ERM Senior Support": 1028848687927013396,
             "ERM Support": 1053417531278364713,
@@ -354,7 +354,7 @@ class Search(commands.Cog):
             roblox_id=roblox_player.id
         )
 
-        if member and bot.environment != "CUSTOM":
+        if member:
             try:
                 discord_member = await guild.fetch_member(member.discord_id)
             except discord.NotFound:
@@ -366,8 +366,7 @@ class Search(commands.Cog):
                     for role in discord_member.roles
                     if role.id in magic_flags_reverse
                 )
-        elif member and bot.environment == "CUSTOM":
-            applied_flags.update(["ERM Staff"])
+
 
         applied_flags = list(applied_flags)
         if (
@@ -389,7 +388,7 @@ class Search(commands.Cog):
         embed_list[0].add_field(
             name="Player Information",
             value=(
-                f"> **Username:** {roblox_player.name}\n"
+                f"> **Username:** [{roblox_player.name}](https://www.roblox.com/users/{roblox_player.id}/profile)\n"
                 f"> **Display Name:** {roblox_player.display_name}\n"
                 f"> **User ID:** `{roblox_player.id}`\n"
                 f"> **Friend Count:** {await roblox_player.get_friend_count()}\n"
@@ -421,6 +420,13 @@ class Search(commands.Cog):
 
         def add_warning_field(warning):
             new_line = "\n"
+            until_epoch = None
+            try:
+                # someone messed up bad - 2026-04-25
+                until_epoch = warning.until_epoch
+            except KeyError:
+                until_epoch = None # don't raise
+            
             embed_list[-1].add_field(
                 name=f"{warning['Type']}",
                 inline=False,
@@ -428,7 +434,7 @@ class Search(commands.Cog):
                     f"> **Moderator:** <@{warning.moderator_id}>\n"
                     f"> **Reason:** {warning.reason}\n"
                     f"> **At:** <t:{int(warning.time_epoch)}>\n"
-                    f'{"> **Until:** <t:{}>{}".format(int(warning.until_epoch), new_line) if warning.until_epoch is not None else ""}'
+                    f'{"> **Until:** <t:{}>{}".format(int(until_epoch), new_line) if until_epoch is not None else ""}'
                     f"> **ID:** `{warning.snowflake}`"
                 ),
             )
@@ -441,7 +447,7 @@ class Search(commands.Cog):
                 embed_list.append(new_embed)
                 add_warning_field(warning)
 
-        thumbnails = await client.thumbnails.get_user_avatar_thumbnails(
+        thumbnails = await self.bot.roblox.thumbnails.get_user_avatar_thumbnails(
             [roblox_player], type=rbx_api.thumbnails.AvatarThumbnailType.headshot
         )
         thumbnail_url = thumbnails[0].image_url
@@ -498,10 +504,8 @@ class Search(commands.Cog):
                     color=BLANK_COLOR,
                 )
             )
-
-        client = roblox.Client()
-        roblox_player = await client.get_user_by_username(roblox_user["name"])
-        thumbnails = await client.thumbnails.get_user_avatar_thumbnails(
+        roblox_player = await self.bot.roblox.get_user_by_username(roblox_user["name"])
+        thumbnails = await self.bot.roblox.thumbnails.get_user_avatar_thumbnails(
             [roblox_player], type=rbx_api.thumbnails.AvatarThumbnailType.headshot
         )
         thumbnail = thumbnails[0].image_url
@@ -512,7 +516,7 @@ class Search(commands.Cog):
         embed.add_field(
             name="Player Information",
             value=(
-                f"> **Username:** {roblox_player.name}\n"
+                f"> **Username:** [{roblox_player.name}](https://www.roblox.com/users/{roblox_player.id}/profile)\n"
                 f"> **Display Name:** {roblox_player.display_name}\n"
                 f"> **User ID:** `{roblox_player.id}`\n"
                 f"> **Created At:** <t:{int(roblox_player.created.timestamp())}>"
