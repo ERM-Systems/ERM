@@ -84,12 +84,12 @@ class GameLogging(commands.Cog):
         permission_level = staff_requests.get("permission_level", 4)
         has_permission = True
         if permission_level == 3:
-            if not await admin_predicate(ctx):
+            if not await management_predicate(ctx):
                 has_permission = False
             else:
                 has_permission = True
         if permission_level == 2:
-            if not await management_predicate(ctx):
+            if not await admin_predicate(ctx):
                 has_permission = False
             else:
                 has_permission = True
@@ -102,7 +102,7 @@ class GameLogging(commands.Cog):
             return await ctx.send(
                 embed=discord.Embed(
                     title="Not Permitted",
-                    description=f"You are missing the **{ {1: 'Staff', 2: 'Management', 3: 'Admin'}.get(permission_level) }** permission to make a Staff Request.",
+                    description=f"You are missing the **{ {1: 'Staff', 2: 'Admin', 3: 'Management'}.get(permission_level) }** permission to make a Staff Request.",
                     color=BLANK_COLOR,
                 )
             )
@@ -320,7 +320,7 @@ class GameLogging(commands.Cog):
 
         try:
             duration = time_converter(duration)
-        except ValueError:
+        except (ValueError, OverflowError):
             return await ctx.send(
                 embed=discord.Embed(
                     title="Invalid Time",
@@ -440,7 +440,7 @@ class GameLogging(commands.Cog):
 
         try:
             duration = time_converter(duration)
-        except ValueError:
+        except (ValueError, OverflowError):
             return await prio_msg.edit(
                 embed=discord.Embed(
                     title="Invalid Time",

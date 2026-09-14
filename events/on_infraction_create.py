@@ -6,6 +6,11 @@ from utils.constants import BLANK_COLOR
 
 logger = logging.getLogger(__name__)
 
+INGAME_PERM_COMMANDS = {
+    "Server Administrator": "admin",
+    "Server Moderator": "mod",
+}
+
 
 class OnInfractionCreate(commands.Cog):
     def __init__(self, bot):
@@ -137,10 +142,16 @@ class OnInfractionCreate(commands.Cog):
 
             if infraction_config.get("notifications"):
                 await self._process_notifications(
-                    infraction_config["notifications"], guild, member, variables, infraction_doc
+                    infraction_config["notifications"],
+                    guild,
+                    member,
+                    variables,
+                    infraction_doc,
                 )
 
-            await self._process_additional_actions(infraction_config, guild, member)
+            await self._process_additional_actions(
+                infraction_config, guild, member, infraction_doc
+            )
 
         except Exception as e:
             logger.error(f"Error processing infraction: {e}")
@@ -199,7 +210,9 @@ class OnInfractionCreate(commands.Cog):
             except Exception as e:
                 logger.error(f"Failed to remove roles: {e}")
 
-    async def _process_notifications(self, notifications, guild, member, variables, infraction_doc):
+    async def _process_notifications(
+        self, notifications, guild, member, variables, infraction_doc
+    ):
         if notifications.get("dm", {}).get("enabled"):
             dm_config = notifications["dm"]
             try:
@@ -212,7 +225,9 @@ class OnInfractionCreate(commands.Cog):
             if channel_id := public_config.get("channel_id"):
                 if channel := guild.get_channel(int(channel_id)):
                     try:
-                        message_id = await self._send_notification(channel, public_config, variables)
+                        message_id = await self._send_notification(
+                            channel, public_config, variables
+                        )
                         if message_id:
                             await self.bot.db.infractions.update_one(
                                 {"_id": infraction_doc["_id"]},
@@ -227,40 +242,64 @@ class OnInfractionCreate(commands.Cog):
                         logger.error(f"Failed to send public notification: {e}")
 
     async def _send_notification(self, destination, config, variables):
-        if components := config.get("components"):
-            if isinstance(destination, (discord.Member, discord.User)):
-                destination = destination.dm_channel or await destination.create_dm()
-            j = {
-                "flags": 32768,
-                "components": self.replace_variables(components, variables),
-            }
-            data = await self.bot.http.send_message(
-                destination.id,
-                params=discord.http.MultipartParameters(
-                    payload=j, multipart=None, files=None
-                ),
-            )
-            return int(data["id"])
-
-        content = self.replace_variables(config.get("content", ""), variables)
+        payload = {
+            key: self.replace_variables(value, variables)
+            for key, value in config.items()
+            if key in ("content", "embeds", "components", "flags")
+        }
         if config.get("embed"):
-            embed = discord.Embed.from_dict(
-                self.replace_variables(config["embed"], variables)
+            payload.setdefault(
+                "embeds", [self.replace_variables(config["embed"], variables)]
             )
-            message = await destination.send(content=content or None, embed=embed)
-            return message.id
+        if payload.get("components"):
+            payload.setdefault("flags", 32768)
+        if not any(payload.get(key) for key in ("content", "embeds", "components")):
+            return None
 
-        return None
+        if isinstance(destination, (discord.Member, discord.User)):
+            if destination.bot:
+                return None
+            destination = destination.dm_channel or await destination.create_dm()
 
-    async def _process_additional_actions(self, config, guild, member):
+        data = await self.bot.http.send_message(
+            destination.id,
+            params=discord.http.MultipartParameters(
+                payload=payload, multipart=None, files=None
+            ),
+        )
+        return int(data["id"])
+
+    async def _process_additional_actions(self, config, guild, member, infraction_doc):
         if config.get("remove_ingame_perms", False):
             try:
                 roblox_id = await self.bot.linking.get_roblox_id(member.id)
                 if roblox_id:
-                    await self.bot.prc_api.run_command(guild.id, f":unmod {roblox_id}")
-                    await self.bot.prc_api.run_command(
-                        guild.id, f":unadmin {roblox_id}"
+                    staff = await self.bot.prc_api.get_server_staff(guild.id)
+                    permission = next(
+                        (
+                            player.permission
+                            for player in staff
+                            if str(player.id) == str(roblox_id)
+                        ),
+                        None,
                     )
+                    if permission in INGAME_PERM_COMMANDS:
+                        await self.bot.prc_api.run_command(
+                            guild.id, f":unmod {roblox_id}"
+                        )
+                        await self.bot.prc_api.run_command(
+                            guild.id, f":unadmin {roblox_id}"
+                        )
+                        await self.bot.db.infractions.update_one(
+                            {"_id": infraction_doc["_id"]},
+                            {
+                                "$set": {
+                                    "ingame_perms_removed": INGAME_PERM_COMMANDS[
+                                        permission
+                                    ]
+                                }
+                            },
+                        )
             except Exception as e:
                 logger.error(f"Failed to remove in-game permissions: {e}")
 
@@ -284,6 +323,14 @@ class OnInfractionCreate(commands.Cog):
                 update_data["roles_added"] = roles_added
             if roles_removed:
                 update_data["roles_removed"] = roles_removed
+            for key in (
+                "temp_roles_added",
+                "temp_roles_added_expiry",
+                "temp_roles_removed",
+                "temp_roles_removed_expiry",
+            ):
+                if key in infraction_doc:
+                    update_data[key] = infraction_doc[key]
 
             try:
                 await self.bot.db.infractions.update_one(

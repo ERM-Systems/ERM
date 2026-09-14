@@ -16,56 +16,62 @@ async def check_infractions(bot):
         initial_time = time.time()
 
         async for infraction in bot.db.infractions.find(
-            {"temp_roles_expire_at": {"$exists": True}}
+            {
+                "$or": [
+                    {"temp_roles_added_expiry": {"$lte": current_time}},
+                    {"temp_roles_removed_expiry": {"$lte": current_time}},
+                ]
+            }
         ):
-            if infraction["temp_roles_expire_at"] <= current_time:
-                try:
-                    guild = bot.get_guild(infraction["guild_id"])
-                    if not guild:
-                        continue
+            try:
+                guild = bot.get_guild(infraction["guild_id"])
+                if not guild:
+                    continue
 
-                    member = guild.get_member(infraction["user_id"])
-                    if not member:
-                        continue
+                member = guild.get_member(infraction["user_id"])
+                if not member:
+                    continue
 
-                    if infraction.get("temp_roles_added"):
-                        roles_to_remove = []
-                        for role_id in infraction["temp_roles_added"]:
-                            role = guild.get_role(int(role_id))
-                            if role:
-                                roles_to_remove.append(role)
-                        if roles_to_remove:
-                            await member.remove_roles(
-                                *roles_to_remove,
-                                reason="Temporary infraction role duration expired",
-                            )
+                unset = {}
 
-                    if infraction.get("temp_roles_removed"):
-                        roles_to_add = []
-                        for role_id in infraction["temp_roles_removed"]:
-                            role = guild.get_role(int(role_id))
-                            if role:
-                                roles_to_add.append(role)
-                        if roles_to_add:
-                            await member.add_roles(
-                                *roles_to_add,
-                                reason="Temporary infraction role removal expired",
-                            )
+                added_expiry = infraction.get("temp_roles_added_expiry")
+                if added_expiry is not None and added_expiry <= current_time:
+                    roles_to_remove = []
+                    for role_id in infraction.get("temp_roles_added", []):
+                        role = guild.get_role(int(role_id))
+                        if role:
+                            roles_to_remove.append(role)
+                    if roles_to_remove:
+                        await member.remove_roles(
+                            *roles_to_remove,
+                            reason="Temporary infraction role duration expired",
+                        )
+                    unset["temp_roles_added"] = ""
+                    unset["temp_roles_added_expiry"] = ""
 
+                removed_expiry = infraction.get("temp_roles_removed_expiry")
+                if removed_expiry is not None and removed_expiry <= current_time:
+                    roles_to_add = []
+                    for role_id in infraction.get("temp_roles_removed", []):
+                        role = guild.get_role(int(role_id))
+                        if role:
+                            roles_to_add.append(role)
+                    if roles_to_add:
+                        await member.add_roles(
+                            *roles_to_add,
+                            reason="Temporary infraction role removal expired",
+                        )
+                    unset["temp_roles_removed"] = ""
+                    unset["temp_roles_removed_expiry"] = ""
+
+                if unset:
                     await bot.db.infractions.update_one(
-                        {"_id": infraction["_id"]},
-                        {
-                            "$unset": {
-                                "temp_roles_expire_at": "",
-                                "temp_roles_added": "",
-                                "temp_roles_removed": "",
-                            }
-                        },
+                        {"_id": infraction["_id"]}, {"$unset": unset}
                     )
-                except Exception as e:
-                    logging.warning(
-                        f"Error processing temporary roles for infraction {infraction['_id']}: {str(e)}"
-                    )
+            except Exception as e:
+                logging.warning(
+                    f"Error processing temporary roles for infraction {infraction['_id']}: {str(e)}"
+                )
 
         cached_settings = {}
         async for infraction in bot.db.infractions.find(
@@ -123,49 +129,53 @@ async def check_infractions(bot):
                                 ),
                                 inline=False,
                             )
-                            await member.send(embed=embed)
-                        except discord.Forbidden:
+                            if not member.bot:
+                                await member.send(embed=embed)
+                        except discord.HTTPException:
                             logging.warning(
                                 f"Could not send DM to {member.id} about expired infraction"
                             )
 
-                        role_changes = infraction_type.get("role_changes", {})
-
-                        if role_changes.get("add", {}).get("roles"):
+                        if infraction.get("roles_added"):
                             roles_to_remove = []
-                            for role_id in role_changes["add"]["roles"]:
-                                role = guild.get_role(
-                                    int(role_id["$numberLong"])
-                                    if isinstance(role_id, dict)
-                                    else int(role_id)
-                                )
-                                if role:
+                            for role_id in infraction["roles_added"]:
+                                role = guild.get_role(int(role_id))
+                                if role and role in member.roles:
                                     roles_to_remove.append(role)
                             if roles_to_remove:
-                                await member.remove_roles(
-                                    *roles_to_remove, reason="Infraction expired"
-                                )
+                                try:
+                                    await member.remove_roles(
+                                        *roles_to_remove, reason="Infraction expired"
+                                    )
+                                except discord.HTTPException:
+                                    logging.warning(
+                                        f"Could not remove expired infraction roles from {member.id}"
+                                    )
 
-                        if role_changes.get("remove", {}).get("roles"):
+                        if infraction.get("roles_removed"):
                             roles_to_add = []
-                            for role_id in role_changes["remove"]["roles"]:
-                                role = guild.get_role(
-                                    int(role_id["$numberLong"])
-                                    if isinstance(role_id, dict)
-                                    else int(role_id)
-                                )
-                                if role:
+                            for role_id in infraction["roles_removed"]:
+                                role = guild.get_role(int(role_id))
+                                if role and role not in member.roles:
                                     roles_to_add.append(role)
                             if roles_to_add:
-                                await member.add_roles(
-                                    *roles_to_add, reason="Infraction expired"
-                                )
+                                try:
+                                    await member.add_roles(
+                                        *roles_to_add, reason="Infraction expired"
+                                    )
+                                except discord.HTTPException:
+                                    logging.warning(
+                                        f"Could not restore expired infraction roles for {member.id}"
+                                    )
 
-                        if infraction_type.get("remove_ingame_perms"):
+                        if infraction.get("ingame_perms_removed"):
                             try:
-                                await bot.prc_api.run_command(
-                                    guild_id, f":mod {infraction['user_id']}"
-                                )
+                                roblox_id = await bot.linking.get_roblox_id(member.id)
+                                if roblox_id:
+                                    await bot.prc_api.run_command(
+                                        guild_id,
+                                        f":{infraction['ingame_perms_removed']} {roblox_id}",
+                                    )
                             except Exception as e:
                                 logging.warning(
                                     f"Failed to restore in-game permissions: {str(e)}"

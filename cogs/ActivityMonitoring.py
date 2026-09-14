@@ -57,7 +57,7 @@ class ActivityMonitoring(commands.Cog):
 
         try:
             actual_conversion = time_converter(duration)
-        except ValueError:
+        except (ValueError, OverflowError):
             return await ctx.send(
                 embed=discord.Embed(
                     title="Invalid Time",
@@ -197,7 +197,7 @@ class ActivityMonitoring(commands.Cog):
                         value=(
                             f"> **Staff:** <@{item['user_id']}>\n"
                             f"> **Reason:** {item['reason']}\n"
-                            f"> **Shift Time:** {td_format(datetime.timedelta(seconds=find_shift_staff[0]))} {self.bot.emoji_controller.get_emoji('success') if seconds > find_shift_staff[1] else self.bot.emoji_controller.get_emoji('xmark')}\n"
+                            f"> **Shift Time:** {td_format(datetime.timedelta(seconds=find_shift_staff[0]))} {self.bot.emoji_controller.get_emoji('success') if find_shift_staff[0] > find_shift_staff[1] else self.bot.emoji_controller.get_emoji('xmark')}\n"
                             f"> **Started At:** <t:{int(item['start_epoch'])}>\n"
                             f"> **Ended At:** <t:{int(item['expiry'])}>"
                         ),
@@ -209,7 +209,7 @@ class ActivityMonitoring(commands.Cog):
                         value=(
                             f"> **Staff:** <@{item['user_id']}>\n"
                             f"> **Reason:** {item['reason']}\n"
-                            f"> **Shift Time:** {td_format(datetime.timedelta(seconds=0))} {self.bot.emoji_controller.get_emoji('success') if seconds > 0 else self.bot.emoji_controller.get_emoji('xmark')}\n"
+                            f"> **Shift Time:** {td_format(datetime.timedelta(seconds=0))} {self.bot.emoji_controller.get_emoji('success') if 0 > settings.get("shift_management").get("quota", 0) else self.bot.emoji_controller.get_emoji('xmark')}\n"
                             f"> **Started At:** <t:{int(item['start_epoch'])}>\n"
                             f"> **Ended At:** <t:{int(item['expiry'])}>"
                         ),

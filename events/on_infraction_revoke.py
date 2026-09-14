@@ -36,7 +36,6 @@ class OnInfractionRevoke(commands.Cog):
                                 *roles_to_add,
                                 reason="Infraction revoked - restoring removed roles",
                             )
-                            roles_modified = True
                         except discord.HTTPException as e:
                             logger.error(
                                 f"Failed to restore roles for {member.id}: {e}"
@@ -54,33 +53,21 @@ class OnInfractionRevoke(commands.Cog):
                                 *roles_to_remove,
                                 reason="Infraction revoked - removing added roles",
                             )
-                            roles_modified = True
                         except discord.HTTPException as e:
                             logger.error(
                                 f"Failed to remove added roles for {member.id}: {e}"
                             )
 
-                infraction_config = next(
-                    (
-                        inf
-                        for inf in settings["infractions"]["infractions"]
-                        if inf["name"] == infraction["type"]
-                    ),
-                    None,
-                )
-
-                if infraction_config and infraction_config.get(
-                    "remove_ingame_perms", False
-                ):
+                if infraction.get("ingame_perms_removed"):
                     try:
                         roblox_id = await self.bot.linking.get_roblox_id(
                             infraction["user_id"]
                         )
                         if roblox_id:
-                            if member:
-                                await self.bot.prc_api.run_command(
-                                    guild.id, f":mod {roblox_id}"
-                                )
+                            await self.bot.prc_api.run_command(
+                                guild.id,
+                                f":{infraction['ingame_perms_removed']} {roblox_id}",
+                            )
                     except Exception as e:
                         logger.error(f"Failed to restore in-game permissions: {e}")
 

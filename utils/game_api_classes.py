@@ -10,7 +10,9 @@ class ResponseFailure(Exception):
             setattr(self, key, value)
 
     def __repr__(self):
-        return f"{self.status_code}: {self.json_data}"
+        return f"{getattr(self, 'status_code', '?')}: {getattr(self, 'json_data', None)}"
+
+    __str__ = __repr__
 
 class ServerLinkNotFound(commands.CheckFailure):
     def __init__(self, platform: typing.Optional[str]):

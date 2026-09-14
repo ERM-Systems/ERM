@@ -32,7 +32,12 @@ from menus import (
 )
 from ui.MapleCounty import MapleCountyConfiguration
 from utils.paginators import CustomPage, SelectPagination
-from utils.utils import require_settings, generator, log_command_usage
+from utils.utils import (
+    require_settings,
+    generator,
+    log_command_usage,
+    generalised_interaction_check_failure,
+)
 
 
 class Configuration(commands.Cog):
@@ -70,7 +75,7 @@ class Configuration(commands.Cog):
                 view=(confirmation_view := YesNoColourMenu(ctx.author.id)),
             )
             timeout = await confirmation_view.wait()
-            if confirmation_view.value is False:
+            if confirmation_view.value is not True:
                 return await msg.edit(
                     embed=discord.Embed(
                         title="Successfully Cancelled",
@@ -176,7 +181,16 @@ class Configuration(commands.Cog):
         async def callback_override(interaction: discord.Interaction, *args, **kwargs):
             await interaction.response.defer()
 
-        basic_settings = discord.ui.View()
+        class SetupView(discord.ui.View):
+            async def interaction_check(
+                self, interaction: discord.Interaction, /
+            ) -> bool:
+                if interaction.user == ctx.author:
+                    return True
+                await generalised_interaction_check_failure(interaction.response)
+                return False
+
+        basic_settings = SetupView()
         next_button = NextView(bot, ctx.author.id).children[0]
         next_button.row = 4
         next_button.disabled = True
@@ -273,7 +287,7 @@ class Configuration(commands.Cog):
                             i.id for i in item.values
                         ]
 
-        loa_requests_settings = discord.ui.View()
+        loa_requests_settings = SetupView()
 
         loa_channel_view = ChannelSelect(ctx.author.id, limit=1)
         loa_channel_select = loa_channel_view.children[0]
@@ -352,7 +366,7 @@ class Configuration(commands.Cog):
                             item.values[0] == "enabled"
                         )
 
-        ra_requests_settings = discord.ui.View()
+        ra_requests_settings = SetupView()
 
         ra_channel_view = ChannelSelect(ctx.author.id, limit=1)
         ra_channel_select = ra_channel_view.children[0]
@@ -431,7 +445,7 @@ class Configuration(commands.Cog):
                             item.values[0] == "enabled"
                         )
 
-        punishment_settings = discord.ui.View()
+        punishment_settings = SetupView()
 
         next_view = NextView(bot, ctx.author.id)
         next_button = next_view.children[0]
@@ -474,7 +488,7 @@ class Configuration(commands.Cog):
                 title=f"{self.bot.emoji_controller.get_emoji('log')} ROBLOX Punishments",
                 description=(
                     "**What is the ROBLOX Punishments module?** The ROBLOX Punishments module allows for members of your Staff Team to log punishments against a ROBLOX player using ERM! You can specify custom types of punishments, where they will go, as well as manage and search individual punishments.\n\n"
-                    "**Enabled:** This setting toggles the ROBLOX Punishments module. When enabled, staff members will be able to use `/punish`, and management members will be able to additionally use `/punishment manage`.\n\n"
+                    "**Enabled:** This setting toggles the ROBLOX Punishments module. When enabled, staff members will be able to use `/punish` and `/punishment manage`.\n\n"
                     "**Punishments Channel:** This is where most punishments made with the ROBLOX Punishments go. Any logged actions of a ROBLOX player will go to this channel."
                 ),
                 color=blank_color,
@@ -502,7 +516,7 @@ class Configuration(commands.Cog):
                             modifications["punishments"] = {}
                         modifications["punishments"]["channel"] = item.values[0].id
 
-        shift_management_settings = discord.ui.View()
+        shift_management_settings = SetupView()
 
         shift_enabled_view = CustomSelectMenu(
             ctx.author.id,
@@ -534,7 +548,7 @@ class Configuration(commands.Cog):
         shift_role_select = shift_role_view.children[0]
         shift_role_select.row = 2
         shift_role_select.placeholder = "On-Duty Role"
-        shift_channel_select.min_values = 0
+        shift_role_select.min_values = 0
 
         next_menu = NextView(bot, ctx.author.id)
         next_button = next_menu.children[0]
@@ -1122,7 +1136,7 @@ class Configuration(commands.Cog):
                     title="ROBLOX Punishments",
                     description=(
                         "**What is the ROBLOX Punishments module?** The ROBLOX Punishments module allows for members of your Staff Team to log punishments against a ROBLOX player using ERM! You can specify custom types of punishments, where they will go, as well as manage and search individual punishments.\n\n"
-                        "**Enabled:** This setting toggles the ROBLOX Punishments module. When enabled, staff members will be able to use `/punish`, and management members will be able to additionally use `/punishment manage`.\n\n"
+                        "**Enabled:** This setting toggles the ROBLOX Punishments module. When enabled, staff members will be able to use `/punish` and `/punishment manage`.\n\n"
                         "**Punishments Channel:** This is where most punishments made with the ROBLOX Punishments go. Any logged actions of a ROBLOX player will go to this channel."
                     ),
                     color=blank_color,
@@ -1171,8 +1185,8 @@ class Configuration(commands.Cog):
                     description=(
                         "**What is the ER:LC Integration?** ER:LC Integration allows for ERM to communicate with the Police Roleplay Community APIs, and your Emergency Response: Liberty County server. In particular, these configurations allow for Join Logs, Leave Logs, and Kill Logs to be logged.\n\n"
                         "**Elevation Required:** This setting dictates whether elevated permissions are required to run commands such as `:admin` and `:unadmin`. In such case where this is enabled, Co-Owner permissions are required to run these commands to prevent security risk. If disabled, those with the Management Roles in your server can run these commands. **It is advised you keep this enabled unless you have a valid reason to turn it off.** Contact ERM Support if you are unsure what this setting does.\n\n"
-                        "**Player Logs Channel:** This channel is where Player Join and Leave logs will be sent by ERM. ERM will check your server every 45 seconds to see if new members have joined or left, and report of their time accordingly.\n\n"
-                        "**Kill Logs Channel:** This setting is where Kill Logs will be sent by ERM. ERM will check your server every 45 seconds and constantly contact your ER:LC private server to know if there are any new kill logs. If there are, to log them in the corresponding channel."
+                        "**Player Logs Channel:** This channel is where Player Join and Leave logs will be sent by ERM. ERM will check your server every 5 minutes to see if new members have joined or left, and report of their time accordingly.\n\n"
+                        "**Kill Logs Channel:** This setting is where Kill Logs will be sent by ERM. ERM will check your server every 5 minutes and constantly contact your ER:LC private server to know if there are any new kill logs. If there are, to log them in the corresponding channel."
                     ),
                 ),
                 discord.Embed(

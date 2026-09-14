@@ -105,6 +105,22 @@ class Player(BaseDataClass):
     ] = None  # This doesn't return when we query for queue, so we type for optional.
     callsign: str | None = None
     team: str | None = None
+    location: dict | None = None
+
+
+def _read_location(raw) -> dict | None:
+    if not isinstance(raw, dict):
+        return None
+
+    try:
+        return {
+            "x": float(raw["LocationX"]),
+            "z": float(raw["LocationZ"]),
+            "postal": str(raw.get("PostalCode") or ""),
+            "street": str(raw.get("StreetName") or ""),
+        }
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 class ModCall(BaseDataClass):
@@ -147,7 +163,7 @@ class PRCApiClient:
     async def get_server_key(self, guild_id: int) -> ServerKey:
         return await self.bot.server_keys.get_server_key(
             guild_id
-        )
+        ) 
 
     async def _send_api_request(
         self,
@@ -419,6 +435,7 @@ class PRCApiClient:
                         permission=item["Permission"],
                         callsign=item.get("Callsign"),
                         team=item["Team"],
+                        location=_read_location(item.get("Location")),
                     )
                 )
             return new_list

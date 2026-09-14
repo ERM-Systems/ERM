@@ -1,19 +1,5 @@
-import asyncio
 from utils.prc_api import Player, ResponseFailure
 from discord.ext import commands
-
-def run_coroutine_in_loop(coro):
-    loop = asyncio.get_running_loop()
-    fut = loop.create_future()
-
-    def wrapper():
-        asyncio.ensure_future(coro).add_done_callback(
-            lambda task: fut.set_result(task.result())
-        )
-
-    loop.call_soon(wrapper)
-    return fut
-
 
 """
 Condition Variables
@@ -46,7 +32,7 @@ def function_argument_count(func):
 
 
 def argument_names(func):
-    return func.__code__.co_varnames
+    return func.__code__.co_varnames[: func.__code__.co_argcount]
 
 
 """
@@ -60,6 +46,7 @@ async def get_queue(api_client, guild_id):
         queue = await api_client.get_server_queue(guild_id)
     except:  # this can end up not being implemented in MC API client; so just hope and pray ig
         queue = []
+    return queue
 
 
 async def online_shifts(bot, guild_id):
@@ -109,6 +96,10 @@ def count_erlc_owners(players: list[Player]):
     )
 
 
+def count_erlc_staff(players: list[Player]):
+    return len(list(filter(lambda x: x.permission != "Normal", players)))
+
+
 def count_erlc_queue(
     queue: list[Player],
 ):  # this one isnt supported for maple county yet
@@ -148,7 +139,23 @@ def x_ingame(players: list[Player], player: str):
 
 
 def filter_online(shifts: list):
-    return len(list(filter))
+    return len(
+        [
+            shift
+            for shift in shifts
+            if (shift.get("Breaks") or [{}])[-1].get("EndEpoch", 1) != 0
+        ]
+    )
+
+
+def count_on_break(shifts: list):
+    return len(
+        [
+            shift
+            for shift in shifts
+            if (shift.get("Breaks") or [{}])[-1].get("EndEpoch", 1) == 0
+        ]
+    )
 
 
 """
@@ -195,6 +202,7 @@ variable_table = [
     "ERLC_Moderators",
     "ERLC_Admins",
     "ERLC_Owner",
+    "ERLC_Owners",
     "ERLC_Staff",
     "ERLC_Queue",  # this doesnt work for maple county :(
     "ERLC_Police",
@@ -213,7 +221,9 @@ value_finder_table = {
     "ERLC_Players": count_erlc_players,
     "ERLC_Moderators": count_erlc_moderators,
     "ERLC_Admins": count_erlc_admins,
+    "ERLC_Owner": count_erlc_owners,
     "ERLC_Owners": count_erlc_owners,
+    "ERLC_Staff": count_erlc_staff,
     "ERLC_Queue": count_erlc_queue,
     "ERLC_X_InGame": x_ingame,
     "ERLC_Police": count_erlc_police,
@@ -223,6 +233,8 @@ value_finder_table = {
     "ERLC_Civilian": count_erlc_civilian,
     "ERLC_Jail": count_erlc_jail,
     "ERLC_Vehicles": count_erlc_vehicles,
+    "OnDuty": filter_online,
+    "OnBreak": count_on_break,
 }
 
 
@@ -235,22 +247,6 @@ def separate_arguments(condition):
     return condition.split(" ")[0], condition.split(" ")[1:]  # ERLC_XInGame i_iMikey
 
 
-async def handle_value(value, futures) -> int:
-    condition, args = separate_arguments(value)
-    if condition not in variable_table:
-        return value  # this means we're comparing a raw constant
-    else:
-        func, func_args = determine_func_info(condition)
-        submitted_arguments = []
-        for item in func_args:
-            submitted_arguments.append(futures[item.lower()]())
-
-        if len(func_args) > 1:
-            return func(*submitted_arguments, *args)
-        else:
-            return func(*submitted_arguments)
-
-
 def determine_func_info(cond):
     func = value_finder_table[cond]
     return func, argument_names(func)
@@ -258,9 +254,9 @@ def determine_func_info(cond):
 
 async def fetch_predetermined_futures(bot: commands.Bot, guild_id, condition, value, api_client=None):
     return { # these have been turned to futures for asynchronous reasons
-        "queue": lambda: run_coroutine_in_loop(get_queue(api_client, guild_id)),
-        "shifts": lambda: run_coroutine_in_loop(online_shifts(bot, guild_id)),
-        "vehicles": lambda: run_coroutine_in_loop(get_vehicles(api_client, guild_id)),
+        "queue": lambda: get_queue(api_client, guild_id),
+        "shifts": lambda: online_shifts(bot, guild_id),
+        "vehicles": lambda: get_vehicles(api_client, guild_id),
         "bot": lambda: bot,
         "guild_id": lambda: guild_id,
         "condition": lambda: condition,

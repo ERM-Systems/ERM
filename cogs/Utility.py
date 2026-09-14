@@ -33,7 +33,7 @@ class Utility(commands.Cog):
         description="Import data that may not be present in your server's database.",
         extras={"category": "Utility"},
     )
-    @is_staff()
+    @is_management()
     async def import_group(self, ctx: commands.Context):
         pass
 
@@ -174,6 +174,9 @@ class Utility(commands.Cog):
             shift["EndEpoch"] = int(other_field.value.split("<t:")[2].split(">")[0])
             shift["Breaks"] = []
 
+            if await self.bot.shift_management.shifts.db.find_one({"UserID": shift["UserID"], "Guild": shift["Guild"], "StartEpoch": shift["StartEpoch"], "EndEpoch": shift["EndEpoch"]}):
+                continue
+
             await self.bot.shift_management.shifts.db.insert_one(shift)
             success += 1
 
@@ -312,7 +315,7 @@ class Utility(commands.Cog):
         view = discord.ui.Container()
         section = discord.ui.Section(
             accessory=discord.ui.Thumbnail(
-                media=(ctx.guild.icon or self.bot.user.display_avatar).with_format("png").url
+                media=((ctx.guild.icon if ctx.guild else None) or self.bot.user.display_avatar).with_format("png").url
             )
         )
 

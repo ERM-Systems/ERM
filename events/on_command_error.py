@@ -13,7 +13,7 @@ from sentry_sdk import capture_exception, push_scope
 from aiohttp import ClientConnectorSSLError
 from decouple import config
 from utils.constants import BLANK_COLOR, RED_COLOR
-from utils.utils import error_gen, GuildCheckFailure
+from utils.utils import error_gen, GuildCheckFailure, AccountTerminatedFailure
 from utils.game_api_classes import ServerLinkNotFound, ResponseFailure
 
 
@@ -86,8 +86,8 @@ class OnCommandError(commands.Cog):
                         description=(
                             "Your server seems to be offline. If this is incorrect, PRC's API may be down."
                             if error.status_code == 422
-                            else "There seems to be issues with the PRC API. Stand by and wait a few minutes before trying again."
-                            "If this error reoccurs even when the conditions are met, please open a ticket and send this error ID: `error_id`"
+                            else "There seems to be issues with the PRC API. Stand by and wait a few minutes before trying again. "
+                            f"If this error reoccurs even when the conditions are met, please open a ticket and send this error ID: `{error_id}`"
                         ),
                         color=BLANK_COLOR,
                     )
@@ -226,6 +226,20 @@ class OnCommandError(commands.Cog):
 
                     capture_exception(error)
             return
+
+        if isinstance(error, AccountTerminatedFailure):
+            return (
+                await ctx.send(
+                    embed=discord.Embed(
+                        title="Account Terminated",
+                        description="Your account has been terminated from ERM for violating ERM's Terms of Service. If you think this is incorrect, contact us at https://discord.gg/Qm8tEYr7at.",
+                        color=BLANK_COLOR,
+                    ),
+                    ephemeral=True,
+                )
+                if not do_not_send
+                else None
+            )
 
         if isinstance(error, commands.CheckFailure):
             return (

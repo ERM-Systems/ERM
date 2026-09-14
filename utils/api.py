@@ -26,6 +26,7 @@ from decouple import config
 import copy
 from menus import LOAMenu
 from utils.utils import create_session_vote, end_session, start_session
+from utils.verification import post_message as post_verification_message
 from utils.constants import BLANK_COLOR, GREEN_COLOR
 from utils.utils import get_elapsed_time, secure_logging, staff_rank
 from pydantic import BaseModel
@@ -119,6 +120,9 @@ class APIRoutes:
         return data
 
     async def _send_notification(self, destination, config, variables):
+        if isinstance(destination, (discord.Member, discord.User)) and destination.bot:
+            return
+
         if components := config.get("components"):
             if isinstance(destination, (discord.Member, discord.User)):
                 destination = destination.dm_channel or await destination.create_dm()
@@ -135,10 +139,12 @@ class APIRoutes:
             return
 
         content = self.replace_variables(config.get("content", ""), variables)
-        if config.get("embed"):
-            embed = discord.Embed.from_dict(
-                self.replace_variables(config["embed"], variables)
-            )
+        embed = (
+            discord.Embed.from_dict(self.replace_variables(config["embed"], variables))
+            if config.get("embed")
+            else None
+        )
+        if content or embed:
             await destination.send(content=content or None, embed=embed)
 
     def GET_status(self):
@@ -546,6 +552,9 @@ class APIRoutes:
         if not guild:
             raise HTTPException(status_code=404, detail="That server was not found.")
 
+        if json_data.get("support_access") is True:
+            return guild_id, user_id, json_data
+
         try:
             member = guild.get_member(user_id) or await guild.fetch_member(user_id)
         except discord.HTTPException:
@@ -600,6 +609,32 @@ class APIRoutes:
 
         return {"op": 1, "code": 200, "channel_id": str(channel_id)}
 
+    async def POST_send_verification_message(
+        self, authorization: Annotated[str | None, Header()], request: Request
+    ):
+        if not authorization:
+            raise HTTPException(status_code=401, detail="Invalid authorization")
+
+        if not await validate_authorization(self.bot, authorization):
+            raise HTTPException(status_code=401, detail="Invalid or expired authorization.")
+
+        json_data = await request.json()
+        try:
+            guild_id = int(json_data["guild_id"])
+        except (KeyError, TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="That server ID is not valid.")
+
+        guild = self.bot.get_guild(guild_id)
+        if not guild:
+            raise HTTPException(status_code=404, detail="ERM is not in that server.")
+
+        try:
+            channel_id = await post_verification_message(self.bot, guild)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error))
+
+        return {"op": 1, "code": 200, "channel_id": str(channel_id)}
+
     async def POST_send_priority_dm(
         self, authorization: Annotated[str | None, Header()], request: Request
     ):
@@ -631,7 +666,7 @@ class APIRoutes:
                 color=GREEN_COLOR,
             ).add_field(
                 name="Priority Information",
-                value=f"> **Reason:** {json_data['reason']}\n> **Time:** {td_format(datetime.timedelta(seconds=int(json_data['priority_time'])))}",
+                value=f"> **Reason:** {json_data['reason']}\n> **Time:** {td_format(datetime.timedelta(minutes=int(json_data['priority_time'])))}",
                 inline=False,
             )
         else:
@@ -695,7 +730,7 @@ class APIRoutes:
         priority_settings = await self.bot.priority_settings.db.find_one(
             {"guild_id": str(channel.guild.id)}
         )
-        mentioned_roles = priority_settings["mentioned_roles"]
+        mentioned_roles = (priority_settings or {}).get("mentioned_roles") or []
         content = ", ".join([f"<@&{role}>" for role in mentioned_roles])
         try:
             await channel.send(
@@ -1026,29 +1061,12 @@ class APIRoutes:
         if not authorization:
             raise HTTPException(status_code=401, detail="Invalid authorization")
 
-        token_obj = await self.bot.api_tokens.db.find_one({"token": authorization})
-
-        if not token_obj or not token_obj.get("link_string"):
-            raise HTTPException(status_code=401, detail="Invalid authorization")
-
-        if int(datetime.datetime.now().timestamp()) > token_obj["expires_at"]:
-            raise HTTPException(status_code=401, detail="Invalid authorization")
-
-        link_string_obj = await self.bot.link_strings.db.find_one(
-            {"_id": token_obj["link_string"]}
-        )
-
-        if not link_string_obj:
-            raise HTTPException(status_code=401, detail="Invalid link string")
-
-        guild = self.bot.get_guild(link_string_obj["guild"])
-
-        if not guild:
-            raise HTTPException(status_code=404, detail="Guild not found")
-
-        settings = await self.bot.settings.find_by_id(guild.id)
-        if not settings:
-            raise HTTPException(status_code=404, detail="Guild is not configured")
+        if not await validate_authorization(
+            self.bot, authorization, disable_dynamic_tokens=True
+        ):
+            raise HTTPException(
+                status_code=401, detail="Invalid or expired authorization."
+            )
 
         try:
             json_data = await request.json()
@@ -1061,6 +1079,18 @@ class APIRoutes:
             raise HTTPException(
                 status_code=400, detail="Invalid data format: expected an object"
             )
+
+        try:
+            guild = self.bot.get_guild(int(json_data.get("guild_id")))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Invalid guild_id")
+
+        if not guild:
+            raise HTTPException(status_code=404, detail="Guild not found")
+
+        settings = await self.bot.settings.find_by_id(guild.id)
+        if not settings:
+            raise HTTPException(status_code=404, detail="Guild is not configured")
 
         executed = await execute_ingame_command(
             self.bot,
@@ -1118,9 +1148,9 @@ class APIRoutes:
 
                     permission_level = 0
                     if await management_check(self.bot, guild, user):
-                        permission_level = 2
-                    elif await admin_check(self.bot, guild, user):
                         permission_level = 3
+                    elif await admin_check(self.bot, guild, user):
+                        permission_level = 2
                     elif await staff_check(self.bot, guild, user):
                         permission_level = 1
                         
@@ -1182,9 +1212,9 @@ class APIRoutes:
 
         permission_level = 0
         if await management_check(self.bot, guild, user):
-            permission_level = 2
-        elif await admin_check(self.bot, guild, user):
             permission_level = 3
+        elif await admin_check(self.bot, guild, user):
+            permission_level = 2
         elif await staff_check(self.bot, guild, user):
             permission_level = 1
 
@@ -1964,7 +1994,8 @@ class APIRoutes:
                 issuer = await guild.fetch_member(issuer_id)
                 issuer_username = issuer.name
             except:
-                issuer_username = "Unknown Issuer"
+                issuer = self.bot.get_user(int(issuer_id or 0))
+                issuer_username = issuer.name if issuer else "Unknown Issuer"
 
             will_escalate = False
             existing_count = 0
@@ -2059,9 +2090,12 @@ class APIRoutes:
             if not infraction_id:
                 raise HTTPException(status_code=400, detail="Missing infraction_id")
 
-            infraction = await self.bot.db.infractions.find_one(
-                {"_id": ObjectId(infraction_id)}
-            )
+            guild_id = json_data.get("guild_id")
+            if guild_id is None:
+                raise HTTPException(status_code=400, detail="Missing guild_id")
+            query = {"_id": ObjectId(infraction_id), "guild_id": int(guild_id)}
+
+            infraction = await self.bot.db.infractions.find_one(query)
             if not infraction:
                 raise HTTPException(status_code=404, detail="Infraction not found")
 
@@ -2070,7 +2104,7 @@ class APIRoutes:
 
             # Update the infraction
             await self.bot.db.infractions.update_one(
-                {"_id": ObjectId(infraction_id)},
+                query,
                 {
                     "$set": {
                         "revoked": True,
@@ -2089,6 +2123,8 @@ class APIRoutes:
 
             return {"status": "success", "infraction_id": infraction_id}
 
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Error revoking infraction: {str(e)}")
             raise HTTPException(
