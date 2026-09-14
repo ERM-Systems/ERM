@@ -1,5 +1,6 @@
 import datetime
 import asyncio
+import logging
 from collections import defaultdict
 
 import discord
@@ -66,27 +67,37 @@ async def check_loa(bot):
                 if not settings:
                     continue
 
-                roles = [None]
-                if "loa_role" in settings.get("staff_management", {}):
-                    try:
-                        loa_role_config = settings["staff_management"]["loa_role"]
-                        if isinstance(loa_role_config, int):
-                            role = guild.get_role(loa_role_config)
-                            roles = [role] if role else [None]
-                        elif isinstance(loa_role_config, list):
-                            roles = [
-                                guild.get_role(role_id) for role_id in loa_role_config
-                            ]
-                            roles = [r for r in roles if r is not None]
-                    except KeyError:
-                        pass
+                roles_by_type = {}
+                for notice_type in ("loa", "ra"):
+                    role_config = settings.get("staff_management", {}).get(
+                        f"{notice_type}_role"
+                    )
+                    if isinstance(role_config, int):
+                        role = guild.get_role(role_config)
+                        roles_by_type[notice_type] = [role] if role else []
+                    elif isinstance(role_config, list):
+                        roles_by_type[notice_type] = [
+                            role
+                            for role in (
+                                guild.get_role(role_id) for role_id in role_config
+                            )
+                            if role is not None
+                        ]
+                    else:
+                        roles_by_type[notice_type] = []
 
                 batch_size = 5
                 for i in range(0, len(loas), batch_size):
                     batch = loas[i : i + batch_size]
                     await asyncio.gather(
                         *[
-                            process_loa(bot, guild, loa, settings, roles)
+                            process_loa(
+                                bot,
+                                guild,
+                                loa,
+                                settings,
+                                roles_by_type.get(loa["type"].lower(), []),
+                            )
                             for loa in batch
                         ],
                         return_exceptions=True,

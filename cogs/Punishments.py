@@ -190,15 +190,6 @@ class Punishments(commands.Cog):
                 )
             )
 
-        if type.lower() in ["tempban", "temporary ban"]:
-            return await ctx.send(
-                embed=discord.Embed(
-                    title="Not Supported",
-                    description="Temporary Bans are not supported.",
-                    color=BLANK_COLOR,
-                )
-            )
-
         oid = await self.bot.punishments.insert_warning(
             ctx.author.id,
             ctx.author.name,
@@ -385,10 +376,10 @@ class Punishments(commands.Cog):
 
             for item in filtered:
 
-                if len(embeds[-1].fields) > 15:
+                if len(embeds[-1].fields) >= 15:
                     embeds[-1].add_field(
                         name="Limitation",
-                        value="You cannot have more than 15 custom punishment types.",
+                        value="Only the first 15 custom punishment types are shown here.",
                         inline=False,
                     )
                     break
@@ -895,13 +886,22 @@ class Punishments(commands.Cog):
     @is_staff()
     @require_settings()
     @app_commands.describe(
-        timeframe="The timeframe to view the leaderboard for (e.g. '1d', '1w', '1m'). Leave blank for all time.",
+        timeframe="The timeframe to view the leaderboard for (e.g. '1d', '1w', '4w'). Leave blank for all time.",
         role="Filter the leaderboard to only show members with this role.",
     )
     async def punishment_leaderboard(self, ctx: commands.Context, role: typing.Optional[discord.Role] = None, timeframe: typing.Optional[str] = None):
         gt_time = 0
         if timeframe not in ["", None, " ", "all", "total"]:
-            gt_time = int(datetime.datetime.now().timestamp()) - time_converter(timeframe)
+            try:
+                gt_time = int(datetime.datetime.now().timestamp()) - time_converter(timeframe)
+            except (ValueError, OverflowError):
+                return await ctx.send(
+                    embed=discord.Embed(
+                        title="Invalid Time",
+                        description="This time format is not accepted by ERM. Please seek the documentation for details",
+                        color=BLANK_COLOR,
+                    )
+                )
 
         title = "Punishment Leaderboard"
         if role:
@@ -1003,7 +1003,7 @@ class Punishments(commands.Cog):
 
         try:
             amount = time_converter(time)
-        except ValueError:
+        except (ValueError, OverflowError):
             return await ctx.send(
                 embed=discord.Embed(
                     title="Invalid Time",
@@ -1091,7 +1091,16 @@ class Punishments(commands.Cog):
         gt_time = 0
         timeframe_label = "All Time"
         if timeframe and timeframe.lower() not in ["all", "total"]:
-            gt_time = int(datetime.datetime.now().timestamp()) - time_converter(timeframe)
+            try:
+                gt_time = int(datetime.datetime.now().timestamp()) - time_converter(timeframe)
+            except (ValueError, OverflowError):
+                return await ctx.send(
+                    embed=discord.Embed(
+                        title="Invalid Time",
+                        description="This time format is not accepted by ERM. Please seek the documentation for details",
+                        color=BLANK_COLOR,
+                    )
+                )
             timeframe_label = f"Last {timeframe}"
 
         now = int(datetime.datetime.now().timestamp())
@@ -1209,7 +1218,16 @@ class Punishments(commands.Cog):
         gt_time = 0
         timeframe_label = "All Time"
         if timeframe and timeframe.lower() not in ["all", "total"]:
-            gt_time = int(datetime.datetime.now().timestamp()) - time_converter(timeframe)
+            try:
+                gt_time = int(datetime.datetime.now().timestamp()) - time_converter(timeframe)
+            except (ValueError, OverflowError):
+                return await ctx.send(
+                    embed=discord.Embed(
+                        title="Invalid Time",
+                        description="This time format is not accepted by ERM. Please seek the documentation for details",
+                        color=BLANK_COLOR,
+                    )
+                )
             timeframe_label = f"Last {timeframe}"
 
         pipeline = [
@@ -1306,7 +1324,16 @@ class Punishments(commands.Cog):
         gt_time = 0
         timeframe_label = "All Time"
         if timeframe and timeframe.lower() not in ["all", "total"]:
-            gt_time = int(datetime.datetime.now().timestamp()) - time_converter(timeframe)
+            try:
+                gt_time = int(datetime.datetime.now().timestamp()) - time_converter(timeframe)
+            except (ValueError, OverflowError):
+                return await ctx.send(
+                    embed=discord.Embed(
+                        title="Invalid Time",
+                        description="This time format is not accepted by ERM. Please seek the documentation for details",
+                        color=BLANK_COLOR,
+                    )
+                )
             timeframe_label = f"Last {timeframe}"
 
         roblox_user = await get_roblox_by_username(user, self.bot, ctx)
@@ -1437,7 +1464,16 @@ class Punishments(commands.Cog):
         gt_time = 0
         timeframe_label = "All Time"
         if timeframe and timeframe.lower() not in ["all", "total"]:
-            gt_time = int(datetime.datetime.now().timestamp()) - time_converter(timeframe)
+            try:
+                gt_time = int(datetime.datetime.now().timestamp()) - time_converter(timeframe)
+            except (ValueError, OverflowError):
+                return await ctx.send(
+                    embed=discord.Embed(
+                        title="Invalid Time",
+                        description="This time format is not accepted by ERM. Please seek the documentation for details",
+                        color=BLANK_COLOR,
+                    )
+                )
             timeframe_label = f"Last {timeframe}"
 
         match_filter = {"Guild": ctx.guild.id, "Epoch": {"$gte": gt_time}}

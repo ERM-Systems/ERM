@@ -9,6 +9,9 @@ from ui.CustomModals import CustomModalButton
 from ui.Sessions import SessionsEmbedCreationView
 from ui.Selects import SimpleTextChannelSelect
 from utils.utils import create_session_vote, end_session, send_session_boost, staff_check, start_session
+from utils.session_schedule import normalise_type, parse_schedule_time
+from utils.autocompletes import area_of_play_autocomplete
+from bson import ObjectId
 import utils.prc_api as prc_api
 import matplotlib.pyplot as plt
 import matplotlib
@@ -56,7 +59,8 @@ class Sessions(commands.Cog):
         guild = interaction.guild
         settings = await self.bot.settings.find(guild.id)
         if not settings: return
-        view = discord.ui.View.from_message(interaction.message, timeout=None)
+        view_cls = discord.ui.LayoutView if interaction.message.flags.value & (1 << 15) else discord.ui.View
+        view = view_cls.from_message(interaction.message, timeout=None)
         session = await self.bot.sessions.find(guild.id)
         if not session:
             return
@@ -107,7 +111,6 @@ class Sessions(commands.Cog):
             await self.bot.sessions.update(session)
             return
         elif id == "view_votes_button":
-            print("e")
             cont = discord.ui.Container(
                 discord.ui.TextDisplay(
                     "### Voters\n"
@@ -132,17 +135,65 @@ class Sessions(commands.Cog):
             return await ctx.reply(embed=discord.Embed(title = "Session", description=str(error)))
         return await (ctx.reply if not ctx.interaction else ctx.interaction.followup.send)(embed=discord.Embed(title = f"{self.bot.emoji_controller.get_emoji("success")} Successfully posted session vote message", description=f"You can find it at <#{channel_id}>", colour=discord.Colour.green()), ephemeral=True)
     
+    @session.command(name = "schedule", description="Schedule a session for later")
+    @require_settings(["sessions"])
+    @is_admin()
+    @app_commands.describe(time="When to run it, as a duration like 30m or a unix timestamp", type="Whether to start the session or post a vote", required_votes="The votes required, for a vote")
+    async def _schedule(self, ctx: commands.Context, time: str, type: str = "start", required_votes: int | None = None):
+        now = int(datetime.datetime.now(tz=datetime.timezone.utc).timestamp())
+
+        try:
+            moment = parse_schedule_time(time, now)
+        except (ValueError, OverflowError) as error:
+            return await ctx.reply(embed=discord.Embed(title = "Session", description=str(error)))
+
+        kind = normalise_type(type)
+        await self.bot.scheduled_sessions.insert({
+            "_id": ObjectId(),
+            "guild": ctx.guild.id,
+            "scheduled_for": moment,
+            "created_by": ctx.author.id,
+            "type": kind,
+            "required_votes": required_votes,
+            "posted": False,
+        })
+
+        wording = "post a vote" if kind == "vote" else "start"
+        return await (ctx.reply if not ctx.interaction else ctx.interaction.followup.send)(embed=discord.Embed(title = f"{self.bot.emoji_controller.get_emoji("success")} Scheduled", description=f"ERM will {wording} <t:{moment}:R>.", colour=discord.Colour.green()), ephemeral=True)
+
+    @session.command(name = "scheduled", description="See the sessions waiting to run")
+    @require_settings(["sessions"])
+    @is_admin()
+    async def _scheduled(self, ctx: commands.Context):
+        documents = await self.bot.scheduled_sessions.upcoming(ctx.guild.id)
+        if not documents:
+            return await ctx.reply(embed=discord.Embed(title = "Scheduled Sessions", description="Nothing is scheduled."))
+
+        lines = [f"> `{document["_id"]}`, <t:{int(document["scheduled_for"])}:F>, {"vote" if document.get("type") == "vote" else "start"}, by <@{document.get("created_by")}>" for document in documents]
+        return await ctx.reply(embed=discord.Embed(title = "Scheduled Sessions", description="\n".join(lines)))
+
+    @session.command(name = "cancel", description="Cancel a scheduled session")
+    @require_settings(["sessions"])
+    @is_admin()
+    @app_commands.describe(id="The identifier shown by /session scheduled")
+    async def _cancel(self, ctx: commands.Context, id: str):
+        if not ObjectId.is_valid(id) or not await self.bot.scheduled_sessions.cancel(ctx.guild.id, ObjectId(id)):
+            return await ctx.reply(embed=discord.Embed(title = "Session", description="There is no scheduled session with that identifier."))
+        return await (ctx.reply if not ctx.interaction else ctx.interaction.followup.send)(embed=discord.Embed(title = f"{self.bot.emoji_controller.get_emoji("success")} Successfully cancelled the scheduled session", description="ERM will no longer run it.", colour=discord.Colour.green()), ephemeral=True)
+
     @session.command(name = "start", description="Start a session")
     @require_settings(["sessions"])
     @is_admin()
-    async def _start(self, ctx: commands.Context):
+    @app_commands.describe(area="The area of play this session runs in, if it isn't the default one")
+    @app_commands.autocomplete(area=area_of_play_autocomplete)
+    async def _start(self, ctx: commands.Context, area: str | None = None):
         try:
-            channel_id = await start_session(self.bot, ctx.guild.id, ctx.author.id)
+            channel_id = await start_session(self.bot, ctx.guild.id, ctx.author.id, area)
         except ValueError as error:
             return await ctx.reply(embed=discord.Embed(title = "Session", description=str(error)))
         description = f"You can find it at <#{channel_id}>" if channel_id else "Nothing was sent because the sessions channel isn't configured."
         return await (ctx.reply if not ctx.interaction else ctx.interaction.followup.send)(embed=discord.Embed(title = f"{self.bot.emoji_controller.get_emoji("success")} Successfully started the session", description=description, colour=discord.Colour.green()), ephemeral=True)
-
+    
     @session.command(name = "end", description="End a session")
     @require_settings(["sessions"])
     @is_admin()
@@ -180,6 +231,8 @@ class Sessions(commands.Cog):
         except ValueError as error:
             return await ctx.reply(embed=discord.Embed(title = "Session", description=str(error)))
         return await (ctx.reply if not ctx.interaction else ctx.interaction.followup.send)(embed=discord.Embed(title = f"{self.bot.emoji_controller.get_emoji("success")} Successfully posted the boost message", description=f"You can find it at <#{channel_id}>", colour=discord.Colour.green()), ephemeral=True)
+
+        
     @session.command(name = "info", description="View analytics about your session")
     @require_settings(["sessions"])
     @is_erlc_server_linked()

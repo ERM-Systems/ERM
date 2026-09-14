@@ -271,6 +271,21 @@ async def user_autocomplete(
         )
     return choices
 
+async def area_of_play_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> typing.List[app_commands.Choice[str]]:
+    if not interaction.guild:
+        return []
+
+    settings = await interaction.client.settings.find_by_id(interaction.guild.id)
+    regions = ((settings or {}).get("area_of_play") or {}).get("regions") or []
+
+    return [
+        app_commands.Choice(name=region["name"], value=region["id"])
+        for region in regions
+        if region.get("id") and region.get("name") and current.lower() in region["name"].lower()
+    ][:25]
+
 async def infraction_type_autocomplete(
     interaction: discord.Interaction, current: str
 ) -> typing.List[app_commands.Choice[str]]:

@@ -11,8 +11,6 @@ from utils.constants import BLANK_COLOR
 import aiohttp
 from decouple import config
 
-from utils.utils import has_whitelabel
-
 ALLOWED_MENTIONS = discord.AllowedMentions(
     replied_user=True,
     everyone=True,
@@ -98,10 +96,6 @@ async def process_reminder(bot, guild, item, guild_obj):
         color=BLANK_COLOR,
     )
 
-    # Update last triggered time
-    item["lastTriggered"] = datetime.datetime.now(tz=pytz.UTC).timestamp()
-    await bot.reminders.update_by_id(guild_obj)
-
     # Run ER:LC integration if configured
     if isinstance(item.get("integration"), dict):
         await run_erlc_integration(bot, guild.id, item["integration"])
@@ -113,6 +107,10 @@ async def process_reminder(bot, guild, item, guild_obj):
         view=view,
         allowed_mentions=ALLOWED_MENTIONS,
     )
+
+    # Update last triggered time
+    item["lastTriggered"] = datetime.datetime.now(tz=pytz.UTC).timestamp()
+    await bot.reminders.update_by_id(guild_obj)
 
     # Notify panel
     await notify_panel(guild.id, item["message"])

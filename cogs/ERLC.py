@@ -91,7 +91,7 @@ class ERLC(commands.Cog):
                 )
             )
         target = target.get("username", target.get("name", ""))
-
+    
         client = roblox.Client()
         roblox_player = await client.get_user_by_username(target)
 
@@ -240,7 +240,7 @@ class ERLC(commands.Cog):
         async def refresh_player_callback(interaction: discord.Interaction, button: discord.ui.Button):
             if ctx.author != interaction.user:
                 return
-
+            
             command_response = await self.bot.prc_api.run_command(
                 ctx.guild.id, f":refresh {roblox_player.name}"
             )
@@ -266,7 +266,7 @@ class ERLC(commands.Cog):
         async def respawn_player_callback(interaction: discord.Interaction, button: discord.ui.Button):
             if ctx.author != interaction.user:
                 return
-
+            
             command_response = await self.bot.prc_api.run_command(
                 ctx.guild.id, f":respawn {roblox_player.name}"
             )
@@ -312,7 +312,7 @@ class ERLC(commands.Cog):
             username = modal.value.value
             if not username:
                 return
-
+            
             command_response = await self.bot.prc_api.run_command(
                 ctx.guild.id, (command := f":tp {username} {roblox_player.name}")
             )
@@ -344,7 +344,7 @@ class ERLC(commands.Cog):
         async def pm_player_callback(interaction: discord.Interaction, button: discord.ui.Button):
             if ctx.author != interaction.user:
                 return
-
+            
             modal = CustomModal(
                 f"PM Player",
                 [
@@ -364,7 +364,7 @@ class ERLC(commands.Cog):
             message = modal.value.value
             if not message:
                 return
-
+            
             command_response = await self.bot.prc_api.run_command(
                 ctx.guild.id, (command := f":pm {target} {message}")
             )
@@ -393,11 +393,11 @@ class ERLC(commands.Cog):
                     ctx.guild.id, ctx.author.id, "Command", command
                 )
 
-
-        async def kick_player_callback(interaction: discord.Interaction, button: discord.ui.Button):
+        
+        async def kick_player_callback(interaction: discord.Interaction, button: discord.ui.Button):            
             if ctx.author != interaction.user:
                 return
-
+            
             command_response = await self.bot.prc_api.run_command(
                 ctx.guild.id, (command := f":kick {roblox_player.name}")
             )
@@ -423,11 +423,11 @@ class ERLC(commands.Cog):
                         ),
                         ephemeral=True,
                     )
-
+            
         async def ban_player_callback(interaction: discord.Interaction, button: discord.ui.Button):
             if ctx.author != interaction.user:
                 return
-
+            
             if not await admin_check(self.bot, ctx.guild, ctx.author) and not await management_predicate(ctx):
                 return await interaction.response.send_message(
                     embed=discord.Embed(
@@ -463,7 +463,7 @@ class ERLC(commands.Cog):
                         ),
                         ephemeral=True,
                     )
-
+        
 
         class PanelContainer(discord.ui.Container):
 
@@ -478,7 +478,7 @@ class ERLC(commands.Cog):
                     f"### Timeline Information\n" + '\n'.join([f"> {'Joined' if log.type == 'join' else 'Left'} at <t:{log.timestamp}:F>" for log in matching_player_logs]))
             else:
                 section.add_item("### Timeline Information\n> No activity logs found for this player.")
-
+            
             if len(vehicle_information) > 0:
                 section.add_item(
                     f"### Vehicle Information\n> **Vehicle:** {vehicle_information[0].vehicle}\n> **Livery:** {vehicle_information[0].texture}"
@@ -508,7 +508,7 @@ class ERLC(commands.Cog):
             container = PanelContainer(id=1)
 
         await ctx.send(view=TestView(timeout=None))
-
+    
 
     @server.command(
         name="modcalls",
@@ -549,19 +549,19 @@ class ERLC(commands.Cog):
                     title="Moderator Calls", color=BLANK_COLOR, description=""
                 )
                 embed.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon or "")
-
+        
         if len(pages) == 0:
             if embed.description == "":
                 embed.description = "> No modcalls found."
             await ctx.send(embed=embed)
             return
-
+    
         paginator = SelectPagination(self.bot, ctx.author.id, pages)
         await ctx.send(
             embed=pages[0].embeds[0],
             view=paginator.get_current_view(),
         )
-
+        
     @server.command(
         name="permissions",
         description="View the permissions of players in your ER:LC server!",
@@ -592,7 +592,7 @@ class ERLC(commands.Cog):
                     title="Server Permissions", color=BLANK_COLOR, description=""
                 )
                 embed.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon or "")
-
+            
         if len(pages) == 0:
             if embed.description == "":
                 embed.description = "> No permissions found."
@@ -606,7 +606,7 @@ class ERLC(commands.Cog):
             embed=pages[0].embeds[0],
             view=paginator.get_current_view(),
         )
-
+    
     @server.command(
         name="pm",
         description="Send a PM to players in your ER:LC server!",
@@ -751,7 +751,9 @@ class ERLC(commands.Cog):
                     color=BLANK_COLOR,
                 )
             )
-            await self.secure_logging(guild_id, ctx.author.id, "Message", message, True)
+            await self.secure_logging(
+                guild_id, ctx.author.id, "Message", message, True
+            )
 
     @server.command(
         name="hint", description="Send a Hint to your ER:LC server with ERM!"
@@ -1225,7 +1227,7 @@ class ERLC(commands.Cog):
             return
         else:
             await ctx.send(embed=embeds[0])
-
+            
     @server.command(name="players", description="See all players in the server.")
     @is_erlc_server_linked()
     async def server_players(

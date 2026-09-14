@@ -2,7 +2,7 @@ from discord.ext import tasks
 import discord
 import logging
 from erm import Bot
-from utils.utils import render_session_message, send_session_full
+from utils.utils import render_session_message, send_session_boost, send_session_full
 import discord.http
 @tasks.loop(minutes=5, reconnect=True)
 async def check_sessions(bot: Bot):
@@ -56,6 +56,24 @@ async def check_sessions(bot: Bot):
                             session["full_announced"] = True
                     except Exception as e:
                         logging.warning(f"session {guild} full announcement: {str(e)}", exc_info=True)
+
+                boost_threshold = settings["sessions"].get("boost_threshold") or 0
+                if (
+                    boost_threshold
+                    and session["analytics"]["max_players"] > boost_threshold
+                    and info.current_players <= boost_threshold
+                    and not session.get("boost_announced")
+                ):
+                    claim = await bot.sessions.db.update_one(
+                        {"_id": guild, "boost_announced": {"$ne": True}},
+                        {"$set": {"boost_announced": True}},
+                    )
+                    if claim.modified_count:
+                        session["boost_announced"] = True
+                        try:
+                            await send_session_boost(bot, guild, session.get("started_by") or 0)
+                        except Exception as e:
+                            logging.warning(f"session {guild} boost announcement: {str(e)}", exc_info=True)
 
                 await bot.sessions.update(session)
         except Exception as e:

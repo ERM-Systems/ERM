@@ -34,6 +34,7 @@ from utils.utils import (
     ArgumentMockingInstance,
     config_change_log,
     admin_check,
+    staff_check,
 )
 import gspread
 import random
@@ -1478,6 +1479,14 @@ class CustomisePunishmentType(discord.ui.View):
             return await generalised_interaction_check_failure(interaction.followup)
 
 
+def custom_command_name_taken(bot, name: str) -> bool:
+    normalised = (name or "").strip().lower()
+    return (
+        normalised.replace(" ", "") in bot.all_commands
+        or normalised.split(" ")[0] in bot.all_commands
+    )
+
+
 class CustomCommandModification(discord.ui.View):
     def __init__(self, user_id: int, command_data: dict):
         super().__init__(timeout=600)
@@ -1593,6 +1602,16 @@ class CustomCommandModification(discord.ui.View):
 
         if not chosen_identifier:
             return
+
+        if custom_command_name_taken(interaction.client, chosen_identifier):
+            return await modal.interaction.followup.send(
+                embed=discord.Embed(
+                    title="Name Taken",
+                    description=f"`{chosen_identifier}` is already the name of an ERM command. Choose a different name for your custom command.",
+                    color=BLANK_COLOR,
+                ),
+                ephemeral=True,
+            )
 
         self.command_data["name"] = chosen_identifier
         await self.check_ability(interaction.message)
@@ -3539,7 +3558,7 @@ class ConditionCreationToolkit(discord.ui.View):
             return
         try:
             seconds = time_converter(modal.interval.value)
-        except ValueError as _:
+        except (ValueError, OverflowError) as _:
             return await modal.interaction.followup.send(
                 embed=discord.Embed(
                     title="Invalid Interval",
@@ -5385,7 +5404,7 @@ class ReminderCreationToolkit(discord.ui.View):
         await self.modal.wait()
         try:
             new_time = time_converter(self.modal.interval.value)
-        except ValueError:
+        except (ValueError, OverflowError):
             return await self.modal.interaction.followup.send(
                 embed=discord.Embed(
                     title="Invalid Time",
@@ -5980,7 +5999,7 @@ class ExtendedShiftOptions(discord.ui.View):
 
         try:
             seconds = time_converter(self.modal.quota.value)
-        except ValueError:
+        except (ValueError, OverflowError):
             return await interaction.followup.send(
                 embed=discord.Embed(
                     title="Invalid Time",
@@ -7215,6 +7234,12 @@ class RDMActions(discord.ui.View):
         super().__init__(timeout=None)
         self.bot = bot
 
+    async def interaction_check(self, interaction: discord.Interaction, /) -> bool:
+        if await staff_check(self.bot, interaction.guild, interaction.user):
+            return True
+        await generalised_interaction_check_failure(interaction.response)
+        return False
+
     @discord.ui.button(label="Mark as Justified", style=discord.ButtonStyle.success)
     async def mark_as_justified(
         self, interaction: discord.Interaction, button: discord.ui.Button
@@ -7323,6 +7348,14 @@ class GameSecurityActions(discord.ui.View):
     def __init__(self, bot):
         super().__init__(timeout=None)
         self.bot = bot
+
+    async def interaction_check(self, interaction: discord.Interaction, /) -> bool:
+        from erm import management_check
+
+        if await management_check(self.bot, interaction.guild, interaction.user):
+            return True
+        await generalised_interaction_check_failure(interaction.response)
+        return False
 
     def enable_reflective_action(self):
         # enables the button that allows for unbanning all affected users
@@ -9347,7 +9380,7 @@ class ExtendedPriorityConfiguration(AssociationConfigurationView):
                     discord.ui.TextInput(
                         label="Global Cooldown (minutes)",
                         placeholder="i.e. 5",
-                        default=priority_settings.get("global_cooldown", 0) or 0,
+                        default=(priority_settings.get("global_cooldown", 0) or 0) // 60,
                         required=False,
                     ),
                 )
@@ -9358,7 +9391,7 @@ class ExtendedPriorityConfiguration(AssociationConfigurationView):
         global_cooldown = self.modal.global_cooldown.value
         global_cooldown = int(global_cooldown.strip())
 
-        priority_settings["global_cooldown"] = global_cooldown
+        priority_settings["global_cooldown"] = global_cooldown * 60
         await func(priority_settings)
         await config_change_log(
             self.bot,
@@ -9466,7 +9499,7 @@ class PriorityRequestConfiguration(AssociationConfigurationView):
                     discord.ui.TextInput(
                         label="Priority Request Cooldown (minutes)",
                         placeholder="i.e. 5",
-                        default=priority_settings.get("cooldown", 0) or 0,
+                        default=(priority_settings.get("cooldown", 0) or 0) // 60,
                         required=False,
                     ),
                 )
@@ -9474,11 +9507,11 @@ class PriorityRequestConfiguration(AssociationConfigurationView):
         )
         await interaction.response.send_modal(self.modal)
         await self.modal.wait()
-
+        
         cooldown = self.modal.cooldown.value
         cooldown = int(cooldown.strip())
 
-        priority_settings["cooldown"] = cooldown
+        priority_settings["cooldown"] = cooldown * 60
         await func(priority_settings)
         await config_change_log(
             self.bot,
@@ -10608,7 +10641,7 @@ class RoleQuotaCreator(discord.ui.View):
 
         try:
             seconds = time_converter(self.modal.quota.value)
-        except ValueError:
+        except (ValueError, OverflowError):
             return
 
         self.dataset["quota"] = seconds
@@ -10679,6 +10712,16 @@ class CustomCommandOptionSelect(discord.ui.View):
         await self.modal.wait()
         if self.modal.name.value is None:
             return
+
+        if custom_command_name_taken(interaction.client, self.modal.name.value):
+            return await self.modal.interaction.followup.send(
+                embed=discord.Embed(
+                    title="Name Taken",
+                    description=f"`{self.modal.name.value}` is already the name of an ERM command. Choose a different name for your custom command.",
+                    color=blank_color,
+                ),
+                ephemeral=True,
+            )
 
         self.stop()
 
@@ -10908,7 +10951,7 @@ class ShiftMenu(discord.ui.View):
 
         settings = await self.bot.settings.find_by_id(interaction.guild.id)
         access = True
-        for item in settings.get("shift_management", {}).get("shift_types", []):
+        for item in settings.get("shift_types", {}).get("types", []):
             if isinstance(item, dict):
                 if item["name"] == self.shift_type:
                     access_roles = item.get("access_roles") or []
@@ -10919,7 +10962,7 @@ class ShiftMenu(discord.ui.View):
                                 access = True
                                 break
         if not access:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 embed=discord.Embed(
                     title="No Access",
                     description="You are not permitted to go on-duty as this Shift Type.",
@@ -11418,7 +11461,7 @@ class AdministratedShiftMenu(discord.ui.View):
             unfiltered = self.modal.time.value
             try:
                 converted = time_converter(unfiltered)
-            except ValueError:
+            except (ValueError, OverflowError):
                 return await self.modal.interaction.followup.send(
                     embed=discord.Embed(
                         title="Invalid Time",
@@ -11720,7 +11763,7 @@ class PunishmentManagement(discord.ui.View):
                 (
                     "username",
                     discord.ui.TextInput(
-                        label="ROBLOX Username", placeholder="This is case-sensitive."
+                        label="ROBLOX Username", placeholder="The player whose punishments will be erased."
                     ),
                 )
             ],
@@ -12662,6 +12705,8 @@ class BanOptions(discord.ui.Select):
                 ), ephemeral=True
             )
             for user in self.risky_users:
+                if not user.id or not user.username:
+                    continue
                 ban_command = f":ban {user.id}"
                 await self.bot.prc_api.run_command(self.guild_id, ban_command)
                 await self.bot.punishments.insert_warning(
@@ -12732,7 +12777,7 @@ class SpecificUserSelect(discord.ui.Select):
             ban_command = f":ban {user_id}"
             await self.bot.prc_api.run_command(self.guild_id, ban_command)
             user = next((u for u in self.risky_users if u.id == user_id), None)
-            if user:
+            if user and user.username:
                 await self.bot.punishments.insert_warning(
                     staff_id=interaction.user.id,  # usr id
                     staff_name= interaction.user.name,  # interaction usr
@@ -12758,14 +12803,14 @@ class ERLCDiscordChecksConfiguration(discord.ui.View):
         self.bot = bot
         self.sett = sett
         self.user_id = user_id
-
+        
         self.discord_checks = sett.get("ERLC", {}).get("discord_checks", {})
         enabled = self.discord_checks.get("enabled", False)
         channel_id = self.discord_checks.get("channel_id")
         kick_after = self.discord_checks.get("kick_after", 0)
-
+        
         self._setup_components(enabled, channel_id, kick_after)
-
+    
     def _setup_components(self, enabled: bool, channel_id: int, kick_after: int):
         self.enable_button = discord.ui.Select(
             placeholder="Automatic Discord Checks",
@@ -12800,7 +12845,7 @@ class ERLCDiscordChecksConfiguration(discord.ui.View):
                 )
             ] + [
                 discord.SelectOption(
-                    label=f"{i} warning{'s' if i > 1 else ''}",
+                    label=f"{i} warning{'s' if i > 1 else ''}", 
                     value=str(i),
                     default=(i == kick_after)
                 ) for i in range(1, 11)
@@ -12811,7 +12856,7 @@ class ERLCDiscordChecksConfiguration(discord.ui.View):
         self.add_item(self.kick_after)
 
         self.alert_message = discord.ui.Button(
-            label="Set Alert Message",
+            label="Set Alert Message", 
             style=discord.ButtonStyle.secondary,
             row=3
         )
@@ -12830,19 +12875,19 @@ class ERLCDiscordChecksConfiguration(discord.ui.View):
             )
             return False
         return True
-
+    
     async def _ensure_settings_structure(self, sett: dict) -> None:
         """Ensure the nested dictionary structure exists"""
         if "ERLC" not in sett:
             sett["ERLC"] = {}
         if "discord_checks" not in sett["ERLC"]:
             sett["ERLC"]["discord_checks"] = {"enabled": False}
-
+    
     async def _update_settings_and_log(self, interaction: discord.Interaction, sett: dict, message: str) -> None:
         """Update settings and log the change"""
         await self.bot.settings.update_by_id(sett)
         await config_change_log(self.bot, interaction.guild, interaction.user, message)
-
+    
     async def _update_embed_field(self, interaction: discord.Interaction, field_index: int, name: str, value: str) -> None:
         """Update a specific field in the embed"""
         embed = interaction.message.embeds[0]
@@ -12852,49 +12897,49 @@ class ERLCDiscordChecksConfiguration(discord.ui.View):
     async def enable_button_callback(self, interaction: discord.Interaction):
         if not await self._check_permissions(interaction):
             return
-
+        
         await interaction.response.defer()
-
+        
         sett = await self.bot.settings.find_by_id(interaction.guild.id)
         await self._ensure_settings_structure(sett)
-
+        
         enabled = self.enable_button.values[0] == "enabled"
         sett["ERLC"]["discord_checks"]["enabled"] = enabled
-
+        
         if enabled and "channel_id" not in sett["ERLC"]["discord_checks"]:
             sett["ERLC"]["discord_checks"]["channel_id"] = None
-
+        
         await self._update_settings_and_log(
-            interaction, sett,
+            interaction, sett, 
             f"Discord Checks have been {'enabled' if enabled else 'disabled'}."
         )
 
         for option in self.enable_button.options:
             option.default = False
-
+        
         await self._update_embed_field(
-            interaction, 0,
-            "Enabled/Disabled Discord Checks",
+            interaction, 0, 
+            "Enabled/Disabled Discord Checks", 
             f"**Current Status:** {'Enabled' if enabled else 'Disabled'}"
         )
 
     async def alert_channel_select_callback(self, interaction: discord.Interaction):
         if not await self._check_permissions(interaction):
             return
-
+        
         await interaction.response.defer()
-
+        
         sett = await self.bot.settings.find_by_id(interaction.guild.id)
         await self._ensure_settings_structure(sett)
-
+        
         channel_id = self.alert_channel_select.values[0].id if self.alert_channel_select.values else None
         sett["ERLC"]["discord_checks"]["channel_id"] = channel_id
-
+        
         await self._update_settings_and_log(
             interaction, sett,
             f"Discord Checks Channel has been set to <#{channel_id}>."
         )
-
+        
         await self._update_embed_field(
             interaction, 1,
             "Discord Check Channel",
@@ -12904,20 +12949,20 @@ class ERLCDiscordChecksConfiguration(discord.ui.View):
     async def kick_after_callback(self, interaction: discord.Interaction):
         if not await self._check_permissions(interaction):
             return
-
+        
         await interaction.response.defer()
-
+        
         sett = await self.bot.settings.find_by_id(interaction.guild.id)
         await self._ensure_settings_structure(sett)
-
+        
         kick_after = int(self.kick_after.values[0]) if self.kick_after.values else 4
         sett["ERLC"]["discord_checks"]["kick_after"] = kick_after
-
+        
         await self._update_settings_and_log(
             interaction, sett,
             f"Discord Checks Kick After has been set to {kick_after} warnings."
         )
-
+        
         await self._update_embed_field(
             interaction, 2,
             "Kick After",
@@ -12943,9 +12988,9 @@ class ERLCDiscordChecksConfiguration(discord.ui.View):
                 )
             ],
         )
-
+        
         await interaction.response.send_modal(modal)
-
+        
         if await modal.wait():
             return
 
@@ -12963,7 +13008,7 @@ class ERLCDiscordChecksConfiguration(discord.ui.View):
         sett = await self.bot.settings.find_by_id(interaction.guild.id)
         await self._ensure_settings_structure(sett)
         sett["ERLC"]["discord_checks"]["message"] = alert_message
-
+        
         await self._update_settings_and_log(
             interaction, sett,
             f"Discord Checks Alert Message has been set to: {alert_message}"
@@ -12976,7 +13021,7 @@ class ERLCDiscordChecksConfiguration(discord.ui.View):
                 color=BLANK_COLOR
             ), ephemeral=True
         )
-
+        
         # Update the embed
         embed = interaction.message.embeds[0]
         embed.set_field_at(3, name="Alert Message", value=f"**Current Message:** {alert_message}", inline=False)
@@ -12989,14 +13034,14 @@ class ERLCPermissionSync(discord.ui.View):
         self.bot = bot
         self.sett = sett
         self.user_id = user_id
-
+        
         self.permission_sync = sett.get("ERLC", {}).get("permission_sync", {})
         enabled = self.permission_sync.get("enabled", False)
         mod_roles = self.permission_sync.get("moderator_roles", [])
         admin_roles = self.permission_sync.get("administrator_roles", [])
 
         self._setup_components(enabled, mod_roles, admin_roles)
-
+    
     def _setup_components(self, enabled: bool, mod_roles: list[int], admin_roles: list[int]):
         self.enable_button = discord.ui.Select(
             placeholder="Permission Sync",
@@ -13030,7 +13075,7 @@ class ERLCPermissionSync(discord.ui.View):
         self.admin_roles_select.callback = self.admin_roles_select_callback
         self.add_item(self.admin_roles_select)
 
-
+        
     async def _check_permissions(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.user_id:
             await interaction.response.send_message(
@@ -13042,38 +13087,38 @@ class ERLCPermissionSync(discord.ui.View):
             )
             return False
         return True
-
+    
     async def _update_settings_and_log(self, interaction: discord.Interaction, sett: dict, message: str) -> None:
         await self.bot.settings.update_by_id(sett)
         await config_change_log(self.bot, interaction.guild, interaction.user, message)
-
+    
     async def enable_button_callback(self, interaction: discord.Interaction):
         if not await self._check_permissions(interaction):
             return
-
+        
         await interaction.response.defer()
-
-        sett = await self.bot.settings.find_by_id(interaction.guild.id)
+        
+        sett = await self.bot.settings.find_by_id(interaction.guild.id)        
         enabled = self.enable_button.values[0] == "enabled"
         if not sett.get("ERLC"):
             sett["ERLC"] = {}
         if "permission_sync" not in sett["ERLC"]:
             sett["ERLC"]["permission_sync"] = {"enabled": False, "moderator_roles": [], "administrator_roles": []}
         sett["ERLC"]["permission_sync"]["enabled"] = enabled
-
+        
         await self._update_settings_and_log(
-            interaction, sett,
+            interaction, sett, 
             f"Permission Sync has been {'enabled' if enabled else 'disabled'}."
         )
-
+        
     async def mod_roles_select_callback(self, interaction: discord.Interaction):
         if not await self._check_permissions(interaction):
             return
-
+        
         await interaction.response.defer()
-
+        
         sett = await self.bot.settings.find_by_id(interaction.guild.id)
-
+        
         mod_roles = [role.id for role in self.mod_roles_select.values]
         if "ERLC" not in sett:
             sett["ERLC"] = {}
@@ -13089,9 +13134,9 @@ class ERLCPermissionSync(discord.ui.View):
     async def admin_roles_select_callback(self, interaction: discord.Interaction):
         if not await self._check_permissions(interaction):
             return
-
+        
         await interaction.response.defer()
-
+        
         sett = await self.bot.settings.find_by_id(interaction.guild.id)
 
         administrator_roles = [role.id for role in self.admin_roles_select.values]
