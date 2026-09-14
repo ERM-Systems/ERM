@@ -71,4 +71,4 @@ These commands can take a bit to run; just be patient. It should finish like the
 ## Help!
 If you need help, please do not hesitate to join the Discord at https://discord.gg/PbrXbHaYdY and head to the `#self-host-discussion` channel.
 <br><br>
-If you find issues with this guide, please DM @robin_the_andrew, but ask in the self-host-discussion channel first.
+If you find issues with this guide, please message a member of the ERM Team, but ask in the self-host-discussion channel first.
