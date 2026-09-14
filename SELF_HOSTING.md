@@ -6,6 +6,9 @@ Following the shutdown of ERM, the team has decided to provide a self-hosting gu
 
 > [!WARNING]
 > FOLLOW ALL STEPS EXACTLY AS DESCRIBED. If you don't, the bot may not start or will not properly start.
+
+> [!NOTE]
+> You cannot resell ERM services without permission directly from the ERM developers. Checks can and will be implemented in the future to ensure that this bot is not opened up to other people.
  
 ## Prerequesites
 - Python 3.12 or newer with pip (you will run into errors if running anything older)
@@ -66,7 +69,22 @@ pip install -r requirements.txt
 ```
 These commands can take a bit to run; just be patient. It should finish like the image below. <img width="1893" height="651" alt="image" src="https://github.com/user-attachments/assets/9b2c7ed7-315b-4cb7-a993-51c080c5ccee" />
 
-5. Once these commands are done, type `python main.py` in the SAME terminal. You have now got ERM running on your own computer!
+5. Once these commands are done, type `python main.py` in the SAME terminal. You have now got ERM running on your own computer, but, to use your API key, you will need to whitelist it in your API settings. Please go to the ER:LC API section to configure it.
+
+## ER:LC API
+Recently, PRC updated the API so you must whitelist your IP address within the ER:LC API dashboard else every single request will be rejected. 
+> [!NOTE]
+> If you are using a Global API key with ERM, you do not need to whitelist your IP. However, as this guide is only intended for a single-server instance, we assume you do not have a global API key.
+
+> [!WARNING]
+> Only the private server owner is capable of doing this.
+
+1. Head to https://icanhazip.com. This is your IP address; copy this. If you are running this on a hosting service, please ask your provider for the server's IP address. This website does not take your IP address; it only shows it to you.
+2. Head to https://api.erlc.gg/server-owners. Login with your Roblox account.
+3. Select `Settings` next to your ER:LC private server: <img width="1110" height="386" alt="image" src="https://github.com/user-attachments/assets/ba80b0c5-5657-48b6-b988-09816db2b771" />
+4. On this page, enter your IP address from before and paste it in the IP Address field. Set a description for your IP. Then press the Add IP button. <img width="1043" height="757" alt="image" src="https://github.com/user-attachments/assets/30313a1a-bbb1-452d-bc3b-fe4044f42585" />
+5. Once you see the 'Whitelisted IP Saved' message in the bottom right of the tab, then the IP has been whitelisted.
+
 
 ## Help!
 If you need help, please do not hesitate to join the Discord at https://discord.gg/PbrXbHaYdY and head to the `#self-host-discussion` channel.
