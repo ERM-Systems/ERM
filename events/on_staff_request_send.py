@@ -75,8 +75,14 @@ class OnStaffRequestSend(commands.Cog):
         )
 
         mentioned_roles = staff_requests.get("mentioned_roles", [])
-        channel_id = staff_requests["channel"]
-        channel = guild.get_channel(channel_id) or await guild.fetch_channel(channel_id)
+        channel_id = staff_requests.get("channel")
+        if not channel_id:
+            return
+
+        try:
+            channel = guild.get_channel(channel_id) or await guild.fetch_channel(channel_id)
+        except discord.HTTPException:
+            return
 
         await channel.send(
             ", ".join(["<@&{0}>".format(role) for role in mentioned_roles]),

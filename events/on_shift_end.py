@@ -149,6 +149,8 @@ class OnShiftEnd(commands.Cog):
         moderation_counts = {}
         for entry in shift.moderations:
             entry = await self.bot.punishments.fetch_warning(str(entry))
+            if entry is None:
+                continue
 
             if entry.warning_type in moderation_counts:
                 moderation_counts[entry.warning_type] += 1
@@ -171,7 +173,7 @@ class OnShiftEnd(commands.Cog):
                     value=(
                         f"> **Shift Start:** <t:{int(shift.start_epoch)}>\n"
                         f"> **Shift End:** <t:{int(shift.end_epoch)}>\n"
-                        f"> **Shift Length:** {td_format(datetime.timedelta(seconds=shift.end_epoch - shift.start_epoch - (sum((br.end_epoch) - (br.start_epoch) for br in shift.breaks)) + (shift.added_time if shift.added_time > (86400 * 7) else 0) - (shift.removed_time if shift.removed_time > (86400 * 7) else 0)))}\n"
+                        f"> **Shift Length:** {td_format(datetime.timedelta(seconds=shift.end_epoch - shift.start_epoch - (sum((br.end_epoch) - (br.start_epoch) for br in shift.breaks)) + shift.added_time - shift.removed_time))}\n"
                         f"> **Nickname:** `{shift.nickname}`\n"
                     ),
                     inline=False,
@@ -231,7 +233,7 @@ class OnShiftEnd(commands.Cog):
                 )
                 .add_field(
                     name="Elapsed Time",
-                    value=f"> {td_format(datetime.timedelta(seconds=shift.end_epoch - shift.start_epoch - (sum((br.end_epoch) - (br.start_epoch) for br in shift.breaks)) + (shift.added_time if shift.added_time > (86400 * 7) else 0) - (shift.removed_time if shift.removed_time > (86400 * 7) else 0)))}",
+                    value=f"> {td_format(datetime.timedelta(seconds=shift.end_epoch - shift.start_epoch - (sum((br.end_epoch) - (br.start_epoch) for br in shift.breaks)) + shift.added_time - shift.removed_time))}",
                     inline=False,
                 )
                 .set_thumbnail(url=staff_member.display_avatar.url)

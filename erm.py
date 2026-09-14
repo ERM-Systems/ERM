@@ -11,6 +11,7 @@ import asyncio
 from datamodels.MapleKeys import MapleKeys
 from datamodels.Whitelabel import Whitelabel
 
+from utils import custom_permissions
 from utils.accounts import Accounts
 from utils.emojis import EmojiController
 
@@ -39,6 +40,7 @@ from utils.task_loader import start_tasks
 
 
 from datamodels.CustomFlags import CustomFlags
+from datamodels.ScheduledSessions import ScheduledSessions
 from datamodels.ServerKeys import ServerKeys
 from datamodels.ShiftManagement import ShiftManagement
 from datamodels.ActivityNotice import ActivityNotices
@@ -163,6 +165,7 @@ class Bot(commands.AutoShardedBot):
             self.panel_db = self.mongo[f"{f"{dbname}_" if dbname != "erm" else ""}UserIdentity"]
             self.priority_settings = Document(self.panel_db, "PrioritySettings")
             self.staff_requests = Document(self.panel_db, "StaffRequests")
+            self.terminated_accounts = Document(self.panel_db, "BlacklistedUsers")
 
             self.start_time = time.time()
 
@@ -194,6 +197,7 @@ class Bot(commands.AutoShardedBot):
             self.mc_keys = MapleKeys(self.maple_county, "Auth")
             self.sessions = Document(self.db, "sessions")
             self.session_history = Document(self.db, "session_history")
+            self.scheduled_sessions = ScheduledSessions(self.db, "scheduled_sessions")
             
             self.staff_connections = StaffConnections(self.db, "staff_connections")
             self.ics = IntegrationCommandStorage(self.db, "logged_command_data")
@@ -324,6 +328,16 @@ def running():
         return -1
 
 
+@bot.check
+async def terminatedAccountCheck(ctx: commands.Context):
+    terminated = await bot.terminated_accounts.db.find_one(
+        {"discordID": str(ctx.author.id), "from": "account"}
+    )
+    if terminated:
+        raise AccountTerminatedFailure()
+    return True
+
+
 @bot.before_invoke
 async def AutoDefer(ctx: commands.Context):
     guild_id = ctx.guild.id
@@ -361,27 +375,6 @@ async def loggingCommandExecution(ctx: commands.Context):
         logging.info(
             "Command could not be found in internal context storage. Please report."
         )
-
-async def staff_check(bot_obj, guild, member):
-    guild_settings = await bot_obj.settings.find_by_id(guild.id)
-    member_role_ids = [r.id for r in member.roles]
-    if guild_settings:
-        if "role" in guild_settings["staff_management"].keys():
-            if guild_settings["staff_management"]["role"] != "":
-                if isinstance(guild_settings["staff_management"]["role"], list):
-                    for role_id in guild_settings["staff_management"]["role"]:
-                        if role_id in member_role_ids:
-                            return True
-                elif isinstance(guild_settings["staff_management"]["role"], int):
-                    if guild_settings["staff_management"]["role"] in member_role_ids:
-                        return True
-
-    if await admin_check(bot_obj, guild, member):
-        return True
-
-    if member.guild_permissions.manage_messages:
-        return True
-    return False
 
 
 async def management_check(bot_obj, guild, member):
@@ -437,11 +430,27 @@ async def admin_check(bot_obj, guild, member):
     return False
 
 
+async def custom_permission_check(ctx, level):
+    try:
+        guild_settings = await ctx.bot.settings.find_by_id(ctx.guild.id)
+    except Exception as exception:
+        logging.error("[Custom Permissions] could not read settings: %s", exception)
+        return False
+
+    return custom_permissions.allowed(
+        guild_settings,
+        [role.id for role in ctx.author.roles],
+        level,
+        ctx.command.qualified_name if ctx.command else "",
+    )
+
+
 async def staff_predicate(ctx):
     if ctx.guild is None:
         return True
-    else:
-        return await staff_check(ctx.bot, ctx.guild, ctx.author)
+    if await custom_permission_check(ctx, "staff"):
+        return True
+    return await staff_check(ctx.bot, ctx.guild, ctx.author)
 
 
 def is_staff():
@@ -451,8 +460,9 @@ def is_staff():
 async def admin_predicate(ctx):
     if ctx.guild is None:
         return True
-    else:
-        return await admin_check(ctx.bot, ctx.guild, ctx.author)
+    if await custom_permission_check(ctx, "admin"):
+        return True
+    return await admin_check(ctx.bot, ctx.guild, ctx.author)
 
 
 def is_admin():
@@ -462,8 +472,9 @@ def is_admin():
 async def management_predicate(ctx):
     if ctx.guild is None:
         return True
-    else:
-        return await management_check(ctx.bot, ctx.guild, ctx.author)
+    if await custom_permission_check(ctx, "management"):
+        return True
+    return await management_check(ctx.bot, ctx.guild, ctx.author)
 
 
 def is_management():

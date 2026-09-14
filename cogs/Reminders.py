@@ -1,7 +1,7 @@
 import datetime
 import discord
 from discord.ext import commands
-from erm import is_management, is_admin
+from erm import is_management
 from menus import (
     ManageReminders,
     YesNoColourMenu,
@@ -27,7 +27,7 @@ class Reminders(commands.Cog):
         description="Manage your reminders",
         extras={"category": "Reminders"},
     )
-    @is_admin()
+    @is_management()
     @require_settings()
     async def manage_reminders(self, ctx):
         bot = self.bot
@@ -203,7 +203,7 @@ class Reminders(commands.Cog):
             name = view.modal.name.value
             try:
                 new_time = time_converter(time_arg)
-            except ValueError:
+            except (ValueError, OverflowError):
                 return await msg.edit(
                     embed=discord.Embed(
                         title="Invalid Time",

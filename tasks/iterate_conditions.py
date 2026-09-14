@@ -78,19 +78,15 @@ async def handle_erlc_condition(bot, guild_id, condition) -> bool:
             submitted_arguments = []
 
         for item in func_args[0 if func_args[0] != "players" else 1 :]:
-            submitted_arguments.append(futures[item.lower()]())
+            argument = futures[item.lower()]()
+            submitted_arguments.append(
+                await argument if asyncio.iscoroutine(argument) else argument
+            )
         if len(func_args) > 1:
             values.append(func(*submitted_arguments))
         else:
             values.append(func(*submitted_arguments))
 
-    new_values = []
-    # unfuture the values
-    for value in values:
-        if isinstance(value, asyncio.Future):
-            new_values.append(await value)
-        else:
-            new_values.append(value)
     
     return handle_comparison_operations(*values, condition["Operation"])
 
@@ -107,7 +103,10 @@ async def handle_erm_condition(bot, guild_id, condition) -> bool:
         func, func_args = determine_func_info(cond)
         submitted_arguments = []
         for item in func_args:
-            submitted_arguments.append(futures[item.lower()]())
+            argument = futures[item.lower()]()
+            submitted_arguments.append(
+                await argument if asyncio.iscoroutine(argument) else argument
+            )
 
         if len(func_args) > 1:
             values.append(func(*submitted_arguments, *args))
@@ -130,17 +129,27 @@ async def iterate_conditions(bot):
                 
                 conditions = []
                 for condition in action["Conditions"]:
-                    if (
-                        condition["Variable"].split(" ")[0] in value_finder_table.keys()
-                        or condition["Value"].split(" ")[0] in value_finder_table.keys()
-                    ):
-                        conditions.append(
-                            await handle_erlc_condition(bot, action["Guild"], condition)
-                        )
-                    else:
-                        conditions.append(
-                            await handle_erm_condition(bot, action["Guild"], condition)
-                        )
+                    try:
+                        if (
+                            condition["Variable"].split(" ")[0]
+                            in value_finder_table.keys()
+                            or condition["Value"].split(" ")[0]
+                            in value_finder_table.keys()
+                        ):
+                            conditions.append(
+                                await handle_erlc_condition(
+                                    bot, action["Guild"], condition
+                                )
+                            )
+                        else:
+                            conditions.append(
+                                await handle_erm_condition(
+                                    bot, action["Guild"], condition
+                                )
+                            )
+                    except Exception as e:
+                        logging.warning(f"Failed to evaluate condition: {e}")
+                        conditions.append(False)
 
                 logic_gates = []
                 for item in action["Conditions"]:

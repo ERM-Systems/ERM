@@ -18,7 +18,7 @@ class OnPunishment(commands.Cog):
     @commands.Cog.listener()
     async def on_punishment(self, objectid: ObjectId):
         if objectid in handled:
-            logging.info(f"ignoring duplicate punishment dispatch for {objectid}")
+            logging.info(f"Ignoring duplicate punishment dispatch for {objectid}")
             return
         handled.append(objectid)
 
@@ -90,23 +90,20 @@ class OnPunishment(commands.Cog):
         )
         thumbnail = thumbnails[0].image_url
 
-        if channel is not None:
-            try:
-                warned_discord_id = await self.bot.linking.get_discord_id(
-                    warning.user_id
-                )
-            except Exception as e:
-                logging.warning(f"Error getting warned discord ID: {e}")
+        warned_discord_id = None
+        try:
+            warned_discord_id = await self.bot.linking.get_discord_id(warning.user_id)
+        except Exception as e:
+            logging.warning(f"Error getting warned discord ID: {e}")
 
+        if warned_discord_id:
             try:
                 document = await self.bot.consent.db.find_one(
                     {"_id": warned_discord_id}
                 )
-                punishments_enabled = (
-                    document.get("punishments")
-                    if document.get("punishments") is not None
-                    else True
-                )
+                punishments_enabled = True
+                if document and document.get("punishments") is not None:
+                    punishments_enabled = document["punishments"]
                 if punishments_enabled:
                     user_to_dm = await guild.fetch_member(warned_discord_id)
                     embed = (
@@ -129,8 +126,9 @@ class OnPunishment(commands.Cog):
                         f"Sent DM to user {warned_discord_id} about punishment."
                     )
             except Exception as e:
-                pass
+                logging.warning(f"Failed to DM punished user: {e}")
 
+        if channel is not None:
             embed = (
                 discord.Embed(title="Punishment Issued", color=BLANK_COLOR)
                 .add_field(

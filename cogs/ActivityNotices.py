@@ -262,7 +262,7 @@ class ActivityCoreCommands:
 
             try:
                 duration_seconds = time_converter(duration)
-            except ValueError:
+            except (ValueError, OverflowError):
                 return await respond(
                     embed=discord.Embed(
                         title="Invalid Time",
@@ -374,6 +374,26 @@ class ActivityCoreCommands:
                     )
                 )
 
+            notice_roles = settings.get("staff_management", {}).get(
+                f"{request_type_object.lower()}_role"
+            )
+            if isinstance(notice_roles, int):
+                notice_roles = [notice_roles]
+            roles_to_remove = [
+                role
+                for role in (
+                    victim.get_role(int(role_id)) for role_id in notice_roles or []
+                )
+                if role is not None
+            ]
+            if roles_to_remove:
+                try:
+                    await victim.remove_roles(
+                        *roles_to_remove, reason="Activity Notice Deleted"
+                    )
+                except discord.HTTPException:
+                    pass
+
             await self.bot.loas.delete_by_id(current_notice["_id"])
             return await respond(
                 embed=discord.Embed(
@@ -404,7 +424,7 @@ class ActivityCoreCommands:
             current_time = int(datetime.datetime.now().timestamp())
             await self.bot.loas.db.update_one(
                 {"_id": current_notice["_id"]},
-                {"$set": {"expiry": current_time, "expired": True}},
+                {"$set": {"expiry": current_time}},
             )
 
             return await respond(
@@ -445,7 +465,7 @@ class ActivityCoreCommands:
 
             try:
                 duration_seconds = time_converter(duration)
-            except ValueError:
+            except (ValueError, OverflowError):
                 return await respond(
                     embed=discord.Embed(
                         title=f"{self.bot.emoji_controller.get_emoji('WarningIcon')} Invalid Time",
@@ -519,7 +539,7 @@ class ActivityCoreCommands:
 
         try:
             duration_seconds = time_converter(duration)
-        except ValueError:
+        except (ValueError, OverflowError):
             return await ctx.send(
                 embed=discord.Embed(
                     title="Incorrect Time",
@@ -558,7 +578,7 @@ class ActivityCoreCommands:
             if starting:
                 start_after_seconds = time_converter(starting)
                 current_timestamp += start_after_seconds
-        except ValueError:
+        except (ValueError, OverflowError):
             return await ctx.send(
                 embed=discord.Embed(
                     title="Incorrect Time",
@@ -627,6 +647,7 @@ class ActivityCoreCommands:
                 "guild_id": ctx.guild.id,
                 "accepted": True,
                 "denied": False,
+                "voided": False,
                 "expired": False,
                 "type": request_upper,
             }
@@ -817,7 +838,16 @@ class StaffManagement(commands.Cog):
     @app_commands.describe(time="How long are you going to be on LoA for? (s/m/h/d)")
     @app_commands.describe(reason="What is your reason for going on LoA?")
     async def loa(self, ctx, time, *, reason):
-        await ctx.invoke(self.bot.get_command("loa request"), time=time, reason=reason)
+        command = self.bot.get_command("loa request")
+        if not await command.can_run(ctx):
+            return await ctx.send(
+                embed=discord.Embed(
+                    title="Not Permitted",
+                    description="You are not permitted to run this command.",
+                    color=BLANK_COLOR,
+                )
+            )
+        await ctx.invoke(command, time=time, reason=reason)
 
     @commands.guild_only()
     @loa.command(

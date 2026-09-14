@@ -12,11 +12,281 @@ from reactionmenu import Page, ViewButton, ViewMenu, ViewSelect
 from erm import Bot
 from utils.prc_api import Player
 from utils.constants import BLANK_COLOR, GREEN_COLOR
-from utils.utils import generator, has_whitelabel
+from utils.utils import generator
 from utils.utils import interpret_content, interpret_embed
 from menus import CustomSelectMenu, GameSecurityActions
 from utils.timestamp import td_format
 from utils.utils import get_guild_icon, get_prefix, invis_embed
+
+
+antipingCooldownSeconds = 45
+antipingLastWarned = {}
+
+
+def antiping_should_warn(guildId, userId):
+    now = datetime.datetime.now(tz=datetime.timezone.utc).timestamp()
+    key = (guildId, userId)
+    last = antipingLastWarned.get(key, 0)
+    if now - last < antipingCooldownSeconds:
+        return False
+
+    antipingLastWarned[key] = now
+    if len(antipingLastWarned) > 10000:
+        cutoff = now - antipingCooldownSeconds
+        for stale in [k for k, v in antipingLastWarned.items() if v < cutoff]:
+            antipingLastWarned.pop(stale, None)
+    return True
+
+
+antipingStrikes = {}
+
+
+def antiping_settings(dataset):
+    settings = dataset.get("antiping") if isinstance(dataset, dict) else None
+    return settings if isinstance(settings, dict) else {}
+
+
+def antiping_channel_id(value):
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed or None
+
+
+def antiping_channel_set(rule):
+    raw = rule.get("ignored_channels") or []
+    if not isinstance(raw, list):
+        raw = [raw]
+    return {parsed for parsed in (antiping_channel_id(item) for item in raw) if parsed}
+
+
+def antiping_is_ignored(rule, channel):
+    ignored = antiping_channel_set(rule)
+    if not ignored:
+        return False
+
+    parent = getattr(channel, "parent_id", None)
+    category = getattr(channel, "category_id", None)
+    return bool({channel.id, parent, category} & ignored)
+
+
+def antiping_role_list(guild, raw):
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raw = [raw]
+
+    roles = []
+    for item in raw:
+        try:
+            role = guild.get_role(int(item))
+        except (TypeError, ValueError):
+            role = None
+        if role is not None:
+            roles.append(role)
+    return roles
+
+
+def antiping_rules(dataset):
+    settings = antiping_settings(dataset)
+    stored = settings.get("rules")
+
+    if isinstance(stored, list) and stored:
+        return [
+            rule
+            for rule in stored
+            if isinstance(rule, dict) and rule.get("enabled") is not False
+        ]
+
+    if not settings.get("role"):
+        return []
+
+    return [
+        {
+            "name": "Anti-Ping",
+            "role": settings.get("role"),
+            "bypass_role": settings.get("bypass_role"),
+            "ignored_channels": settings.get("ignored_channels"),
+            "use_hierarchy": settings.get("use_hierarchy") in [True, None],
+            "log_channel": settings.get("log_channel"),
+            "escalation": settings.get("escalation") or {},
+            "shift": settings.get("shift") or {},
+        }
+    ]
+
+
+def antiping_number(value, fallback, low):
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    return parsed if parsed >= low else fallback
+
+
+async def antiping_on_duty(bot, guild_id, user_id, shift):
+    active = await bot.shift_management.shifts.db.find_one(
+        {"UserID": user_id, "Guild": guild_id, "EndEpoch": 0}
+    )
+
+    if active:
+        if shift.get("break_off_duty") is True:
+            breaks = active.get("Breaks") or []
+            if any(entry.get("EndEpoch") == 0 for entry in breaks):
+                return False
+        return True
+
+    grace = antiping_number(shift.get("grace"), 0, 0)
+    if grace <= 0:
+        return False
+
+    cutoff = datetime.datetime.now(tz=datetime.timezone.utc).timestamp() - grace
+    recent = await bot.shift_management.shifts.db.find_one(
+        {"UserID": user_id, "Guild": guild_id, "EndEpoch": {"$gte": cutoff}}
+    )
+    return recent is not None
+
+
+async def antiping_protects(bot, rule, guild_id, member):
+    shift = rule.get("shift") or {}
+    mode = shift.get("mode") or "always"
+    if mode not in ("off_duty", "on_duty"):
+        return True
+
+    try:
+        on_duty = await antiping_on_duty(bot, guild_id, member.id, shift)
+    except Exception as exception:
+        logging.error(
+            "[Anti-Ping] shift lookup failed for %s in %s: %s", member.id, guild_id, exception
+        )
+        return True
+
+    return on_duty is False if mode == "off_duty" else on_duty
+
+
+def antiping_action_block(guild, member, action):
+    kicking = action == "kick"
+    verb = "kick" if kicking else "time out"
+    me = guild.me
+    if me is None:
+        return f"could not {verb}, the bot is not in the member list"
+
+    if member == guild.owner:
+        return f"cannot {verb} the server owner"
+
+    if member.guild_permissions.administrator:
+        return f"cannot {verb} an administrator"
+
+    if kicking and not me.guild_permissions.kick_members:
+        return "missing the Kick Members permission"
+
+    if not kicking and not me.guild_permissions.moderate_members:
+        return "missing the Moderate Members permission"
+
+    if me.top_role <= member.top_role:
+        return f"cannot {verb}, {member.top_role.name} is above the bot's role"
+
+    return None
+
+
+def antiping_timeout_block(guild, member):
+    return antiping_action_block(guild, member, "timeout")
+
+
+def antiping_record_strike(guild_id, user_id, rule_key, window):
+    now = datetime.datetime.now(tz=datetime.timezone.utc).timestamp()
+    key = (guild_id, user_id, rule_key)
+
+    hits = [stamp for stamp in antipingStrikes.get(key, []) if now - stamp < window]
+    hits.append(now)
+    antipingStrikes[key] = hits
+
+    if len(antipingStrikes) > 10000:
+        for stale, stamps in list(antipingStrikes.items()):
+            if not stamps or now - stamps[-1] > window:
+                antipingStrikes.pop(stale, None)
+
+    return len(hits)
+
+
+async def antiping_escalate(bot, rule, message, role):
+    escalation = rule.get("escalation") or {}
+    if escalation.get("enabled") is not True:
+        return None
+
+    threshold = antiping_number(escalation.get("threshold"), 3, 2)
+    window = antiping_number(escalation.get("window"), 600, 60)
+    rule_key = rule.get("id") or rule.get("name") or "default"
+
+    strikes = antiping_record_strike(
+        message.guild.id, message.author.id, rule_key, window
+    )
+    if strikes < threshold:
+        return None
+
+    antipingStrikes.pop((message.guild.id, message.author.id, rule_key), None)
+    reason = f"Pinged {role.name} {strikes} times after being warned"
+
+    action = "kick" if escalation.get("action") == "kick" else "timeout"
+
+    blocked = antiping_action_block(message.guild, message.author, action)
+    if blocked:
+        logging.error("[Anti-Ping] %s for %s", blocked, message.author.id)
+        return blocked
+
+    if action == "kick":
+        try:
+            await message.author.kick(reason=reason)
+        except discord.Forbidden:
+            logging.error("[Anti-Ping] discord refused the kick for %s", message.author.id)
+            return "discord refused the kick, check the bot's role position"
+        except discord.HTTPException as exception:
+            logging.error("[Anti-Ping] kick failed: %s", exception)
+            return "could not kick"
+
+        return "kicked"
+
+    duration = antiping_number(escalation.get("duration"), 300, 60)
+
+    try:
+        await message.author.timeout(
+            datetime.timedelta(seconds=duration), reason=reason
+        )
+    except discord.Forbidden:
+        logging.error("[Anti-Ping] discord refused the timeout for %s", message.author.id)
+        return "discord refused the timeout, check the bot's role position"
+    except discord.HTTPException as exception:
+        logging.error("[Anti-Ping] timeout failed: %s", exception)
+        return "could not time out"
+
+    return f"timed out for {td_format(datetime.timedelta(seconds=duration))}"
+
+
+async def antiping_log(bot, rule, message, mention, role, outcome):
+    channel_id = antiping_channel_id(rule.get("log_channel"))
+    if not channel_id:
+        return
+
+    channel = message.guild.get_channel(channel_id)
+    if channel is None:
+        return
+
+    embed = discord.Embed(title="Anti-Ping Warning", color=BLANK_COLOR)
+    embed.description = (
+        f"{message.author.mention} pinged {mention.mention} in {message.channel.mention}."
+    )
+    embed.add_field(name="Protected Role", value=role.mention, inline=True)
+    embed.add_field(
+        name="Outcome", value=outcome or "Warned in channel", inline=True
+    )
+    embed.add_field(name="Message", value=f"[Jump]({message.jump_url})", inline=True)
+    embed.set_author(name=str(message.author), icon_url=message.author.display_avatar.url)
+    embed.timestamp = datetime.datetime.now(tz=datetime.timezone.utc)
+
+    try:
+        await channel.send(embed=embed)
+    except (discord.Forbidden, discord.HTTPException) as exception:
+        logging.error("[Anti-Ping] could not write to the log channel: %s", exception)
 
 
 class OnMessage(commands.Cog):
@@ -50,12 +320,12 @@ class OnMessage(commands.Cog):
                 message.content = f"{prefix}punish " + args[1] + " " + command + " " + " ".join(args[2:])
                 await bot.process_commands(message)
                 return
-
+            
 
         if not message.guild:
             return
 
-
+       
         if not hasattr(bot, "settings"):
             return
 
@@ -68,7 +338,7 @@ class OnMessage(commands.Cog):
             if last and (now - last).total_seconds() < 5:
                 return
             self._mention_cooldowns[message.author.id] = now
-
+            
             container = discord.ui.Container()
             section = discord.ui.Section(
                 accessory=discord.ui.Thumbnail(
@@ -99,31 +369,6 @@ class OnMessage(commands.Cog):
         dataset = await bot.settings.find_by_id(message.guild.id)
         if dataset == None:
             return
-
-        antiping_roles = None
-        bypass_roles = None
-
-        if "bypass_role" in dataset["antiping"].keys():
-            bypass_role = dataset["antiping"]["bypass_role"]
-
-        if isinstance(bypass_role, list):
-            bypass_roles = [
-                discord.utils.get(message.guild.roles, id=role) for role in bypass_role
-            ]
-        else:
-            bypass_roles = [discord.utils.get(message.guild.roles, id=bypass_role)]
-
-        if isinstance(dataset["antiping"]["role"], list):
-            antiping_roles = [
-                discord.utils.get(message.guild.roles, id=role)
-                for role in dataset["antiping"]["role"]
-            ]
-        elif isinstance(dataset["antiping"]["role"], int):
-            antiping_roles = [
-                discord.utils.get(message.guild.roles, id=dataset["antiping"]["role"])
-            ]
-        else:
-            antiping_roles = None
 
         aa_detection = False
         aa_detection_channel = None
@@ -198,10 +443,11 @@ class OnMessage(commands.Cog):
                                                     ].replace("[", "")
 
                                                     roblox_client = roblox.Client()
-                                                    roblox_player = await roblox_client.get_user_by_username(
-                                                        roblox_user
-                                                    )
-                                                    if not roblox_player:
+                                                    try:
+                                                        roblox_player = await roblox_client.get_user_by_username(
+                                                            roblox_user
+                                                        )
+                                                    except roblox.UserNotFound:
                                                         return
                                                     thumbnails = await roblox_client.thumbnails.get_user_avatar_thumbnails(
                                                         [roblox_player], size=(420, 420)
@@ -498,129 +744,102 @@ class OnMessage(commands.Cog):
         if message.author.bot:
             return
 
-        if antiping_roles is None:
-            return
+        if antiping_settings(dataset).get("enabled") is True and message.author != message.guild.owner:
+            author_top = message.author.top_role
 
-        if (
-            dataset["antiping"]["enabled"] is False
-            or dataset["antiping"]["role"] is None
-        ):
-            return
+            for rule in antiping_rules(dataset):
+                if antiping_is_ignored(rule, message.channel):
+                    continue
 
-        if bypass_roles is not None:
-            for role in bypass_roles:
-                if role in message.author.roles:
-                    return
+                exempt = antiping_role_list(message.guild, rule.get("bypass_role"))
+                if any(role in message.author.roles for role in exempt):
+                    continue
 
-        for mention in message.mentions:
-            if mention.bot:
-                return
+                protected = antiping_role_list(message.guild, rule.get("role"))
+                if not protected:
+                    continue
 
-            if dataset["antiping"].get("use_hierarchy") in [True, None]:
-                for role in antiping_roles:
-                    if role is not None:
-                        if message.author.top_role >= role:
+                hierarchy = rule.get("use_hierarchy") is True
+                match = None
+
+                for mention in message.mentions:
+                    if mention.bot or mention == message.author:
+                        continue
+
+                    for role in protected:
+                        if role not in mention.roles or role in message.author.roles:
                             continue
-                if message.author == message.guild.owner:
+                        if hierarchy and author_top >= role:
+                            continue
+                        if not await antiping_protects(bot, rule, message.guild.id, mention):
+                            continue
+
+                        match = (mention, role)
+                        break
+
+                    if match:
+                        break
+
+                if not match:
+                    continue
+
+                mention, role = match
+
+                outcome = await antiping_escalate(bot, rule, message, role)
+                speak = antiping_should_warn(message.guild.id, message.author.id)
+
+                if not speak and outcome is None:
                     return
 
-                for role in antiping_roles:
-                    if role is not None:
-                        if role in mention.roles and role not in message.author.roles:
-                            embed = discord.Embed(
-                                title=f"Do not ping {role.name} or above!",
-                                color=discord.Color.red(),
-                                description=f"Do not ping those with {role.name}!\nIt is a violation of the rules, and you will be punished if you continue.",
-                            )
-                            try:
-                                if message.reference:
-                                    msg = await message.channel.fetch_message(
-                                        message.reference.message_id
-                                    )
-                                    if msg.author == mention:
-                                        embed.set_image(
-                                            url="https://i.imgur.com/pXesTnm.gif"
-                                        )
-                            except discord.NotFound:
-                                pass
-                            try:
-                                embed.set_footer(
-                                    text=f'Thanks, {dataset["customisation"]["brand_name"]}',
-                                    icon_url=get_guild_icon(bot, message.guild),
-                                )
-                            except KeyError:
-                                embed.set_footer(
-                                    text=f"Thanks, ERM",
-                                    icon_url=get_guild_icon(bot, message.guild),
-                                )
+                title = f"Do not ping {role.name} or above!" if hierarchy else f"Do not ping {role.name}!"
+                embed = discord.Embed(
+                    title=title,
+                    color=discord.Color.red(),
+                    description=f"Do not ping those with {role.name}!\nIt is a violation of the rules, and you will be punished if you continue.",
+                )
+                try:
+                    if message.reference:
+                        msg = await message.channel.fetch_message(
+                            message.reference.message_id
+                        )
+                        if msg.author == mention:
+                            embed.set_image(url="https://i.imgur.com/pXesTnm.gif")
+                except discord.NotFound:
+                    pass
+                embed.set_footer(
+                    text=f'Thanks, {((dataset or {}).get("customisation") or {}).get("brand_name") or "ERM"}',
+                    icon_url=get_guild_icon(bot, message.guild),
+                )
 
-                            ctx = await bot.get_context(message)
-                            await ctx.reply(
-                                f"{message.author.mention}",
-                                embed=embed,
-                                delete_after=15,
-                            )
-                            return
+                if speak:
+                    ctx = await bot.get_context(message)
+                    await ctx.reply(
+                        f"{message.author.mention}",
+                        embed=embed,
+                        delete_after=15,
+                    )
 
-            if dataset["antiping"].get("use_hierarchy") not in [True, None]:
-                for role in antiping_roles:
-                    if role is not None:
-                        if role in mention.roles and role not in message.author.roles:
-                            embed = discord.Embed(
-                                title=f"Do not ping {role.name}!",
-                                color=discord.Color.red(),
-                                description=f"Do not ping those with {role.name}!\nIt is a violation of the rules, and you will be punished if you continue.",
-                            )
-                            try:
-                                if message.reference:
-                                    msg = await message.channel.fetch_message(
-                                        message.reference.message_id
-                                    )
-                                    if msg.author == mention:
-                                        embed.set_image(
-                                            url="https://i.imgur.com/pXesTnm.gif"
-                                        )
-                            except discord.NotFound:
-                                pass
-                            try:
-                                embed.set_footer(
-                                    text=f'Thanks, {dataset["customisation"]["brand_name"]}',
-                                    icon_url=get_guild_icon(bot, message.guild),
-                                )
-                            except KeyError:
-                                embed.set_footer(
-                                    text=f"Thanks, ERM",
-                                    icon_url=get_guild_icon(bot, message.guild),
-                                )
-
-                            ctx = await bot.get_context(message)
-                            await ctx.reply(
-                                f"{message.author.mention}",
-                                embed=embed,
-                                delete_after=15,
-                            )
-                            return
+                await antiping_log(bot, rule, message, mention, role, outcome)
+                return
 
         custom_commands = await bot.custom_commands.find_by_id(message.guild.id)
         if custom_commands is None:
             return
 
         prefix = (dataset or {}).get("customisation", {}).get("prefix", ">")
-        management_roles = dataset.get("staff_management", {}).get("management_role")
-        if management_roles is None:
-            return
 
         if message.content.startswith(prefix):
             try:
                 command_parts = message.content.split(" ")
                 command = command_parts[0].replace(prefix, "").lower()
-                if command in bot.all_commands:
-                    return
                 channel_id = int(command_parts[1].replace("<#", "").replace(">", ""))
                 channel = discord.utils.get(message.guild.text_channels, id=channel_id)
             except (IndexError, ValueError):
                 command = message.content.replace(prefix, "").lower()
                 channel = None
+
+            if command in bot.all_commands:
+                return
 
             ctx = await bot.get_context(message)
             if "commands" in custom_commands:

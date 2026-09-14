@@ -15,79 +15,82 @@ async def iterate_ics(bot):
     # and the relevant storage data.
 
     async for item in bot.ics.db.find({}):
-        guild = bot.get_guild(item["guild"])
-
-        if not guild:
-            try:
-                guild = await bot.fetch_guild(item["guild"])
-            except discord.HTTPException:
+        try:
+            if not item.get("guild"):
                 continue
 
-        selected = None
-        custom_command_data = await bot.custom_commands.find_by_id(item["guild"]) or {}
-        for command in custom_command_data.get("commands", []):
-            if command["id"] == item["_id"]:
-                selected = command
+            guild = bot.get_guild(item["guild"])
 
-        if not selected:
-            continue
+            if not guild:
+                try:
+                    guild = await bot.fetch_guild(item["guild"])
+                except discord.HTTPException:
+                    continue
 
-        try:
-            info = await bot.prc_api.get_server_info(guild.id, "players", "queue")
-        except prc_api.ResponseFailure as e:
-            logging.warning(f"PRC ResponseFailure for guild {guild.id} in iterate_ics: {e}")
-            continue
+            selected = None
+            custom_command_data = await bot.custom_commands.find_by_id(item["guild"]) or {}
+            for command in custom_command_data.get("commands", []):
+                if command["id"] == item["_id"]:
+                    selected = command
 
-        status: ServerStatus = info["status"]
-        queue: int = len(info["queue"])
-        players: list[Player] = info["players"]
+            if not selected:
+                continue
 
-        mods: int = len(
-            list(filter(lambda x: x.permission == "Server Moderator", players))
-        )
-        admins: int = len(
-            list(filter(lambda x: x.permission == "Server Administrator", players))
-        )
-        total_staff: int = len(
-            list(filter(lambda x: x.permission != "Normal", players))
-        )
-        onduty: int = len(
-            [
-                i
-                async for i in bot.shift_management.shifts.db.find(
-                    {"Guild": guild.id, "EndEpoch": 0}
-                )
-            ]
-        )
+            try:
+                info = await bot.prc_api.get_server_info(guild.id, "players", "queue")
+            except prc_api.ResponseFailure as e:
+                logging.warning(f"PRC ResponseFailure for guild {guild.id} in iterate_ics: {e}")
+                continue
 
-        new_data = {
-            "join_code": status.join_key,
-            "players": status.current_players,
-            "max_players": status.max_players,
-            "queue": queue,
-            "staff": total_staff,
-            "admins": admins,
-            "mods": mods,
-            "onduty": onduty,
-        }
-        # print(json.dumps(new_data, indent=4))
+            status: ServerStatus = info["status"]
+            queue: int = len(info["queue"])
+            players: list[Player] = info["players"]
 
-        if new_data != item["data"]:
-            # Updated data
-            for arr in item["associated_messages"]:
-                channel, message_id = arr[0], arr[1]
-                
-                channel = guild.get_channel(channel)
-                message = await channel.fetch_message(message_id)
-                if channel and not message:
-                    try:
-                        message = await channel.fetch_message(message_id)
-                    except discord.NotFound:
-                        continue
-                    except discord.HTTPException:
-                        continue
+            mods: int = len(
+                list(filter(lambda x: x.permission == "Server Moderator", players))
+            )
+            admins: int = len(
+                list(filter(lambda x: x.permission == "Server Administrator", players))
+            )
+            total_staff: int = len(
+                list(filter(lambda x: x.permission != "Normal", players))
+            )
+            onduty: int = len(
+                [
+                    i
+                    async for i in bot.shift_management.shifts.db.find(
+                        {"Guild": guild.id, "EndEpoch": 0}
+                    )
+                ]
+            )
 
-                if not message or not channel:
+            new_data = {
+                "join_code": status.join_key,
+                "players": status.current_players,
+                "max_players": status.max_players,
+                "queue": queue,
+                "staff": total_staff,
+                "admins": admins,
+                "mods": mods,
+                "onduty": onduty,
+            }
+
+            if new_data == item.get("data"):
+                continue
+
+            stale = []
+            for arr in item.get("associated_messages") or []:
+                channel = guild.get_channel(arr[0])
+                if not channel:
+                    stale.append(arr)
+                    continue
+
+                try:
+                    message = await channel.fetch_message(arr[1])
+                except discord.NotFound:
+                    stale.append(arr)
+                    continue
+                except discord.HTTPException:
                     continue
 
                 await message.edit(
@@ -115,3 +118,12 @@ async def iterate_ics(bot):
                         else []
                     ),
                 )
+
+            if stale:
+                item["associated_messages"] = [
+                    arr for arr in item["associated_messages"] if arr not in stale
+                ]
+            item["data"] = new_data
+            await bot.ics.update_by_id(item)
+        except Exception as e:
+            logging.warning(f"Error processing ICS record {item.get('_id')}: {e}")

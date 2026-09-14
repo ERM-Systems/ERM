@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import datetime
 import json
 import logging
@@ -22,6 +21,8 @@ from snowflake import SnowflakeGenerator
 from zuid import ZUID
 
 import utils.prc_api as prc_api
+from utils import custom_permissions
+from utils.channel_locks import apply_channel_locks
 from utils.constants import BLANK_COLOR, RED_COLOR
 from utils.prc_api import ServerStatus, Player
 
@@ -84,22 +85,6 @@ async def generalised_interaction_check_failure(
         )
 
 
-async def has_whitelabel(bot, guild_id: int) -> bool:
-    item = await bot.whitelabel.db.find_one({"GuildID": str(guild_id)})
-    if item:
-        guild = bot.get_guild(guild_id)
-        token = item.get("Token")
-        b64_userid = token.split(".")[0]
-        user_id = base64.b64decode(b64_userid + "==").decode("utf-8")
-        member = guild.get_member(int(user_id))
-        if not member:
-            try:
-                member = await guild.fetch_member(int(user_id))
-            except discord.NotFound:
-                return False
-        return True
-    return False
-
 async def get_roblox_by_username(user: str, bot, ctx: commands.Context):
     if "<@" in user:
         try:
@@ -135,10 +120,11 @@ async def staff_check(bot_obj, guild, member):
                 elif isinstance(guild_settings["staff_management"]["role"], int):
                     if guild_settings["staff_management"]["role"] in member_role_ids:
                         return True
-    if (
-        member.guild_permissions.manage_messages
-        or member.guild_permissions.administrator
-    ):
+    if custom_permissions.allowed(guild_settings, member_role_ids, "staff", ""):
+        return True
+    if await admin_check(bot_obj, guild, member):
+        return True
+    if member.guild_permissions.manage_messages:
         return True
     return False
 
@@ -220,7 +206,7 @@ def time_converter(parameter: str) -> int:
                 alias_found = parameter[(len(parameter) - len(alias)) :]
                 number = parameter.split(alias_found)[0]
                 number = number.replace("-", "")  # prevent those negative times!
-                if not number.strip()[-1].isdigit():
+                if not number.strip() or not number.strip()[-1].isdigit():
                     continue
                 if int(number.strip()) * multiplier > 31536000:
                     raise OverflowError(
@@ -232,6 +218,10 @@ def time_converter(parameter: str) -> int:
 
 
 class GuildCheckFailure(commands.CheckFailure):
+    pass
+
+
+class AccountTerminatedFailure(commands.CheckFailure):
     pass
 
 
@@ -774,6 +764,22 @@ def render_session_message(template: str, replacements: dict) -> dict:
         raise ValueError("That message could not be rendered, please configure it again.")
 
 
+def add_role_mentions(payload: dict, roles: list) -> dict:
+    mentions = " ".join([f"<@&{role}>" for role in roles or []])
+    if not mentions:
+        return payload
+
+    if (payload.get("flags") or 0) & (1 << 15):
+        components = payload.get("components") or []
+        if len(components) >= 10:
+            return payload
+        payload["components"] = components + [{"type": 10, "content": mentions}]
+    else:
+        payload["content"] = f"{payload.get("content") or ""} {mentions}".strip()
+
+    return payload
+
+
 async def get_session_status(bot, guild_id: int):
     try:
         return await bot.prc_api.get_server_status(guild_id)
@@ -796,7 +802,11 @@ async def get_session_configuration(bot, guild_id: int, message_type: str) -> di
 
 
 async def create_session_vote(
-    bot, guild_id: int, user_id: int, required_votes: int | None = None, staff_only: bool = False
+    bot,
+    guild_id: int,
+    user_id: int,
+    required_votes: int | None = None,
+    staff_only: bool = False,
 ) -> int:
     message_type = "staff_vote" if staff_only else "vote"
     sessions = await get_session_configuration(bot, guild_id, message_type)
@@ -845,6 +855,8 @@ async def create_session_vote(
             raise ValueError("The vote message needs a vote button for the dynamic button to work.")
         button["label"] = f"0/{required}"
 
+    add_role_mentions(payload, sessions.get("poll_mention_roles"))
+
     message = await bot.http.send_message(
         sessions["channel_id"],
         params=discord.http.MultipartParameters(payload=payload, multipart=None, files=None),
@@ -871,6 +883,7 @@ async def send_session_boost(bot, guild_id: int, user_id: int) -> int:
             "{erlc.players}": str(info.current_players) if info else "{erlc.players}",
         },
     )
+    add_role_mentions(payload, sessions.get("boost_mention_roles"))
 
     await bot.http.send_message(
         sessions["channel_id"],
@@ -884,6 +897,9 @@ async def send_session_full(bot, guild_id: int, info) -> bool:
     try:
         sessions = await get_session_configuration(bot, guild_id, "full")
     except ValueError:
+        return False
+
+    if sessions.get("auto_full") is False:
         return False
 
     claim = await bot.sessions.db.update_one(
@@ -927,7 +943,7 @@ async def disable_vote_button(bot, guild_id: int, sessions: dict, session: dict)
         )
         message = await channel.fetch_message(session["vote_message"])
 
-        view = discord.ui.View.from_message(message)
+        view = discord.ui.LayoutView.from_message(message)
         for child in view.walk_children():
             if isinstance(child, discord.ui.Button) and child.custom_id == f"vote_button:{guild_id}":
                 child.disabled = True
@@ -950,11 +966,16 @@ async def release_session_start(bot, guild_id: int, previous: dict | None) -> No
     )
 
 
-async def start_session(bot, guild_id: int, user_id: int) -> int | None:
+async def start_session(bot, guild_id: int, user_id: int, region: str | None = None) -> int | None:
     try:
         sessions = await get_session_configuration(bot, guild_id, "start")
     except ValueError:
         sessions = None
+
+    settings = await bot.settings.find_by_id(guild_id) or {}
+    area = settings.get("area_of_play") or {}
+    if region and not any(entry.get("id") == region for entry in area.get("regions") or []):
+        raise ValueError("That is not one of the configured areas of play.")
 
     now = int(datetime.datetime.now().timestamp())
 
@@ -967,6 +988,7 @@ async def start_session(bot, guild_id: int, user_id: int) -> int | None:
                     "started": True,
                     "started_by": user_id,
                     "started_at": now,
+                    "aop_region": region or area.get("default_region"),
                 },
                 "$setOnInsert": {
                     "voted_users": [],
@@ -982,6 +1004,10 @@ async def start_session(bot, guild_id: int, user_id: int) -> int | None:
         raise ValueError("There is already an active session.")
 
     session = await bot.sessions.find(guild_id)
+
+    guild = bot.get_guild(guild_id)
+    if guild:
+        await apply_channel_locks(bot, guild, settings, True)
 
     if sessions:
         try:
@@ -999,6 +1025,7 @@ async def start_session(bot, guild_id: int, user_id: int) -> int | None:
                     "{erlc.players}": str(info.current_players) if info else "{erlc.players}",
                 },
             )
+            add_role_mentions(payload, sessions.get("start_mention_roles"))
 
             message = await bot.http.send_message(
                 sessions["channel_id"],
@@ -1041,26 +1068,17 @@ async def end_session(bot, guild_id: int, user_id: int) -> int | None:
     except ValueError:
         sessions = None
 
-    session = await bot.sessions.find(guild_id)
+    session = await bot.sessions.db.find_one_and_delete({"_id": guild_id})
     if not session:
         raise ValueError("There is no active session.")
 
-    if sessions:
-        info = await get_session_status(bot, guild_id)
-        payload = render_session_message(
-            sessions["shutdown"],
-            {
-                "{user}": f"<@{user_id}>",
-                "{erlc.name}": info.name if info else "{erlc.name}",
-                "{erlc.code}": info.join_key if info else "{erlc.code}",
-                "{erlc.max_players}": str(session.get("analytics", {}).get("max_players", 0)),
-            },
-        )
+    if not session.get("started"):
+        if sessions:
+            await disable_vote_button(bot, guild_id, sessions, session)
+        return None
 
-        await bot.http.send_message(
-            sessions["channel_id"],
-            params=discord.http.MultipartParameters(payload=payload, multipart=None, files=None),
-        )
+    settings = await bot.settings.find_by_id(guild_id) or {}
+    options = settings.get("sessions") or {}
 
     ended_at = int(datetime.datetime.now().timestamp())
     started_at = session.get("started_at") or session.get("created_at") or ended_at
@@ -1081,6 +1099,35 @@ async def end_session(bot, guild_id: int, user_id: int) -> int | None:
             "logs": await monitor_session_logs(bot, guild_id, started_at, ended_at),
         }
     )
-    await bot.sessions.delete(session["_id"])
+
+    guild = bot.get_guild(guild_id)
+    if guild:
+        await apply_channel_locks(bot, guild, settings, False)
+
+    if options.get("end_staff_shifts"):
+        shifts = [shift async for shift in bot.shift_management.shifts.db.find({"Guild": guild_id, "EndEpoch": 0})]
+        for shift in shifts:
+            try:
+                await bot.shift_management.end_shift(shift["_id"], guild_id, ended_at)
+            except ValueError:
+                continue
+            bot.dispatch("shift_end", shift["_id"])
+
+    if sessions:
+        info = await get_session_status(bot, guild_id)
+        payload = render_session_message(
+            sessions["shutdown"],
+            {
+                "{user}": f"<@{user_id}>",
+                "{erlc.name}": info.name if info else "{erlc.name}",
+                "{erlc.code}": info.join_key if info else "{erlc.code}",
+                "{erlc.max_players}": str(analytics.get("max_players", 0)),
+            },
+        )
+
+        await bot.http.send_message(
+            sessions["channel_id"],
+            params=discord.http.MultipartParameters(payload=payload, multipart=None, files=None),
+        )
 
     return sessions["channel_id"] if sessions else None
