@@ -253,7 +253,7 @@ async def process_vehicle(
             await handle_non_member(bot, player, guild, alert_channel, alert_message)
 
     except Exception as e:
-        logging.waring(f"Error processing vehicle for {vehicle.username}: {e}")
+        logging.warning(f"Error processing vehicle for {vehicle.username}: {e}")
 
 
 async def get_cached_member_by_username(bot, guild, username, exotic_roles):

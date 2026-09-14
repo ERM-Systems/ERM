@@ -763,7 +763,6 @@ class ShiftLogging(commands.Cog):
             )
 
         sorted_staff = sorted(all_staff, key=lambda x: x["total_seconds"], reverse=True)
-        added_staff = []
         for index, staff in enumerate(sorted_staff):
             # # print(staff)
             member = ctx.guild.get_member(staff["id"])
@@ -774,22 +773,17 @@ class ShiftLogging(commands.Cog):
                     index -= 1
                     continue
             
-            if (
-                len((embeds[-1].description or "").splitlines()) >= 16
-                and member.id not in added_staff
-            ):
+            if len((embeds[-1].description or "").splitlines()) >= 16:
                 embed = discord.Embed(title="Active Shifts", color=BLANK_COLOR)
                 embed.description = f"**Total Shifts**"
                 embed.set_author(
                     name=f"{ctx.guild.name}",
                     icon_url=ctx.guild.icon,
                 )
-                added_staff.append(member.id)
                 embeds.append(embed)
-            if member.id not in added_staff:
-                embeds[
-                    -1
-                ].description += f"\n**{index+1}.** {member.mention} • {td_format(datetime.timedelta(seconds=staff['total_seconds']))}{(' **(Currently on break: {})**'.format(td_format(datetime.timedelta(seconds=staff['break_seconds'])))) if staff['break_seconds'] > 0 else ''}"
+            embeds[
+                -1
+            ].description += f"\n**{index+1}.** {member.mention} • {td_format(datetime.timedelta(seconds=staff['total_seconds']))}{(' **(Currently on break: {})**'.format(td_format(datetime.timedelta(seconds=staff['break_seconds'])))) if staff['break_seconds'] > 0 else ''}"
 
         paginator = SelectPagination(
             bot,
@@ -1055,9 +1049,9 @@ class ShiftLogging(commands.Cog):
         member_list = ctx.guild.members
         members = {m.id: m for m in member_list}  # Cache guild members
 
-        if role:
-            role_member_ids = {m.id for m in role.members}
-            sorted_staff = [s for s in sorted_staff if s["id"] in role_member_ids]
+        role_filter_ids = {m.id for m in role.members} if role else None
+        if role_filter_ids is not None:
+            sorted_staff = [s for s in sorted_staff if s["id"] in role_filter_ids]
 
         total_seconds = 0
 
@@ -1129,6 +1123,8 @@ class ShiftLogging(commands.Cog):
         for role in staff_roles:
             if role.members:
                 for member in role.members:
+                    if role_filter_ids is not None and member.id not in role_filter_ids:
+                        continue
                     if member.id not in [item["id"] for item in sorted_staff]:
                         if member not in added_staff:
                             index = index + 1
@@ -1197,6 +1193,8 @@ class ShiftLogging(commands.Cog):
             )
         )
         for member in perm_staff:
+            if role_filter_ids is not None and member.id not in role_filter_ids:
+                continue
             if member.id not in [item["id"] for item in sorted_staff]:
                 if member not in added_staff:
                     index = index + 1

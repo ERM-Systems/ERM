@@ -113,7 +113,7 @@ class Actions(commands.Cog):
         if action_obj.get("AccessRoles"):
             if (
                 not any(
-                    [discord.utils.get(ctx.guild.roles, id=i) in ctx.author.roles]
+                    discord.utils.get(ctx.guild.roles, id=i) in ctx.author.roles
                     for i in action_obj.get("AccessRoles")
                 )
                 and not dnr
@@ -167,7 +167,8 @@ class Actions(commands.Cog):
         if dnr:
             chosen_funcs = list(
                 filter(
-                    lambda x: x not in [self.add_role, self.remove_role], chosen_funcs
+                    lambda x: x[0] not in [self.add_role, self.remove_role],
+                    chosen_funcs,
                 )
             )
 
@@ -334,14 +335,12 @@ class Actions(commands.Cog):
         ]
         for item in docs:
             id = item["_id"]
-            await bot.shift_management.shifts.db.update_one(
-                {"_id": id},
-                {
-                    "$set": {
-                        "EndEpoch": int(datetime.datetime.now(tz=pytz.UTC).timestamp())
-                    }
-                },
-            )
+            try:
+                await bot.shift_management.end_shift(
+                    id, guild_id, int(datetime.datetime.now(tz=pytz.UTC).timestamp())
+                )
+            except ValueError:
+                continue
             bot.dispatch("shift_end", id)
             if context.verbose:
                 await context.send(item)
@@ -397,7 +396,7 @@ class Actions(commands.Cog):
         message = FakeMessage(
             content=bot.user.mention + " " + command,
             author=context.author,
-            channel=await context.author.create_dm() if context.author else guild.system_channel or guild.text_channels[0],
+            channel=await context.author.create_dm() if context.author and not context.author.bot else guild.system_channel or guild.text_channels[0],
             state=bot._connection
         )
         message.guild = guild

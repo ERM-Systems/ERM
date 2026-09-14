@@ -142,8 +142,7 @@ async def process_discord_checks(bot, items, guild_id):
             channel = await get_cached_channel(bot, channel_id)
             if not channel:
                 logging.warning(f"Channel {channel_id} not found in guild {guild_id}.")
-                return
-            
+
         guild = await get_cached_guild(bot, guild_id)
         if not guild:
             return
@@ -189,7 +188,6 @@ async def process_discord_checks(bot, items, guild_id):
                 callsign_channel = await get_cached_channel(bot, callsign_alert_channel_id)
                 if not callsign_channel:
                     logging.warning(f"Callsign alert channel {callsign_alert_channel_id} not found in guild {guild_id}.")
-                    return
             await handle_callsign_violations_batch(bot, guild, callsign_violations, callsign_channel)
 
     except Exception as e:
@@ -283,7 +281,7 @@ async def send_batch_warning_embed(players, alert_channel):
         embed = discord.Embed(
             title="Discord Check Warning",
             description=f"""
-            > The following players have been kicked from the server for not joining the Discord server after multiple warnings:
+            > The following players have been messaged in-game for not joining the Discord server after multiple warnings:
             
             {chr(10).join([f"> • {player}" for player in player_list])}
             """,

@@ -13,7 +13,7 @@ import datetime
 from decouple import config
 
 from utils.prc_api import JoinLeaveLog, Player
-from utils.utils import fetch_get_channel, has_whitelabel, staff_check
+from utils.utils import fetch_get_channel, staff_check
 from utils import prc_api
 from utils.constants import BLANK_COLOR, GREEN_COLOR, RED_COLOR
 from menus import AvatarCheckView, RDMActions
@@ -70,7 +70,7 @@ async def iterate_prc_logs(bot):
                 await asyncio.gather(*batch, return_exceptions=True)
                 logging.warning(f"[ITERATE] Executed {processed}/{server_count} servers")
                 batch.clear()
-
+        
         if batch:
             await asyncio.gather(*batch, return_exceptions=True)
 
@@ -235,8 +235,12 @@ async def process_guild(bot, items, semaphore):
     async with semaphore:
         try:
             await unprimitive_guild_process(items, bot)
+        except prc_api.ResponseFailure:
+            pass
         except Exception as e:
-            logging.warning(f"error processing guild {items['_id']}: {e}", exc_info=True)
+            logging.warning(
+                f"error processing guild {items['_id']}: {e}", exc_info=True
+            )
 
 
 async def fetch_logs_with_retry(guild_id, bot, retries=3, extra_resources=()):
@@ -306,7 +310,7 @@ async def send_log_batch(channel, embeds):
         try:
             await channel.send(embeds=chunk)
         except discord.HTTPException as e:
-            logging.waring(f"Failed to send log batch: {e}")
+            logging.warning(f"Failed to send log batch: {e}")
 
 
 def process_kill_logs(kill_logs, last_timestamp):
@@ -851,33 +855,33 @@ async def check_team_restrictions(bot, settings, guild_id, players):
     send_to = {}  # Channel_ID: [Username, Team]
     kick_against = []  # [Username]
 
-    min_count_for_compute = team_restrictions.get("min_players", 0)
+    min_count_for_compute = settings["ERLC"].get(
+        "team_restrictions_min_players", team_restrictions.get("min_players", 0)
+    )
     if min_count_for_compute >= len(players):
         return
 
-    enabled = team_restrictions.get("enabled", True)
+    enabled = settings["ERLC"].get(
+        "team_restrictions_enabled", team_restrictions.get("enabled", False)
+    )
     if not enabled:
         return
 
-    guild: discord.Guild = bot.get_guild(guild_id) or await bot.fetch_guild(guild_id)
+    guild = bot.get_guild(guild_id)
     if not guild:
         return
-    all_roles = guild.roles or await guild.fetch_roles()
     for team_name, plrs in teams.items():
         if team_restrictions.get(team_name) is not None:
             restriction = team_restrictions.get(team_name)
             roles = restriction["required_roles"]
             if roles == []:
                 continue
-            actual_roles = [discord.utils.get(all_roles, id=r) for r in roles]
-            members = set()
-            for item in actual_roles:
-                [members.update(member.id) for member in item.members]
+            actual_roles = [r for r_id in roles if (r := guild.get_role(r_id))]
+            if not actual_roles:
+                continue
+            members = [member for role in actual_roles for member in role.members]
 
             for plr in plrs:
-                members = [
-                    guild.get_member(m) or await guild.fetch_member(m) for m in members
-                ]
                 is_found = await is_username_found(plr.username, members)
                 if not is_found:
                     do_load = restriction["load_player"]
@@ -1034,7 +1038,7 @@ async def handle_kick_timer(bot, settings, guild_id, player_logs, command_logs):
         bot.kicked_users[guild_id] = {}
 
     for log in command_logs:
-        if ":kick" in log.command.lower():
+        if ":kick" in log.command.lower() and not log.is_automated:
             parts = log.command.split(None, 1)
             if len(parts) > 1:
                 kicked_users = parts[1].split(",")
@@ -1044,28 +1048,36 @@ async def handle_kick_timer(bot, settings, guild_id, player_logs, command_logs):
                         bot.kicked_users[guild_id][username.lower()] = log.timestamp
 
     rejoined_users = []
+    rejoined_ids = []
     current_time = int(time.time())
+    last_timestamp = bot.log_tracker.get_last_timestamp(guild_id, "kick_timer")
     if guild_id in bot.kicked_users:
         bot.kicked_users[guild_id] = {
-            username: timestamp
+            username: timestamp 
             for username, timestamp in bot.kicked_users[guild_id].items()
             if (current_time - timestamp) <= time_limit
         }
 
     for log in player_logs:
-        if log.type == "join":
+        if log.type == "join" and log.timestamp > last_timestamp:
             username_lower = log.username.lower()
             if username_lower in bot.kicked_users[guild_id]:
                 kick_timestamp = bot.kicked_users[guild_id][username_lower]
-                if (current_time - kick_timestamp) <= time_limit:
+                if kick_timestamp < log.timestamp <= kick_timestamp + time_limit:
                     rejoined_users.append(log.username)
+                    rejoined_ids.append(str(log.user_id))
                     logging.warning(
-                        f"Found rejoin within timer: {log.username} (Kicked at: {kick_timestamp}, Rejoined at: {current_time})"
+                        f"Found rejoin within timer: {log.username} (Kicked at: {kick_timestamp}, Rejoined at: {log.timestamp})"
                     )
-                del bot.kicked_users[guild_id][username_lower]
+                    del bot.kicked_users[guild_id][username_lower]
+
+    if player_logs:
+        bot.log_tracker.update_timestamp(
+            guild_id, "kick_timer", max(log.timestamp for log in player_logs)
+        )
 
     if rejoined_users:
-        usernames_str = ",".join(rejoined_users)
+        usernames_str = ",".join(rejoined_ids)
         logging.warning(f"Executing {punishment} for rejoined users: {usernames_str}")
 
         if punishment == "ban":

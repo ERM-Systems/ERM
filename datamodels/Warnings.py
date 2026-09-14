@@ -143,7 +143,7 @@ class Warnings(Document):
         moderation_type: str,
         time_epoch: int,
         until_epoch: int | None = None,
-    ) -> ObjectId | ValueError:
+    ) -> ObjectId:
         """
         Inserts a warning into the database.
         {
@@ -160,7 +160,7 @@ class Warnings(Document):
         }
         """
         if all([until_epoch is None, moderation_type == "Temporary Ban"]):
-            return ValueError("Epoch must be provided for temporary bans.")
+            raise ValueError("Epoch must be provided for temporary bans.")
 
         if any(
             not i
@@ -174,7 +174,7 @@ class Warnings(Document):
                 moderation_type,
             ]
         ):
-            return ValueError("All arguments must be provided.")
+            raise ValueError("All arguments must be provided.")
 
         identifier = ObjectId()
 
@@ -247,7 +247,7 @@ class Warnings(Document):
                 identifier is None,
             ]
         ):
-            return await self.db.find_one({"Snowflake": snowflake})
+            return await self.db.find_one({"Snowflake": snowflake, "Guild": guild_id})
 
         if identifier is not None and all(
             [
@@ -257,7 +257,7 @@ class Warnings(Document):
                 snowflake is None,
             ]
         ):
-            return await self.db.find_one({"_id": ObjectId(identifier)})
+            return await self.db.find_one({"_id": ObjectId(identifier), "Guild": guild_id})
 
         map = {
             "Snowflake": snowflake,

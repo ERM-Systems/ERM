@@ -53,7 +53,7 @@ class OnLOADeny(commands.Cog):
                 denied_by
             )
         except:
-            pass
+            accepted_by_user = self.bot.get_user(denied_by)
 
         embed.set_footer(
             text=f"Denied by {accepted_by_user.name if accepted_by_user else 'n/a'}"
@@ -62,7 +62,8 @@ class OnLOADeny(commands.Cog):
         await messg.edit(embed=embed, view=None)
 
         view_item = await self.bot.views.db.find_one({"message_id": messg.id})
-        await self.bot.views.delete_by_id(view_item.id)
+        if view_item:
+            await self.bot.views.delete_by_id(view_item["_id"])
 
 
 async def setup(bot):

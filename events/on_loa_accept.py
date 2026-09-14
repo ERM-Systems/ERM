@@ -68,7 +68,7 @@ class OnLOAAccept(commands.Cog):
                 accepted_by
             ) or await guild.fetch_member(accepted_by)
         except:
-            pass
+            accepted_by_user = self.bot.get_user(accepted_by)
 
         embed.set_footer(
             text=f"Accepted by {accepted_by_user.name if accepted_by_user else 'n/a'}"
