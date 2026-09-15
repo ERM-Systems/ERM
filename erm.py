@@ -149,7 +149,13 @@ class Bot(commands.AutoShardedBot):
     async def setup_hook(self) -> None:
         self.external_http_sessions: list[aiohttp.ClientSession] = []
         self.view_state_manager: ViewStateManager = ViewStateManager()
-
+        info = await bot.application_info()
+        if info.install_params or info.custom_install_url:
+            public = True
+        else:
+            public = False
+        if public:
+            raise Exception("ERM's source does not allow you to have an Install Link configured on your bot. This is to avoid users reselling our services. Please ensure that you have set the Install Link to 'None' instead of Discord Provided URL.")
         if not self.setup_status:
             # await bot.load_extension('utils.routes')
             logging.info(
