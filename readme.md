@@ -1,3 +1,8 @@
+> [!CAUTION]
+> Starting from the 12th of September, ERM has shut down forever. Therefore, you will have to self-host your own source if you wish to use this code. Please see SELF_HOSTING.md to view how to do this.
+> 
+> To get your data back, please visit https://export.ermbot.xyz/export. An import tool has been created and will be present on the website.
+
 <p align="center">
   <img src="assets/ermlogo.png" alt="ERM Bot Logo">
 </p>
